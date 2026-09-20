@@ -1,0 +1,102 @@
+# PixPin 使用说明
+
+> 适用版本：1.1.0+ / 越狱环境：RootHide（iOS 16.x / 17.x）
+> 完整开发规范见 `DEVELOPMENT.md`；本文面向安装与日常使用。
+
+## 1. 安装
+
+1. 用 `./build.sh` 构建（或直接取用 `packages/` 下的 deb）：
+   - `packages/ios16/com.pixpin.screenshot_*_ios16_iphoneos-arm64e.deb` —— iOS 16 设备
+   - `packages/ios17/com.pixpin.screenshot_*_ios17_iphoneos-arm64e.deb` —— iOS 17 设备
+2. 将 deb 传到设备并安装（Filza 直接打开，或 SSH：
+   `dpkg -i /path/to/com.pixpin.screenshot_*_ios16_iphoneos-arm64e.deb`）。
+3. 安装完成后**必须重启 SpringBoard**（注销，或 SSH 执行 `killall SpringBoard`）。
+   首次安装后如果没有注销，tweak 不会加载，所有功能都无反应。
+
+安装内容：
+- `/var/jb/Library/MobileSubstrate/DynamicLibraries/PixPin.dylib` —— 主功能（SpringBoard 内运行）
+- `/var/jb/Library/PreferenceBundles/PixPinPrefs.bundle` —— 设置面板
+- `/var/jb/Library/PreferenceLoader/Preferences/PixPinPrefs.plist` —— 设置入口（带图标）
+
+卸载：`dpkg -r com.pixpin.screenshot` 后注销。
+
+## 2. 快速开始（30 秒验证）
+
+1. 打开系统设置 → 找到 **PixPin**（蓝色取景框图标）。
+2. 确认「启用 PixPin」已开。
+3. 进入 **诊断与测试 → 截图测试中心**，点“测试全屏截图”。
+4. 预期：屏幕闪一下快门反馈 → 左下角弹出结果气泡（缩略图 + 结果信息）。测试中心会同步显示 SpringBoard 处理阶段。
+   默认动作是「保存到相册」，可在设置里改为复制/保存并复制/仅气泡。
+
+## 3. 触发方式
+
+| 入口 | 位置 | 说明 |
+|---|---|---|
+| 测试中心 | 设置 → PixPin → 诊断与测试 | 四种模式、实时阶段、手动取消和历史入口 |
+| 跨进程通知 | Darwin 通知 | `com.pixpin.screenshot/capture/{full,area,freeze,instant}`，只发信号不带数据，供自动化/未来控制中心接入 |
+
+控制中心模块与系统截图按钮联动暂未实现（见「已知限制」）。
+
+## 4. 模式说明
+
+- **全屏截图**：整屏捕获，完成后直接走默认结果动作 + 气泡。
+- **区域截图**：先抓屏，再打开选区覆盖层；拖动移动、拖角/边缩放、在暗区拖动新建选区；
+  工具条：取消 / 全屏 / 编辑 / 保存 / 复制 / 完成（完成=默认动作）。实时显示选区像素尺寸。
+- **冻结截图**：与区域相同的选区交互，基础图在打开选区前抓取（内容静止）。
+- **即时区域截图**：预置居中 70% 选区 + 取消/全屏/完成三个按钮，最快路径。
+
+## 5. 设置项
+
+- **基本**：总开关（关闭后所有入口无动作）。
+- **截图模式**：四种模式独立开关。
+- **输出**：
+  - 默认结果动作：保存到相册 / 复制到剪贴板 / 保存并复制 / 仅显示预览气泡。
+  - 显示结果气泡、完成时震动反馈。
+- **历史记录**：历史上限（默认 50，仅本机存储，超限自动清理最旧）。
+- **截图测试中心**：集中触发四种截图，实时显示注入、抓取方式、请求、窗口与输出阶段；可以显式取消未结束任务。
+
+结果气泡：点缩略图/文字可进入编辑器重新编辑（编辑图保存为**新的**相册资源，原图不动）；
+「存」快捷保存、「享」快捷分享、「✕」关闭。相册/剪贴板动作失败时会撤回并可从气泡重试。
+
+## 6. 无法截图时怎么办（诊断）
+
+**第一步：设置 → PixPin → 截图测试中心**
+
+| 现象 | 含义 | 处理 |
+|---|---|---|
+| 提示“未找到运行状态文件” | tweak 没有加载进 SpringBoard | 确认已注销；确认注入器中 PixPin 已启用；重装 deb |
+| 抓取方式 = 不可用 | 三个抓取接口在本机都缺失 | 反馈机型+iOS 版本（说明里附日志） |
+| 最近请求 = 已拒绝（模式关闭） | 总开关或对应模式开关关着 | 打开对应开关 |
+| 最近请求 = 已拒绝（有任务进行中） | 上一个任务没结束 | 先点“取消当前截图任务”，再附日志反馈 |
+| 阶段停在 `captured` | 已有快照，但选区窗口未提交显示 | 收集 `[PixPin]` 日志与设备/iOS 版本 |
+| 阶段显示 `selection-visible` 但看不到 UI | 窗口已提交给某个 scene，需核对 scene 选择 | 保留阶段下方的 `scene=...` 信息并收集日志 |
+| 最近结果 = failed | 抓取/裁剪/输出失败 | 看“结果信息”里的具体错误，配合日志定位 |
+
+运行状态文件位于设备的 `/var/mobile/Library/PixPin/status.json`，每次注入、请求、抓取、窗口展示和完成都会更新。
+
+**第二步：收集日志**
+
+```bash
+./Scripts/collect-runtime-logs.sh     # 有 USB 连接时用 idevicesyslog 过滤 [PixPin]
+```
+或 SSH 到设备后：`grep -E '\[PixPin\]' /var/log/syslog`（或 `oslog` 工具）。
+所有日志以 `[PixPin][I/W/E]` 为前缀，不会输出图片内容。
+
+## 7. 已知限制
+
+- 抓取路径优先级：`_UICreateScreenUIImage` → `UIGetScreenImage` → SpringBoard 可见窗口合成回退。
+  前两者可用时截的是整个合成屏幕；若都不可用，回退路径只能捕到桌面自身窗口
+  （状态里显示 `fallback-snapshot`，气泡会标注）。
+- 控制中心模块、系统截图按钮联动未实现。
+- 相册保存依赖 SpringBoard 进程的相册权限；首次保存若系统不弹授权且保存失败，
+  临时副本会保留，可通过气泡重试或分享导出。
+- 选区期间旋转设备会取消当前任务（正确性优先）。
+
+## 8. 开发
+
+```bash
+./build.sh            # 宿主单元测试 + ios16/ios17 双包 + 包校验 + 版本自动递增
+SKIP_TESTS=1 ./build.sh
+./build.sh --clean
+Scripts/make-icons.m  # 设置图标生成工具（macOS 宿主运行）
+```
