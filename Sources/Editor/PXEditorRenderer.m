@@ -1,13 +1,15 @@
 #import "PXEditorRenderer.h"
+#import "PXEditorDocument.h"
 #import "../Common/PXLog.h"
-
-static const CGFloat PXDefaultMosaicBlockSize = 24.0;   // 像素
 
 @implementation PXEditorRenderer
 
 #pragma mark - 绘制
 
-+ (void)drawAnnotation:(PXAnnotation *)annotation inContext:(CGContextRef)context {
++ (void)drawAnnotation:(PXAnnotation *)annotation
+             inContext:(CGContextRef)context
+           sourceImage:(UIImage *)sourceImage
+        pixelatedImage:(UIImage *)pixelatedImage {
     if (!annotation || !context) return;
 
     CGContextSaveGState(context);
@@ -26,7 +28,7 @@ static const CGFloat PXDefaultMosaicBlockSize = 24.0;   // 像素
             if (annotation.type == PXAnnotationTypeHighlight) {
                 CGContextSetAlpha(context, annotation.alpha * 0.4);
             }
-            [self pxStrokePoints:annotation.points inContext:context];
+            [self pxStrokePoints:annotation.points lineWidth:width inContext:context];
             break;
         }
         case PXAnnotationTypeLine: {
@@ -46,84 +48,102 @@ static const CGFloat PXDefaultMosaicBlockSize = 24.0;   // 像素
             break;
         }
         case PXAnnotationTypeRectangle: {
-            CGContextStrokeRect(context, annotation.rect);
+            if (annotation.fillStyle == PXAnnotationFillStyleSolid) {
+                CGContextFillRect(context, annotation.rect);
+            } else {
+                CGContextStrokeRect(context, annotation.rect);
+            }
             break;
         }
         case PXAnnotationTypeOval: {
-            CGContextStrokeEllipseInRect(context, annotation.rect);
+            if (annotation.fillStyle == PXAnnotationFillStyleSolid) {
+                CGContextFillEllipseInRect(context, annotation.rect);
+            } else {
+                CGContextStrokeEllipseInRect(context, annotation.rect);
+            }
             break;
         }
         case PXAnnotationTypeMosaic: {
-            // 马赛克需要源图像素；通用入口拿不到，画布与导出各自预处理成图片后走 image 类型绘制。
+            CGRect clipRect = CGRectIntersection(annotation.rect,
+                                                 CGRectMake(0, 0, sourceImage.size.width, sourceImage.size.height));
+            if (CGRectIsEmpty(clipRect)) break;
+            CGContextClipToRect(context, clipRect);
+            if (pixelatedImage) {
+                [pixelatedImage drawInRect:CGRectMake(0, 0, sourceImage.size.width, sourceImage.size.height)];
+            } else {
+                CGContextSetFillColorWithColor(context, [UIColor colorWithWhite:0.7 alpha:0.9].CGColor);
+                CGContextFillRect(context, clipRect);
+            }
+            break;
+        }
+        case PXAnnotationTypeSpotlight: {
+            // 全域压暗 + 挖孔（even-odd），不破坏下层已绘制内容。
+            CGMutablePathRef path = CGPathCreateMutable();
+            CGPathAddRect(path, NULL, CGRectInfinite);
+            if (annotation.holeIsEllipse) {
+                CGPathAddEllipseInRect(path, NULL, annotation.rect);
+            } else {
+                CGPathAddRect(path, NULL, annotation.rect);
+            }
+            CGContextSetAlpha(context, 0.62);
+            CGContextSetFillColorWithColor(context, [UIColor blackColor].CGColor);
+            CGContextAddPath(context, path);
+            CGContextEOFillPath(context);   // even-odd：外环与挖孔相交数为 0，只压暗挖孔之外
+            CGPathRelease(path);
             break;
         }
         case PXAnnotationTypeText: {
             [self pxDrawText:annotation inContext:context];
             break;
         }
+        case PXAnnotationTypeMagnifier: {
+            [self pxDrawMagnifier:annotation sourceImage:sourceImage inContext:context];
+            break;
+        }
+        case PXAnnotationTypeSticker: {
+            [self pxDrawSticker:annotation inContext:context];
+            break;
+        }
+        case PXAnnotationTypeStamp: {
+            [self pxDrawStamp:annotation inContext:context];
+            break;
+        }
+        default:
+            break;
     }
     CGContextRestoreGState(context);
 }
 
-#pragma mark - 马赛克
+#pragma mark - 像素化底图
 
-/// 全部在“源图点空间”工作（标注坐标即该空间）；内部按 scale 换算像素裁剪。
-+ (UIImage *)mosaicImageForSourceImage:(UIImage *)sourceImage rect:(CGRect)pointRect blockSize:(CGFloat)blockSize {
-    return [self mosaicImageForSourceImage:sourceImage rect:pointRect blockSize:blockSize
-                              outputScale:MAX(sourceImage.scale, 1.0)];
-}
-
-+ (UIImage *)mosaicImageForSourceImage:(UIImage *)sourceImage rect:(CGRect)pointRect
-                             blockSize:(CGFloat)blockSize outputScale:(CGFloat)outputScale {
-    if (!sourceImage.CGImage || CGRectIsEmpty(pointRect)) return nil;
-
-    CGRect imageRect = CGRectMake(0, 0, sourceImage.size.width, sourceImage.size.height);
-    pointRect = CGRectIntersection(pointRect, imageRect);
-    if (CGRectIsEmpty(pointRect)) return nil;
++ (nullable UIImage *)pixelatedImageForSourceImage:(UIImage *)sourceImage
+                                         blockSize:(CGFloat)blockSize
+                                       outputScale:(CGFloat)outputScale {
+    CGImageRef sourceCG = sourceImage.CGImage;
+    if (!sourceCG || sourceImage.size.width < 1 || sourceImage.size.height < 1) return nil;
 
     blockSize = MAX(blockSize, 4.0);
-    CGSize downSize = CGSizeMake(MAX(pointRect.size.width / blockSize, 1.0),
-                                 MAX(pointRect.size.height / blockSize, 1.0));
+    CGSize pointSize = sourceImage.size;
+    CGSize downSize = CGSizeMake(MAX(pointSize.width / blockSize, 1.0),
+                                 MAX(pointSize.height / blockSize, 1.0));
 
-    // 先裁出区域（像素空间），再缩小（平均化）、最近邻放大 → 像素块效果。
-    CGRect pixelRect = CGRectMake(floor(pointRect.origin.x * sourceImage.scale),
-                                  floor(pointRect.origin.y * sourceImage.scale),
-                                  ceil(pointRect.size.width * sourceImage.scale),
-                                  ceil(pointRect.size.height * sourceImage.scale));
-    CGImageRef regionCG = CGImageCreateWithImageInRect(sourceImage.CGImage, pixelRect);
-    if (!regionCG) return nil;
-    UIImage *regionImage = [UIImage imageWithCGImage:regionCG scale:sourceImage.scale orientation:UIImageOrientationUp];
-    CGImageRelease(regionCG);
-
-    UIGraphicsImageRendererFormat *format = [[UIGraphicsImageRendererFormat alloc] init];
-    format.scale = 1.0;
-    format.opaque = YES;
-    UIGraphicsImageRenderer *downRenderer = [[UIGraphicsImageRenderer alloc] initWithSize:downSize format:format];
+    UIGraphicsImageRendererFormat *downFormat = [[UIGraphicsImageRendererFormat alloc] init];
+    downFormat.scale = 1.0;
+    downFormat.opaque = YES;
+    UIGraphicsImageRenderer *downRenderer = [[UIGraphicsImageRenderer alloc] initWithSize:downSize format:downFormat];
     UIImage *downImage = [downRenderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
         CGContextSetInterpolationQuality(ctx.CGContext, kCGInterpolationLow);
-        [regionImage drawInRect:CGRectMake(0, 0, downSize.width, downSize.height)];
+        [sourceImage drawInRect:CGRectMake(0, 0, downSize.width, downSize.height)];
     }];
 
-    // 放大位图密度由 outputScale 决定：导出与源图一致（1:1 落像素），画布预览按屏幕显示密度，
-    // 避免每个马赛克标注都按源图分辨率常驻内存。
     UIGraphicsImageRendererFormat *upFormat = [[UIGraphicsImageRendererFormat alloc] init];
     upFormat.scale = MAX(outputScale, 1.0);
     upFormat.opaque = YES;
-    UIGraphicsImageRenderer *upRenderer = [[UIGraphicsImageRenderer alloc] initWithSize:pointRect.size format:upFormat];
-    UIImage *upImage = [upRenderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+    UIGraphicsImageRenderer *upRenderer = [[UIGraphicsImageRenderer alloc] initWithSize:pointSize format:upFormat];
+    return [upRenderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
         CGContextSetInterpolationQuality(ctx.CGContext, kCGInterpolationNone);
-        [downImage drawInRect:CGRectMake(0, 0, pointRect.size.width, pointRect.size.height)];
+        [downImage drawInRect:CGRectMake(0, 0, pointSize.width, pointSize.height)];
     }];
-    return upImage;
-}
-
-/// 把马赛克底图绘制到 ctx（画布与导出共用，pointRect 为点空间）。
-+ (void)drawMosaicImage:(UIImage *)mosaicImage rect:(CGRect)pointRect inContext:(CGContextRef)context {
-    if (!mosaicImage) return;
-    CGContextSaveGState(context);
-    CGContextClipToRect(context, pointRect);
-    [mosaicImage drawInRect:pointRect];
-    CGContextRestoreGState(context);
 }
 
 #pragma mark - 导出
@@ -134,8 +154,7 @@ static const CGFloat PXDefaultMosaicBlockSize = 24.0;   // 像素
     UIImage *source = document.sourceImage;
     UIColor *background = document.backgroundColor;
     NSArray<PXAnnotation *> *annotations = [document.annotations copy];
-    CGImageRef sourceCG = source.CGImage;
-    if (!sourceCG) {
+    if (!source.CGImage) {
         dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
         return;
     }
@@ -158,14 +177,18 @@ static const CGFloat PXDefaultMosaicBlockSize = 24.0;   // 像素
 
     CGSize pointSize = source.size;   // 标注坐标即该点空间
 
-    // 马赛克底图先在后台逐个生成。
-    NSMutableDictionary<NSString *, UIImage *> *mosaicCache = [[NSMutableDictionary alloc] init];
+    BOOL needsPixelated = NO;
     for (PXAnnotation *annotation in annotations) {
-        if (annotation.type != PXAnnotationTypeMosaic) continue;
-        UIImage *mosaic = [self mosaicImageForSourceImage:source rect:annotation.rect blockSize:PXDefaultMosaicBlockSize];
-        if (mosaic) {
-            mosaicCache[annotation.annotationID] = mosaic;
+        if (annotation.type == PXAnnotationTypeMosaic) {
+            needsPixelated = YES;
+            break;
         }
+    }
+    UIImage *pixelated = nil;
+    if (needsPixelated) {
+        pixelated = [self pixelatedImageForSourceImage:source
+                                             blockSize:[self pxMosaicBlockSizeForImage:source]
+                                           outputScale:MAX(source.scale, 1.0)];
     }
 
     UIGraphicsImageRendererFormat *format = [[UIGraphicsImageRendererFormat alloc] init];
@@ -182,24 +205,135 @@ static const CGFloat PXDefaultMosaicBlockSize = 24.0;   // 像素
         [source drawInRect:CGRectMake(0, 0, pointSize.width, pointSize.height)];
 
         for (PXAnnotation *annotation in annotations) {
-            if (annotation.type == PXAnnotationTypeMosaic) {
-                UIImage *mosaic = mosaicCache[annotation.annotationID];
-                [self drawMosaicImage:mosaic rect:annotation.rect inContext:ctx];
-            } else {
-                [self drawAnnotation:annotation inContext:ctx];
-            }
+            [self drawAnnotation:annotation inContext:ctx sourceImage:source pixelatedImage:pixelated];
         }
     }];
 }
 
+#pragma mark - 裁剪 / 旋转烘焙
+
++ (nullable UIImage *)cropImage:(UIImage *)image toRect:(CGRect)pointRect {
+    CGImageRef sourceCG = image.CGImage;
+    if (!sourceCG) return nil;
+
+    CGRect bounds = CGRectMake(0, 0, image.size.width, image.size.height);
+    pointRect = CGRectIntersection(pointRect, bounds);
+    if (CGRectIsEmpty(pointRect)) return nil;
+
+    CGFloat scale = MAX(image.scale, 1.0);
+    CGRect pixelRect = CGRectMake(floor(pointRect.origin.x * scale),
+                                  floor(pointRect.origin.y * scale),
+                                  ceil(pointRect.size.width * scale),
+                                  ceil(pointRect.size.height * scale));
+    pixelRect = CGRectIntersection(pixelRect,
+                                   CGRectMake(0, 0, CGImageGetWidth(sourceCG), CGImageGetHeight(sourceCG)));
+    if (CGRectIsEmpty(pixelRect)) return nil;
+
+    CGImageRef croppedCG = CGImageCreateWithImageInRect(sourceCG, pixelRect);
+    if (!croppedCG) return nil;
+    UIImage *cropped = [UIImage imageWithCGImage:croppedCG scale:scale orientation:UIImageOrientationUp];
+    CGImageRelease(croppedCG);
+    return cropped;
+}
+
++ (NSArray<PXAnnotation *> *)annotationsByApplyingCrop:(CGRect)cropRect
+                                          toAnnotations:(NSArray<PXAnnotation *> *)annotations {
+    NSMutableArray<PXAnnotation *> *result = [[NSMutableArray alloc] init];
+    for (PXAnnotation *annotation in annotations) {
+        CGRect bounds = annotation.boundsInImageSpace;
+        if (CGRectIsNull(bounds) || CGRectIsEmpty(bounds)) continue;
+        if (CGRectIsEmpty(CGRectIntersection(bounds, cropRect))) continue;
+        PXAnnotation *copy = [annotation copy];
+        if (copy.points.count > 0) {
+            NSMutableArray<NSValue *> *shifted = [[NSMutableArray alloc] init];
+            for (NSValue *value in copy.points) {
+                CGPoint p = [value CGPointValue];
+                [shifted addObject:[NSValue valueWithCGPoint:CGPointMake(p.x - cropRect.origin.x,
+                                                                         p.y - cropRect.origin.y)]];
+            }
+            copy.points = shifted;
+        }
+        if (!CGRectIsEmpty(copy.rect)) {
+            copy.rect = CGRectOffset(copy.rect, -cropRect.origin.x, -cropRect.origin.y);
+        }
+        [result addObject:copy];
+    }
+    return result;
+}
+
++ (nullable UIImage *)rotateImage90Clockwise:(UIImage *)image {
+    CGImageRef sourceCG = image.CGImage;
+    if (!sourceCG) return nil;
+
+    CGSize oldSize = image.size;
+    CGSize newSize = CGSizeMake(oldSize.height, oldSize.width);
+    CGFloat scale = MAX(image.scale, 1.0);
+
+    UIGraphicsImageRendererFormat *format = [[UIGraphicsImageRendererFormat alloc] init];
+    format.scale = scale;
+    format.opaque = YES;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:newSize format:format];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *rendererContext) {
+        CGContextRef ctx = rendererContext.CGContext;
+        // UIKit y-down 坐标系：平移到右上角再旋转 +90°，等价于内容顺时针旋转。
+        CGContextTranslateCTM(ctx, newSize.width, 0);
+        CGContextRotateCTM(ctx, M_PI_2);
+        [image drawInRect:CGRectMake(0, 0, oldSize.width, oldSize.height)];
+    }];
+}
+
++ (NSArray<PXAnnotation *> *)annotationsByRotating90Clockwise:(NSArray<PXAnnotation *> *)annotations
+                                                sourceImageSize:(CGSize)sourceSize {
+    CGFloat oldHeight = sourceSize.height;
+    NSMutableArray<PXAnnotation *> *result = [[NSMutableArray alloc] init];
+    for (PXAnnotation *annotation in annotations) {
+        PXAnnotation *copy = [annotation copy];
+        if (copy.points.count > 0) {
+            NSMutableArray<NSValue *> *rotated = [[NSMutableArray alloc] init];
+            for (NSValue *value in copy.points) {
+                CGPoint p = [value CGPointValue];
+                [rotated addObject:[NSValue valueWithCGPoint:CGPointMake(oldHeight - p.y, p.x)]];
+            }
+            copy.points = rotated;
+        }
+        if (!CGRectIsEmpty(copy.rect)) {
+            if (copy.type == PXAnnotationTypeText) {
+                // 文字保持水平：映射中心点，尺寸不变。
+                CGPoint center = CGPointMake(oldHeight - CGRectGetMidY(copy.rect), CGRectGetMidX(copy.rect));
+                copy.rect = CGRectMake(center.x - copy.rect.size.width / 2.0,
+                                       center.y - copy.rect.size.height / 2.0,
+                                       copy.rect.size.width, copy.rect.size.height);
+            } else {
+                // 顶点规则：tl(x,y)→(H−y,x)，br(x+w,y+h)→(H−y−h,x+w)。
+                CGFloat x = copy.rect.origin.x;
+                CGFloat y = copy.rect.origin.y;
+                CGFloat w = copy.rect.size.width;
+                CGFloat h = copy.rect.size.height;
+                copy.rect = CGRectMake(oldHeight - y - h, x, h, w);
+            }
+        }
+        if (copy.type == PXAnnotationTypeSticker) {
+            copy.rotation += M_PI_2;
+        }
+        [result addObject:copy];
+    }
+    return result;
+}
+
 #pragma mark - 私有绘制
 
-+ (void)pxStrokePoints:(NSArray<NSValue *> *)points inContext:(CGContextRef)context {
++ (CGFloat)pxMosaicBlockSizeForImage:(UIImage *)image {
+    CGFloat shortSide = MIN(image.size.width, image.size.height);
+    return MAX(10.0, MIN(40.0, shortSide / 40.0));
+}
+
++ (void)pxStrokePoints:(NSArray<NSValue *> *)points lineWidth:(CGFloat)lineWidth inContext:(CGContextRef)context {
     if (points.count == 0) return;
     if (points.count == 1) {
         // 单点：画一个圆点。
         CGPoint point = [points[0] CGPointValue];
-        CGContextFillEllipseInRect(context, CGRectMake(point.x - 1, point.y - 1, 2, 2));
+        CGFloat radius = MAX(lineWidth / 2.0, 1.0);
+        CGContextFillEllipseInRect(context, CGRectMake(point.x - radius, point.y - radius, radius * 2, radius * 2));
         return;
     }
     CGContextMoveToPoint(context, [points[0] CGPointValue].x, [points[0] CGPointValue].y);
@@ -218,7 +352,7 @@ static const CGFloat PXDefaultMosaicBlockSize = 24.0;   // 像素
     CGContextStrokePath(context);
 
     CGFloat angle = atan2(end.y - start.y, end.x - start.x);
-    CGFloat headLength = MAX(annotation.lineWidth * 3.5, 12.0);
+    CGFloat headLength = MAX(annotation.lineWidth * 3.5, annotation.lineWidth + 8.0);
     CGFloat spread = 0.42;   // 箭头张角（弧度）的一半
 
     CGPoint wing1 = CGPointMake(end.x - headLength * cos(angle - spread), end.y - headLength * sin(angle - spread));
@@ -234,8 +368,7 @@ static const CGFloat PXDefaultMosaicBlockSize = 24.0;   // 像素
     if (annotation.text.length == 0) return;
     UIFont *font = [PXAnnotation fontForAnnotation:annotation];
 
-    // UIKit 字符串绘制使用 UIKit 坐标（y 向下）；CoreGraphics 位图上下文原点在左下。
-    // 导出渲染走 UIGraphicsImageRenderer（其 ctx 已翻转回 UIKit 语义），直接绘制即可。
+    // UIKit 字符串绘制使用 UIKit 坐标（y 向下）；UIGraphicsImageRenderer 的 ctx 已是 UIKit 语义，直接绘制。
     NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
     style.lineBreakMode = NSLineBreakByWordWrapping;
     NSDictionary *attributes = @{
@@ -243,13 +376,96 @@ static const CGFloat PXDefaultMosaicBlockSize = 24.0;   // 像素
         NSForegroundColorAttributeName: annotation.color,
         NSParagraphStyleAttributeName: style,
     };
-    CGRect textRect = [annotation.text boundingRectWithSize:CGSizeMake(1200, CGFLOAT_MAX)
+    CGFloat boxWidth = annotation.rect.size.width > 0 ? annotation.rect.size.width : 400.0;
+    CGRect textRect = [annotation.text boundingRectWithSize:CGSizeMake(boxWidth, CGFLOAT_MAX)
                                                     options:NSStringDrawingUsesLineFragmentOrigin
                                                  attributes:attributes
                                                     context:nil];
     CGRect drawRect = CGRectMake(annotation.rect.origin.x, annotation.rect.origin.y,
                                  ceil(textRect.size.width) + 4, ceil(textRect.size.height) + 4);
+    // 半透明衬底提升任何底色上的可读性（ShellX SSEditLabel 的 effectStyle 简化版）。
+    CGRect backingRect = CGRectInset(drawRect, -4, -2);
+    CGContextSetFillColorWithColor(context, [UIColor colorWithWhite:1.0 alpha:0.18].CGColor);
+    UIBezierPath *backing = [UIBezierPath bezierPathWithRoundedRect:backingRect cornerRadius:4];
+    CGContextAddPath(context, backing.CGPath);
+    CGContextFillPath(context);
+
+    CGContextSetFillColorWithColor(context, annotation.color.CGColor);
     [annotation.text drawInRect:drawRect withAttributes:attributes];
+}
+
++ (void)pxDrawMagnifier:(PXAnnotation *)annotation
+            sourceImage:(UIImage *)sourceImage
+              inContext:(CGContextRef)context {
+    CGRect rect = annotation.rect;
+    CGFloat radius = MIN(rect.size.width, rect.size.height) / 2.0;
+    if (radius <= 0 || !sourceImage.CGImage) return;
+    CGPoint center = CGPointMake(CGRectGetMidX(rect), CGRectGetMidY(rect));
+    CGFloat zoom = MAX(annotation.zoom, 1.2);
+
+    CGContextSaveGState(context);
+    CGContextAddEllipseInRect(context, rect);
+    CGContextClip(context);
+
+    // 取样：center 附近 1/zoom 区域放大 zoom 倍绘制到圆内。
+    CGContextTranslateCTM(context, center.x, center.y);
+    CGContextScaleCTM(context, zoom, zoom);
+    CGContextTranslateCTM(context, -center.x, -center.y);
+    CGContextSetInterpolationQuality(context, kCGInterpolationMedium);
+    [sourceImage drawInRect:CGRectMake(0, 0, sourceImage.size.width, sourceImage.size.height)];
+    CGContextRestoreGState(context);
+
+    // 白色主环 + 深色外圈，任何底色上都有边界。
+    CGFloat ringWidth = MAX(4.0, radius * 0.10);
+    CGContextSetStrokeColorWithColor(context, [UIColor whiteColor].CGColor);
+    CGContextSetLineWidth(context, ringWidth);
+    CGContextStrokeEllipseInRect(context, CGRectInset(rect, ringWidth / 2.0, ringWidth / 2.0));
+    CGContextSetStrokeColorWithColor(context, [UIColor colorWithWhite:0.1 alpha:0.85].CGColor);
+    CGContextSetLineWidth(context, MAX(1.0, ringWidth * 0.3));
+    CGContextStrokeEllipseInRect(context, CGRectInset(rect, ringWidth * 1.4, ringWidth * 1.4));
+}
+
++ (void)pxDrawSticker:(PXAnnotation *)annotation inContext:(CGContextRef)context {
+    NSString *emoji = annotation.stickerText;
+    if (emoji.length == 0) return;
+
+    CGPoint center = CGPointMake(CGRectGetMidX(annotation.rect), CGRectGetMidY(annotation.rect));
+    CGFloat size = MIN(annotation.rect.size.width, annotation.rect.size.height);
+    if (size <= 0) return;
+
+    CGContextSaveGState(context);
+    CGContextTranslateCTM(context, center.x, center.y);
+    CGContextRotateCTM(context, annotation.rotation);
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [UIFont systemFontOfSize:size * 0.86],
+    };
+    CGSize textSize = [emoji sizeWithAttributes:attributes];
+    CGPoint origin = CGPointMake(-textSize.width / 2.0, -textSize.height / 2.0);
+    [emoji drawAtPoint:origin withAttributes:attributes];
+    CGContextRestoreGState(context);
+}
+
++ (void)pxDrawStamp:(PXAnnotation *)annotation inContext:(CGContextRef)context {
+    CGFloat size = MIN(annotation.rect.size.width, annotation.rect.size.height);
+    if (size <= 0) return;
+
+    // 白描边圆底 + 标注色 + 序号。
+    CGContextSetFillColorWithColor(context, annotation.color.CGColor);
+    CGContextFillEllipseInRect(context, annotation.rect);
+    CGContextSetStrokeColorWithColor(context, [UIColor whiteColor].CGColor);
+    CGContextSetLineWidth(context, MAX(2.0, size * 0.06));
+    CGContextStrokeEllipseInRect(context, CGRectInset(annotation.rect, size * 0.03, size * 0.03));
+
+    NSString *number = [NSString stringWithFormat:@"%ld", (long)MAX(annotation.stampNumber, 1)];
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [UIFont fontWithName:@"PingFangSC-Semibold" size:size * 0.52]
+            ?: [UIFont boldSystemFontOfSize:size * 0.52],
+        NSForegroundColorAttributeName: [UIColor whiteColor],
+    };
+    CGSize textSize = [number sizeWithAttributes:attributes];
+    CGPoint origin = CGPointMake(CGRectGetMidX(annotation.rect) - textSize.width / 2.0,
+                                 CGRectGetMidY(annotation.rect) - textSize.height / 2.0);
+    [number drawAtPoint:origin withAttributes:attributes];
 }
 
 @end
