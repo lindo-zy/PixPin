@@ -300,7 +300,29 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 - (UIImage *)pxCropImage:(UIImage *)image pixelRect:(CGRect)pixelRect {
     CGImageRef cg = image.CGImage;
     if (!cg) return nil;
-    CGImageRef cropped = CGImageCreateWithImageInRect(cg, pixelRect);
+    // 必须立即解码成独立位图：抓屏结果是 IOSurface 载体图像，ImageInRect 只产生引用
+    // 原表面的惰性子图。SpringBoard 渲染管线展示这种子图在 iOS 17 真机上只绘出顶部
+    // 一条、其余全黑（CPU 解码路径如 JPEG 保存不受影响，同图对比已证实）。本方法
+    // 只在后台队列调用，解码成本不占主线程。
+    CGContextRef context = CGBitmapContextCreate(NULL,
+                                                 (NSUInteger)pixelRect.size.width,
+                                                 (NSUInteger)pixelRect.size.height,
+                                                 8, 0,
+                                                 CGImageGetColorSpace(cg),
+                                                 (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    if (!context) return nil;
+    CGContextSetFillColorWithColor(context, [UIColor blackColor].CGColor);
+    CGContextFillRect(context, CGRectMake(0, 0, pixelRect.size.width, pixelRect.size.height));
+    CGContextClipToRect(context, CGRectMake(0, 0, pixelRect.size.width, pixelRect.size.height));
+    // pixelRect 是顶部原点（ImageInRect 约定），CG 上下文是底部原点：
+    // ty = h - H + origin.y 把源像素行 origin.y 对齐到输出首行，防止裁出垂直错位区域。
+    CGContextTranslateCTM(context,
+                          -pixelRect.origin.x,
+                          pixelRect.size.height - CGImageGetHeight(cg) + pixelRect.origin.y);
+    CGContextDrawImage(context,
+                       CGRectMake(0, 0, CGImageGetWidth(cg), CGImageGetHeight(cg)), cg);
+    CGImageRef cropped = CGBitmapContextCreateImage(context);
+    CGContextRelease(context);
     if (!cropped) return nil;
     UIImage *result = [UIImage imageWithCGImage:cropped scale:image.scale orientation:UIImageOrientationUp];
     CGImageRelease(cropped);
