@@ -23,7 +23,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) UIImage *resultImage;
 @property (nonatomic, assign) BOOL isPartialCapture;   // 回退路径仅捕获到 SpringBoard 自身窗口
 @property (nonatomic, copy, nullable) NSString *savedAssetIdentifier;  // 相册写入成功后的资产 ID
-@property (nonatomic, assign) BOOL isReeditFromHistory;                // 历史重编辑产生的新任务
+@property (nonatomic, assign) BOOL isReedit;                           // 气泡重编辑产生的新任务
 @property (nonatomic, copy, nullable) NSString *errorCode;
 @property (nonatomic, copy, nullable) NSString *errorMessage;
 
@@ -41,7 +41,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// 输出幂等：同一动作只会被认领一次，重复触发返回 NO。
 - (BOOL)claimOutputAction:(PXOutputAction)action;
 - (BOOL)isOutputActionClaimed:(PXOutputAction)action;
-/// 输出失败后撤回认领，允许气泡/历史入口重试。
+/// 输出失败后撤回认领，允许气泡入口重试。
 - (void)unclaimOutputAction:(PXOutputAction)action;
 
 /// 任务数据目录（临时文件），惰性创建。

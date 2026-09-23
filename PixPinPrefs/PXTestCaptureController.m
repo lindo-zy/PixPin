@@ -37,7 +37,6 @@
     [lifecycleGroup setProperty:@"如果调试期间留下选区或出现“有任务进行中”，可以在这里显式取消，无需重启 SpringBoard。" forKey:@"footerText"];
     [items addObject:lifecycleGroup];
     [items addObject:[self pxButton:@"取消当前截图任务" action:@selector(cancelCapture:)]];
-    [items addObject:[self pxButton:@"打开截图历史" action:@selector(openHistory:)]];
 
     _specifiers = [items copy];
     return _specifiers;
@@ -173,12 +172,6 @@
 - (void)cancelCapture:(PSSpecifier *)specifier {
     self.localMessage = @"已发送取消请求";
     [self pxPost:PXDarwinCaptureCancel];
-    [self pxRefreshStatusUI];
-}
-
-- (void)openHistory:(PSSpecifier *)specifier {
-    self.localMessage = @"已请求打开截图历史";
-    [self pxPost:PXDarwinHistoryOpen];
     [self pxRefreshStatusUI];
 }
 

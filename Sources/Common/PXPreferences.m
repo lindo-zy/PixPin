@@ -12,7 +12,6 @@
 @property (nonatomic, readwrite) PXOutputAction defaultResultAction;
 @property (nonatomic, readwrite) BOOL showResultBubble;
 @property (nonatomic, readwrite) BOOL screenshotHaptic;
-@property (nonatomic, readwrite) NSInteger historyLimit;
 @property (nonatomic, readwrite) CGFloat editorDefaultLineWidth;
 @end
 
@@ -28,17 +27,16 @@
         _defaultResultAction = (PXOutputAction)PXDefaultResultAction;
         _showResultBubble = YES;
         _screenshotHaptic = YES;
-        _historyLimit = PXDefaultHistoryLimit;
         _editorDefaultLineWidth = PXDefaultEditorLineWidth;
     }
     return self;
 }
 
 - (NSString *)description {
-    return [NSString stringWithFormat:@"<PXConfig enabled=%d full=%d area=%d freeze=%d instant=%d action=%ld bubble=%d haptic=%d historyLimit=%ld lineWidth=%.1f>",
+    return [NSString stringWithFormat:@"<PXConfig enabled=%d full=%d area=%d freeze=%d instant=%d action=%ld bubble=%d haptic=%d lineWidth=%.1f>",
             self.enabled, self.fullscreenEnabled, self.areaEnabled, self.freezeEnabled,
             self.instantEnabled, (long)self.defaultResultAction,
-            self.showResultBubble, self.screenshotHaptic, (long)self.historyLimit,
+            self.showResultBubble, self.screenshotHaptic,
             self.editorDefaultLineWidth];
 }
 
@@ -95,9 +93,6 @@ static PXConfig *_currentConfig = nil;
 
     NSInteger action = PXPrefInteger(PXKeyDefaultResultAction, PXDefaultResultAction);
     config.defaultResultAction = (PXOutputAction)MAX(0, MIN(4, action));
-
-    NSInteger historyLimit = PXPrefInteger(PXKeyHistoryLimit, PXDefaultHistoryLimit);
-    config.historyLimit = MAX(1, MIN(500, historyLimit));
 
     CGFloat lineWidth = PXPrefDouble(PXKeyEditorDefaultLineWidth, PXDefaultEditorLineWidth);
     config.editorDefaultLineWidth = MAX(0.5, MIN(16.0, lineWidth));

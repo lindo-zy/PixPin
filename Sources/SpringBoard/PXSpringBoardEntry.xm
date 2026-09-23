@@ -29,7 +29,6 @@ static void PXHandleDarwinNotification(CFNotificationCenterRef center,
             PXDarwinCaptureFreeze,
             PXDarwinCaptureInstant,
             PXDarwinCaptureCancel,
-            PXDarwinHistoryOpen,
             PXDarwinPreferencesReload,
         };
         for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {

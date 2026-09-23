@@ -14,7 +14,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) PXOutputAction defaultResultAction;
 @property (nonatomic, readonly) BOOL showResultBubble;
 @property (nonatomic, readonly) BOOL screenshotHaptic;
-@property (nonatomic, readonly) NSInteger historyLimit;
 @property (nonatomic, readonly) CGFloat editorDefaultLineWidth;
 
 @end

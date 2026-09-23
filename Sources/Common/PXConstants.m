@@ -8,11 +8,9 @@ CFStringRef const PXDarwinCaptureArea = CFSTR("com.pixpin.screenshot/capture/are
 CFStringRef const PXDarwinCaptureFreeze = CFSTR("com.pixpin.screenshot/capture/freeze");
 CFStringRef const PXDarwinCaptureInstant = CFSTR("com.pixpin.screenshot/capture/instant");
 CFStringRef const PXDarwinCaptureCancel = CFSTR("com.pixpin.screenshot/capture/cancel");
-CFStringRef const PXDarwinHistoryOpen = CFSTR("com.pixpin.screenshot/history/open");
 CFStringRef const PXDarwinPreferencesReload = CFSTR("com.pixpin.screenshot/preferences/reload");
 
 NSString * const PXNotificationResultUpdated = @"com.pixpin.screenshot/result/updated";
-NSString * const PXNotificationHistoryChanged = @"com.pixpin.screenshot/history/changed";
 
 NSString * const PXKeyEnabled = @"Enabled";
 NSString * const PXKeyFullscreenEnabled = @"FullscreenEnabled";
@@ -26,12 +24,10 @@ NSString * const PXKeyShowResultBubble = @"ShowResultBubble";
 NSString * const PXKeyShowCompletionNotification = @"ShowCompletionNotification";
 NSString * const PXKeyMuteScreenshotSound = @"MuteScreenshotSound";
 NSString * const PXKeyScreenshotHaptic = @"ScreenshotHaptic";
-NSString * const PXKeyHistoryLimit = @"HistoryLimit";
 NSString * const PXKeyEditorDefaultColor = @"EditorDefaultColor";
 NSString * const PXKeyEditorDefaultLineWidth = @"EditorDefaultLineWidth";
 
 const NSInteger PXDefaultResultAction = 0;
-const NSInteger PXDefaultHistoryLimit = 50;
 const CGFloat PXDefaultEditorLineWidth = 4.0;
 
 static NSString *PXCreateDirectoryIfNeeded(NSString *path, NSError **error) {
@@ -57,16 +53,6 @@ NSString *PXLibraryDataDirectory(void) {
         NSString *library = [mobileHome stringByAppendingPathComponent:@"Library"];
         NSString *root = [library stringByAppendingPathComponent:@"PixPin"];
         path = PXCreateDirectoryIfNeeded(root, nil) ?: [NSTemporaryDirectory() stringByAppendingPathComponent:@"PixPin"];
-    });
-    return path;
-}
-
-NSString *PXHistoryDirectory(void) {
-    static NSString *path = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSString *root = [PXLibraryDataDirectory() stringByAppendingPathComponent:@"history"];
-        path = PXCreateDirectoryIfNeeded(root, nil) ?: [PXLibraryDataDirectory() stringByAppendingPathComponent:@"history"];
     });
     return path;
 }

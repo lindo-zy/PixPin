@@ -165,32 +165,6 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
-			<string>历史记录</string>
-			<key>footerText</key>
-			<string>历史记录仅保存在本机。</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSTextFieldSpecifier</string>
-			<key>defaults</key>
-			<string>com.pixpin.screenshot</string>
-			<key>key</key>
-			<string>HistoryLimit</string>
-			<key>title</key>
-			<string>历史上限</string>
-			<key>isNumeric</key>
-			<true/>
-			<key>keyboard</key>
-			<string>NumbersAndPunctuation</string>
-			<key>default</key>
-			<integer>50</integer>
-			<key>PostNotification</key>
-			<string>com.pixpin.screenshot/preferences/reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
 			<string>诊断与测试</string>
 			<key>footerText</key>
 			<string>独立测试中心会实时显示请求、抓取、窗口展示和输出阶段，并可取消卡住的任务。</string>

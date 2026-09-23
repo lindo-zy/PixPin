@@ -14,7 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// 结果预览气泡：独立小窗口，自动消失。成功态显示缩略图 + 编辑 + 关闭；
 /// 失败态显示错误文字（诊断优先），无编辑按钮。
-/// 缩略图不参与任何历史/相册链路。
+/// 缩略图不参与任何相册链路。
 @interface PXResultBubble : UIView
 
 @property (nonatomic, weak, nullable) id<PXResultBubbleDelegate> delegate;

@@ -10,15 +10,12 @@
 #import "../Overlay/PXSelectionView.h"
 #import "../Overlay/PXResultBubble.h"
 #import "../Editor/PXEditorViewController.h"
-#import "../History/PXHistoryStore.h"
-#import "../History/PXHistoryItem.h"
-#import "../History/PXHistoryViewController.h"
 #import "../Common/PXRuntimeStatus.h"
 
 static const CGFloat PXFramesToWaitBeforeCapture = 2.0;
 
 @interface PXCaptureCoordinator () <PXSelectionViewDelegate, PXResultBubbleDelegate,
-                                    PXEditorViewControllerDelegate, PXHistoryViewControllerDelegate>
+                                    PXEditorViewControllerDelegate>
 @property (nonatomic, strong) NSLock *taskLock;
 @property (nonatomic, strong, nullable) PXCaptureTask *activeTask;      // taskLock 保护
 @property (nonatomic, strong) PXCaptureProvider *provider;
@@ -29,7 +26,6 @@ static const CGFloat PXFramesToWaitBeforeCapture = 2.0;
 @property (nonatomic, strong, nullable) PXResultBubble *resultBubble;
 @property (nonatomic, strong, nullable) PXCaptureWindow *editorWindow;
 @property (nonatomic, strong, nullable) PXEditorViewController *editorController;
-@property (nonatomic, strong, nullable) PXCaptureWindow *historyWindow;
 @property (nonatomic, strong, nullable) UIImage *preEditImage;   // 进入编辑器前的结果图（取消编辑时恢复）
 @end
 
@@ -80,10 +76,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }
     if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureCancel]) {
         [self cancelActiveTask];
-        return;
-    }
-    if ([name isEqualToString:(__bridge NSString *)PXDarwinHistoryOpen]) {
-        [self pxPresentHistory];
         return;
     }
 
@@ -364,7 +356,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
             UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
             [haptic impactOccurred];
         }
-        [self pxRecordHistoryForTask:task];
+        // 输出成功不再需要重试，任务临时目录立即回收（失败路径保留供诊断）。
+        [PXTemporaryFileStore removeTaskDirectory:task.taskID];
         [PXRuntimeStatus reportPhase:@"finished"
                                 mode:PXStringFromCaptureMode(task.mode)
                              message:(message ?: @"截图任务已完成")];
@@ -405,38 +398,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     [self pxClearSlotIfCurrent:task];
 }
 
-#pragma mark - 历史记录
-
-- (void)pxRecordHistoryForTask:(PXCaptureTask *)task {
-    UIImage *image = task.resultImage;
-    if (!image) {
-        [PXTemporaryFileStore removeTaskDirectory:task.taskID];
-        return;
-    }
-
-    // 管线保存时已写过 original.jpg 则直接复用（Store 拷贝字节，不再二次编码）；
-    // 否则把 UIImage 交给 Store 在后台队列编码。任务临时目录在拷贝完成后清理。
-    NSString *directory = [PXTemporaryFileStore directoryForTaskID:task.taskID create:NO];
-    NSString *existingPath = [directory stringByAppendingPathComponent:@"original.jpg"];
-    BOOL hasFile = [[NSFileManager defaultManager] fileExistsAtPath:existingPath];
-
-    PXHistoryItem *item = [PXHistoryItem itemWithImage:image
-                                                  mode:task.mode
-                                              isEdited:task.isReeditFromHistory
-                               originalAssetIdentifier:task.savedAssetIdentifier];
-    item.pixelWidth = (NSInteger)(image.size.width * image.scale);
-    item.pixelHeight = (NSInteger)(image.size.height * image.scale);
-    item.originalPath = hasFile ? existingPath : nil;
-
-    [[PXHistoryStore sharedStore] addItem:item
-                               sourceImage:hasFile ? nil : image
-                                limitCount:task.configSnapshot.historyLimit
-                                completion:^{
-        [PXTemporaryFileStore removeTaskDirectory:task.taskID];
-        [[NSNotificationCenter defaultCenter] postNotificationName:PXNotificationHistoryChanged object:nil];
-    }];
-}
-
 #pragma mark - 编辑器
 
 - (void)pxPresentEditorForTask:(PXCaptureTask *)task {
@@ -466,7 +427,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     [window showAnimated:NO];
 }
 
-/// 历史重编辑/气泡重编辑入口：以新任务进入编辑器。
+/// 气泡重编辑入口：以新任务进入编辑器。
 - (void)openEditorWithImage:(UIImage *)image mode:(PXCaptureMode)mode {
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{ [self openEditorWithImage:image mode:mode]; });
@@ -478,11 +439,11 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         PXLogWarn(@"re-edit ignored: another task is busy");
         return;
     }
-    task.isReeditFromHistory = YES;
+    task.isReedit = YES;
     [self pxBeginEditorForAcquiredTask:task image:image];
 }
 
-/// 任务槽已由调用方占好的编辑器进入路径（历史异步读图完成后也走这里）。
+/// 任务槽已由调用方占好的编辑器进入路径。
 - (void)pxBeginEditorForAcquiredTask:(PXCaptureTask *)task image:(UIImage *)image {
     task.baseImage = image;
     task.resultImage = image;
@@ -515,7 +476,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     self.preEditImage = nil;
     if (![task transitionToState:PXCaptureStatePresenting]) return;
 
-    if (task.isReeditFromHistory) {
+    if (task.isReedit) {
         [self cancelActiveTask];
     } else {
         [self pxExecuteOutput:task.configSnapshot.defaultResultAction forTask:task presentingWindow:nil];
@@ -530,61 +491,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     if (self.editorWindow) {
         PXCaptureWindow *window = self.editorWindow;
         self.editorWindow = nil;
-        [window hideAndDestroyWithCompletion:nil];
-    }
-}
-
-#pragma mark - 历史查看器
-
-- (void)pxPresentHistory {
-    if (self.historyWindow) return;   // 已打开
-    if (self.activeTask && PXCaptureStateIsBusy(self.activeTask.state)) {
-        PXLogWarn(@"history open ignored: task busy");
-        return;
-    }
-
-    // 预热历史索引：viewDidLoad 首次 allItems 不再在主线程同步读盘。
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        [[PXHistoryStore sharedStore] allItems];
-    });
-
-    PXHistoryViewController *viewer = [[PXHistoryViewController alloc] init];
-    viewer.delegate = self;
-    PXCaptureWindow *window = [PXCaptureWindow pxCaptureWindow];
-    window.rootViewController = viewer;
-    self.historyWindow = window;
-    [window showAnimated:YES];
-}
-
-- (void)historyViewControllerDidClose:(PXHistoryViewController *)controller {
-    [self pxDestroyHistoryWindow];
-}
-
-- (void)historyViewController:(PXHistoryViewController *)controller didRequestReeditOfItem:(PXHistoryItem *)item {
-    // 先占任务槽：后台读图期间新截图请求不会插队；失败/取消路径都会释放槽位。
-    PXCaptureTask *task = [self pxAcquireTaskForMode:item.mode config:PXPreferences.config];
-    if (!task) {
-        PXLogWarn(@"re-edit ignored: another task is busy");
-        return;
-    }
-    task.isReeditFromHistory = YES;
-    [self pxDestroyHistoryWindow];
-
-    // 整图读盘+解码放后台队列（SpringBoard 主线程禁止大图 IO，DEVELOPMENT.md 0.2）。
-    [[PXHistoryStore sharedStore] loadImageForItem:item edited:YES completion:^(UIImage *image) {
-        if (![self pxIsTaskCurrent:task]) return;   // 读图期间被取消/取代
-        if (!image) {
-            [self pxFailTask:task code:@"editor" message:@"历史记录图片读取失败"];
-            return;
-        }
-        [self pxBeginEditorForAcquiredTask:task image:image];
-    }];
-}
-
-- (void)pxDestroyHistoryWindow {
-    if (self.historyWindow) {
-        PXCaptureWindow *window = self.historyWindow;
-        self.historyWindow = nil;
         [window hideAndDestroyWithCompletion:nil];
     }
 }
@@ -646,8 +552,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     if (self.resultBubble) {
         [self.resultBubble dismissWithCompletion:nil];
     }
-    // 历史窗口没有任务绑定，不销毁会导致其进入后续截图结果。
-    [self pxDestroyHistoryWindow];
 }
 
 - (void)pxDestroyCaptureWindow {

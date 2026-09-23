@@ -4,7 +4,6 @@
 #import <Foundation/Foundation.h>
 #import "../../Sources/Common/PXGeometry.h"
 #import "../../Sources/Common/PXClaimSet.h"
-#import "../../Sources/History/PXHistoryItem.h"
 
 static NSInteger PXTestFailures = 0;
 static NSInteger PXTestCount = 0;
@@ -142,44 +141,12 @@ static void testClaimSet(void) {
     PXCheckInt(winners, 1, "concurrent claim has exactly one winner");
 }
 
-#pragma mark - 历史 JSON 往返
-
-static void testHistoryItemRoundTrip(void) {
-    printf("[history item]\n");
-    PXHistoryItem *item = [[PXHistoryItem alloc] init];
-    item.historyID = @"ABCDEF0123456789";
-    item.createdAt = [NSDate dateWithTimeIntervalSince1970:1758270000];
-    item.mode = PXCaptureModeArea;
-    item.originalAssetIdentifier = @"asset-1";
-    item.thumbnailPath = @"/tmp/thumb_ABCDEF0123456789.jpg";
-    item.originalPath = @"/tmp/original_ABCDEF0123456789.jpg";
-    item.pixelWidth = 1170;
-    item.pixelHeight = 800;
-    item.isEdited = YES;
-
-    NSDictionary *dict = item.dictionaryRepresentation;
-    PXHistoryItem *restored = [PXHistoryItem itemWithDictionary:dict];
-    PXCheck(restored != nil, "restored from dict");
-    PXCheck([restored.historyID isEqualToString:item.historyID], "historyID round trip");
-    PXCheck(restored.mode == PXCaptureModeArea, "mode round trip");
-    PXCheck([restored.originalAssetIdentifier isEqualToString:@"asset-1"], "asset id round trip");
-    PXCheck(restored.pixelWidth == 1170 && restored.pixelHeight == 800, "pixel size round trip");
-    PXCheck(restored.isEdited == YES, "isEdited round trip");
-
-    PXCheck([PXHistoryItem itemWithDictionary:nil] == nil, "nil dict rejected");
-    PXCheck([PXHistoryItem itemWithDictionary:@{}] == nil, "empty dict rejected");
-
-    NSString *display = item.displayName;
-    PXCheck([display isEqualToString:@"区域截图"], "display name");
-}
-
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
         testStateMachine();
         testGeometry();
         testClaimSet();
-        testHistoryItemRoundTrip();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }

@@ -19,7 +19,6 @@ PixPin_FILES = $(wildcard Sources/Common/*.m) \
 	$(wildcard Sources/Overlay/*.m) \
 	$(wildcard Sources/Editor/*.m) \
 	$(wildcard Sources/Output/*.m) \
-	$(wildcard Sources/History/*.m) \
 	$(wildcard Sources/SpringBoard/*.xm)
 
 PixPin_CFLAGS = -fobjc-arc

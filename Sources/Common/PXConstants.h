@@ -17,13 +17,11 @@ FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureArea;        // com.pixpin.sc
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureFreeze;      // com.pixpin.screenshot/capture/freeze
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureInstant;     // com.pixpin.screenshot/capture/instant
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureCancel;      // com.pixpin.screenshot/capture/cancel
-FOUNDATION_EXPORT CFStringRef const PXDarwinHistoryOpen;        // com.pixpin.screenshot/history/open
 FOUNDATION_EXPORT CFStringRef const PXDarwinPreferencesReload;  // com.pixpin.screenshot/preferences/reload
 
 // MARK: - 进程内通知名（同样不携带图片对象，只提示协调器刷新）
 
 FOUNDATION_EXPORT NSString * const PXNotificationResultUpdated; // com.pixpin.screenshot/result/updated
-FOUNDATION_EXPORT NSString * const PXNotificationHistoryChanged;
 
 // MARK: - 偏好键（集中定义）
 
@@ -39,22 +37,18 @@ FOUNDATION_EXPORT NSString * const PXKeyShowResultBubble;
 FOUNDATION_EXPORT NSString * const PXKeyShowCompletionNotification;
 FOUNDATION_EXPORT NSString * const PXKeyMuteScreenshotSound;
 FOUNDATION_EXPORT NSString * const PXKeyScreenshotHaptic;
-FOUNDATION_EXPORT NSString * const PXKeyHistoryLimit;
 FOUNDATION_EXPORT NSString * const PXKeyEditorDefaultColor;
 FOUNDATION_EXPORT NSString * const PXKeyEditorDefaultLineWidth;
 
 // MARK: - 默认值
 
 FOUNDATION_EXPORT const NSInteger PXDefaultResultAction;             // PXOutputActionSave
-FOUNDATION_EXPORT const NSInteger PXDefaultHistoryLimit;             // 50
 FOUNDATION_EXPORT const CGFloat    PXDefaultEditorLineWidth;         // 4.0
 
 // MARK: - 路径（集中管理，按需创建）
 
 /// SpringBoard 与设置包共享的数据根目录：/var/mobile/Library/PixPin
 NSString *PXLibraryDataDirectory(void);
-/// 历史记录目录：<Home>/Library/PixPin/history
-NSString *PXHistoryDirectory(void);
 /// 截图任务临时文件根目录：<tmp>/PixPinTasks
 NSString *PXTemporaryTasksRoot(void);
 

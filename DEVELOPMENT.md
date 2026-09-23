@@ -12,7 +12,7 @@
 
 ### 0.1 当前仓库状态
 
-当前仓库已建立 RootHide/Theos 源码、设置包、宿主单元测试和 iOS 16/17 双目标打包脚本。已实现全屏、区域、冻结、即时区域、编辑、输出、结果气泡和历史主链路；私有抓屏接口、SpringBoard scene 可见性、触摸和真实相册输出仍必须在目标设备验证。代码与本文件的最新约定共同作为依据；如果两者冲突，先检查最近的用户要求和现有实现，再向用户说明冲突，不要静默覆盖已有代码。
+当前仓库已建立 RootHide/Theos 源码、设置包、宿主单元测试和 iOS 16/17 双目标打包脚本。已实现全屏、区域、冻结、即时区域、编辑、输出和结果气泡主链路；私有抓屏接口、SpringBoard scene 可见性、触摸和真实相册输出仍必须在目标设备验证。代码与本文件的最新约定共同作为依据；如果两者冲突，先检查最近的用户要求和现有实现，再向用户说明冲突，不要静默覆盖已有代码。
 
 ### 0.2 agent 执行规则
 
@@ -32,7 +32,7 @@
 - 不把静态分析、成功编译或成功打包描述为真机行为已经验证。
 - 不在未确认时臆造私有 API 的签名、返回值或系统版本行为。
 - 不为完成一个功能顺手加入未请求的 AI、录屏、手势、套壳或水印功能。
-- 不把截图结果、原图、编辑图和历史缩略图混用。
+- 不把截图结果、原图、编辑图混用。
 - 不在 SpringBoard 线程执行高耗时图片拼接、文件写入或大图渲染。
 - 所有跨进程通知、偏好键、文件路径和 Bundle ID 必须集中定义，禁止散落硬编码。
 - 如果功能依赖真机、特定越狱环境或私有 API，必须在最终报告中标记为“未验证”或列出实际验证环境。
@@ -76,7 +76,6 @@ PixPin 是一个运行在越狱 iOS 环境中的系统级截图工具。第一�
 - 复制到剪贴板
 - 系统分享
 - 截图结果预览
-- 截图历史
 - 设置页
 - 控制中心入口
 - RootHide deb 打包
@@ -104,7 +103,7 @@ PixPin 是一个运行在越狱 iOS 环境中的系统级截图工具。第一�
 |---|---|---|
 | P0 | 全屏截图、保存、复制、分享、基础设置 | 形成最小可用版本 |
 | P1 | 区域、冻结、即时截图、结果预览、编辑器 | 形成完整普通截图体验 |
-| P2 | 历史、控制中心 | 形成可长期使用版本 |
+| P2 | 控制中心 | 形成可长期使用版本 |
 | P3 | 二维码识别、贴纸素材库 | 在核心稳定后扩展 |
 
 ## 2. 目标运行环境和工程约束
@@ -139,7 +138,6 @@ com.pixpin.screenshot/capture/full
 com.pixpin.screenshot/capture/area
 com.pixpin.screenshot/capture/freeze
 com.pixpin.screenshot/capture/instant
-com.pixpin.screenshot/history/open
 com.pixpin.screenshot/preferences/reload
 com.pixpin.screenshot/result/updated
 ```
@@ -153,7 +151,6 @@ com.pixpin.screenshot/result/updated
 - 不上传图片。
 - 不绕过系统对受保护内容的限制。
 - 临时图片文件使用任务专属目录，任务完成或失败后清理。
-- 历史记录默认只保存本地数据。
 - 日志不得输出整张截图、剪贴板图片或用户图片内容。
 
 ## 3. 工程目录设计
@@ -200,10 +197,6 @@ PixPin/
 │   │   ├── PXClipboardWriter.h/.m
 │   │   ├── PXSharePresenter.h/.m
 │   │   └── PXTemporaryFileStore.h/.m
-│   ├── History/
-│   │   ├── PXHistoryStore.h/.m
-│   │   ├── PXHistoryItem.h/.m
-│   │   └── PXHistoryViewController.h/.m
 │   ├── SpringBoard/
 │   │   ├── PXSpringBoardEntry.xm
 │   │   ├── PXSystemCaptureBridge.xm
@@ -216,8 +209,7 @@ PixPin/
 │       ├── PXCCArea.m
 │       ├── PXCCFreeze.m
 │       ├── PXCCInstant.m
-│       ├── PXCCLong.m
-│       └── PXHistory.m
+│       └── PXCCLong.m
 ├── Resources/
 │   ├── Assets.xcassets/
 │   └── Localizable.strings
@@ -251,7 +243,7 @@ PXCaptureProvider
           ↓
 PXCaptureTask
           ↓
-结果预览 / 编辑器 / 历史记录
+结果预览 / 编辑器
           ↓
 相册 / 剪贴板 / 分享
 ```
@@ -274,7 +266,6 @@ PXCaptureTask
 - 具体系统私有 API 调用
 - 图片绘制
 - 相册写入
-- 历史 UI
 
 #### PXCaptureProvider
 
@@ -319,7 +310,7 @@ errorMessage
 - 保存状态回调
 - 临时文件清理
 
-输出动作必须幂等。同一个任务重复触发保存时，不应产生重复历史记录或重复相册资源。
+输出动作必须幂等。同一个任务重复触发保存时，不应产生重复相册资源。
 
 ## 5. 功能规格
 
@@ -467,24 +458,6 @@ PXOutputActionSaveAndDeleteSource
 - 剪贴板写入失败不能阻止相册保存。
 - 相册保存失败必须保留临时文件或给出可重试状态。
 
-### 5.8 历史记录
-
-历史记录至少保存：
-
-```text
-historyID
-createdAt
-mode
-originalAssetIdentifier
-editedAssetIdentifier
-thumbnailURL
-pixelWidth
-pixelHeight
-isEdited
-```
-
-历史数据库和图片文件必须可分别恢复。历史索引损坏时，不得导致 SpringBoard 启动崩溃。
-
 ## 6. 状态机和生命周期
 
 ### 6.1 截图任务状态
@@ -569,7 +542,6 @@ ShowResultBubble
 ShowCompletionNotification
 MuteScreenshotSound
 ScreenshotHaptic
-HistoryLimit
 EditorDefaultColor
 EditorDefaultLineWidth
 ```
@@ -683,18 +655,15 @@ EditorDefaultLineWidth
 
 完成标准：原图不被破坏，导出图尺寸、方向和标注位置正确。
 
-### PX-008：结果预览和历史
+### PX-008：结果预览
 
 内容：
 
 - 结果气泡
-- 历史索引
 - 缩略图
-- 搜索
-- 删除和清空
 - 重新编辑
 
-完成标准：输出完成后可以从结果气泡或历史打开同一张图。
+完成标准：输出完成后可以从结果气泡打开同一张图。
 
 ### PX-009：控制中心
 
@@ -704,7 +673,6 @@ EditorDefaultLineWidth
 - 区域模块
 - 冻结模块
 - 即时模块
-- 历史模块
 
 完成标准：每个模块只发送请求，不复制截图核心逻辑。
 
@@ -739,7 +707,6 @@ EditorDefaultLineWidth
 - 选区显示坐标到像素坐标转换。
 - 竖屏/横屏矩阵转换。
 - 选区最小/最大尺寸。
-- 历史记录增删改查。
 - 任务状态合法转换。
 - 重复输出动作幂等性。
 - 临时文件清理。
@@ -836,7 +803,7 @@ PX-001 工程初始化
 → PX-005 区域截图
 → PX-006 冻结和即时模式
 → PX-007 编辑器
-→ PX-008 结果预览和历史
+→ PX-008 结果预览
 → PX-009 控制中心
 → PX-012 发布验证
 ```
@@ -852,6 +819,6 @@ PixPin 第一版完成必须同时满足：
 - 控制中心入口不会复制核心逻辑。
 - 设置开关和运行时行为一致。
 - 取消、失败、权限拒绝和重复触发不会导致 SpringBoard 崩溃。
-- 原图、编辑图、历史缩略图和临时文件边界清晰。
+- 原图、编辑图和临时文件边界清晰。
 - deb 可以安装、卸载和升级。
 - 交付报告能够区分源码证据、包验证和真机行为。

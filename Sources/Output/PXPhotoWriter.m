@@ -43,7 +43,7 @@
                                                             code:2
                                                         userInfo:@{NSLocalizedDescriptionKey: @"相册保存失败"}];
         }
-        // 成功但拿不到 identifier 时保持 nil，不产出假 ID 污染历史记录。
+        // 成功但拿不到 identifier 时保持 nil，不产出假 ID。
         dispatch_async(dispatch_get_main_queue(), ^{ completion(identifier, finalError); });
     }];
 }
