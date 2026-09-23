@@ -1,6 +1,6 @@
 #import "PXSelectionView.h"
 
-static const CGFloat PXSelectionMinimumSize = 24.0;   // 点
+static const CGFloat PXSelectionMinimumSize = 44.0;   // 点；过小选区会产出无意义的细条裁剪
 static const CGFloat PXHandleHitRadius = 36.0;
 
 typedef NS_ENUM(NSInteger, PXSelectionDragMode) {

@@ -430,6 +430,11 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     // 取消编辑时恢复到进入编辑器前的结果（不是 baseImage 整屏快照）。
     self.preEditImage = task.resultImage;
 
+    CGSize px = CGSizeMake(task.resultImage.size.width * task.resultImage.scale,
+                           task.resultImage.size.height * task.resultImage.scale);
+    PXLogInfo(@"editor present (mode %@, image %.0fx%.0f px, task %@)",
+              PXStringFromCaptureMode(task.mode), px.width, px.height, task.taskID);
+
     [self pxDestroyEditorWindow];
     PXEditorViewController *editor = [[PXEditorViewController alloc] initWithImage:task.resultImage delegate:self];
     PXCaptureWindow *window = [PXCaptureWindow pxCaptureWindow];

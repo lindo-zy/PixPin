@@ -409,6 +409,13 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     if (imageSize.width <= 0 || imageSize.height <= 0) return;
 
     CGRect fitted = [self pxFittedRectForImageSize:imageSize inBounds:_scrollView.bounds];
+    // UIScrollView 缩放会给容器挂 scale transform；带 transform 改 frame 的行为是
+    // undefined（Apple 文档明确），必须先回到基准再设置尺寸，否则裁剪/旋转/撤销后的
+    // 第二次重排会把画布几何算歪（表现为图片显示不全/比例错乱）。
+    _scrollView.minimumZoomScale = 1.0;
+    _scrollView.maximumZoomScale = PXEditorMaxZoomFactor;
+    [_scrollView setZoomScale:1.0];
+    _zoomContainer.transform = CGAffineTransformIdentity;
     _zoomContainer.frame = CGRectMake(0, 0, imageSize.width, imageSize.height);
     _imageView.frame = _zoomContainer.bounds;
     _imageView.image = self.document.sourceImage;
@@ -419,6 +426,13 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     _scrollView.maximumZoomScale = fitScale * PXEditorMaxZoomFactor;
     _scrollView.zoomScale = fitScale;
     [self pxCenterContent];
+    // 裁剪/旋转/撤销重排后强制回到居中位：残留 offset 会造成"图片显示不全"。
+    CGSize contentSize = _scrollView.contentSize;
+    CGSize boundsSize = _scrollView.bounds.size;
+    if (contentSize.width <= boundsSize.width && contentSize.height <= boundsSize.height) {
+        _scrollView.contentOffset = CGPointMake(-_scrollView.contentInset.left,
+                                                -_scrollView.contentInset.top);
+    }
 }
 
 - (CGRect)pxFittedRectForImageSize:(CGSize)imageSize inBounds:(CGRect)bounds {
