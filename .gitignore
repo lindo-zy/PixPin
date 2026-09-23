@@ -4,3 +4,4 @@ packages/
 *.deb
 .DS_Store
 control.tmp.*
+notify.local.conf

@@ -1,0 +1,7 @@
+# Bark 构建通知配置模板
+# 用法：复制本文件为 notify.local.conf，填入你自己的 token（notify.local.conf 已被 .gitignore 排除）。
+# token 在 Bark App 内复制，即 https://api.day.app/<token>/ 中的 <token> 部分。
+# 未配置 notify.local.conf 时构建照常进行，只是不推送。
+BARK_TOKEN="你的BarkToken"
+# 可选：自建 Bark 服务端，默认官方 https://api.day.app
+# BARK_SERVER="https://api.day.app"

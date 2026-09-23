@@ -55,6 +55,49 @@ if (( NEXT_MINOR > 10 )); then
 fi
 NEXT_VERSION="${NEXT_MAJOR}.${NEXT_MINOR}.${NEXT_PATCH}"
 
+# ---- Bark 构建结果推送 ----
+# token 不入库：真实配置在 notify.local.conf（已被 .gitignore 排除），模板见 notify.local.conf.example。
+# 没有配置文件时跳过推送，不影响构建流程。
+NOTIFY_CONFIG="$ROOT_DIR/notify.local.conf"
+BARK_SERVER="https://api.day.app"
+if [[ -f "$NOTIFY_CONFIG" ]]; then
+    source "$NOTIFY_CONFIG"
+fi
+
+PROJECT_NAME="$(awk -F': ' '/^Name:/{print $2; exit}' "$ROOT_DIR/control")"
+PROJECT_NAME="$(tr '[:upper:]' '[:lower:]' <<< "${PROJECT_NAME:-pixpin}")"
+
+notify_bark() {
+    local status="$1"
+    local version="$2"
+    if [[ -z "${BARK_TOKEN:-}" ]]; then
+        echo "==> Bark push skipped (fill BARK_TOKEN in notify.local.conf)"
+        return 0
+    fi
+    local message="${PROJECT_NAME}-${version}-${status}"
+    if curl -fsS --max-time 10 "${BARK_SERVER}/${BARK_TOKEN}/${message}" >/dev/null; then
+        echo "==> Bark pushed: $message"
+    else
+        echo "warn: Bark push failed: $message" >&2
+    fi
+    return 0
+}
+
+# 统一退出处理：清理 control 临时文件；任何非零退出（测试/打包/校验/版本回写失败）推送失败状态。
+# 显式 exit $rc 保留原始退出码，避免被 trap 覆盖。
+CONTROL_TMP=""
+notify_exit() {
+    local rc=$?
+    if [[ -n "${CONTROL_TMP:-}" && -f "$CONTROL_TMP" ]]; then
+        rm -f "$CONTROL_TMP"
+    fi
+    if [[ $rc -ne 0 ]]; then
+        notify_bark "构建失败" "${NEXT_VERSION:-unknown}"
+    fi
+    exit "$rc"
+}
+trap notify_exit EXIT
+
 if [[ "${1:-}" == "--clean" ]]; then
     "$MAKE_BIN" -C "$ROOT_DIR" clean
     rm -rf "$ROOT_DIR/packages"
@@ -152,7 +195,6 @@ build_one ios17 17.0 16.0
 
 # Persist the version only after both platform builds have completed.
 CONTROL_TMP="$(mktemp "$ROOT_DIR/control.tmp.XXXXXX")"
-trap 'rm -f "$CONTROL_TMP"' EXIT
 
 awk -v next_version="$NEXT_VERSION" '
     BEGIN { updated = 0 }
@@ -167,6 +209,7 @@ awk -v next_version="$NEXT_VERSION" '
     }
 ' "$ROOT_DIR/control" > "$CONTROL_TMP"
 mv "$CONTROL_TMP" "$ROOT_DIR/control"
-trap - EXIT
+CONTROL_TMP=""
 
 echo "==> Build completed successfully: $PACKAGE_VERSION -> $NEXT_VERSION"
+notify_bark "构建完成" "$NEXT_VERSION"
