@@ -39,8 +39,6 @@ FOUNDATION_EXPORT NSString * const PXKeyMuteScreenshotSound;
 FOUNDATION_EXPORT NSString * const PXKeyScreenshotHaptic;
 FOUNDATION_EXPORT NSString * const PXKeyEditorDefaultColor;
 FOUNDATION_EXPORT NSString * const PXKeyEditorDefaultLineWidth;
-/// 编辑器取色器“最近使用色”（NSArray<NSString*> 十六进制 #RRGGBB，SpringBoard 编辑器直接读写）。
-FOUNDATION_EXPORT NSString * const PXKeyEditorRecentColors;
 
 // MARK: - 默认值
 

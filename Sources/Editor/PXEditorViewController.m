@@ -2,7 +2,6 @@
 #import "PXEditorCanvas.h"
 #import "PXEditorDocument.h"
 #import "PXEditorRenderer.h"
-#import "PXColorPickerView.h"
 #import "../Common/PXLog.h"
 #import "../Common/PXConstants.h"
 
@@ -25,8 +24,6 @@ static const CGFloat PXEditorCropRowHeight = 48.0;
 // 折叠把手：浮在面板上缘，收起后浮在屏幕下缘。
 static const CGFloat PXEditorPillWidth = 52.0;
 static const CGFloat PXEditorPillHeight = 26.0;
-
-static const NSUInteger PXEditorRecentColorLimit = 8;
 
 static UIColor *PXEditorAccentColor(void) {
     return [UIColor colorWithRed:1.0 green:0.78 blue:0.08 alpha:1.0];
@@ -62,7 +59,8 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
 
 @interface PXEditorViewController () <
     PXEditorCanvasDelegate,
-    PXColorPickerViewDelegate,
+    UIColorPickerViewControllerDelegate,
+    UIAdaptivePresentationControllerDelegate,
     UIScrollViewDelegate>
 @property (nonatomic, strong) UIImage *sourceImage;
 @property (nonatomic, weak) id<PXEditorViewControllerDelegate> delegate;
@@ -104,9 +102,7 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
 @property (nonatomic, strong) UIButton *cropCancelButton;
 @property (nonatomic, strong) UIButton *cropApplyButton;
 
-@property (nonatomic, strong, nullable) PXColorPickerView *colorPicker;
-@property (nonatomic, strong, nullable) UIColor *colorBeforePicker;
-@property (nonatomic, strong) NSMutableArray<UIColor *> *recentColors;
+@property (nonatomic, strong, nullable) UIColorPickerViewController *colorPicker;
 
 @property (nonatomic, assign) NSUInteger selectedToolIndex;
 @property (nonatomic, strong) UIColor *currentColor;
@@ -125,7 +121,6 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
         _toolButtons = [[NSMutableArray alloc] init];
         _colorButtons = [[NSMutableArray alloc] init];
         _stickerButtons = [[NSMutableArray alloc] init];
-        _recentColors = [[NSMutableArray alloc] init];
         _currentColor = [UIColor redColor];
         _colorPresets = @[
             [UIColor redColor],
@@ -154,7 +149,6 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     [self pxBuildTopBar];
     [self pxBuildBottomPanel];
     [self pxConfigureWidthSlider];
-    [self pxLoadRecentColors];
 
     [self pxSelectToolIndex:0];
     [self pxSelectColorIndex:0];
@@ -418,42 +412,6 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
 - (CGFloat)pxDefaultTextFontSize {
     CGFloat shortSide = MIN(self.document.sourceImage.size.width, self.document.sourceImage.size.height);
     return MAX(18.0, MIN(120.0, shortSide / 22.0));
-}
-
-#pragma mark - 最近使用色（CFPreferences 持久化，跨编辑会话）
-
-- (void)pxLoadRecentColors {
-    NSArray *hexes = CFBridgingRelease(CFPreferencesCopyAppValue(
-        (__bridge CFStringRef)PXKeyEditorRecentColors,
-        (__bridge CFStringRef)PXPreferencesDomain));
-    if (![hexes isKindOfClass:[NSArray class]]) return;
-    for (NSString *hex in hexes) {
-        UIColor *color = [PXColorPickerView colorFromHexString:hex];
-        if (color) [self.recentColors addObject:color];
-        if (self.recentColors.count >= PXEditorRecentColorLimit) break;
-    }
-}
-
-- (void)pxAddRecentColor:(UIColor *)color {
-    // 用 #RRGGBB 字符串比较去重：UIColor isEqual: 跨色彩空间可能误判不等。
-    NSString *hex = [PXColorPickerView hexStringForColor:color];
-    NSMutableArray<UIColor *> *updated = [NSMutableArray arrayWithObject:color];
-    for (UIColor *existing in self.recentColors) {
-        if (![[PXColorPickerView hexStringForColor:existing] isEqualToString:hex]) {
-            [updated addObject:existing];
-        }
-        if (updated.count >= PXEditorRecentColorLimit) break;
-    }
-    self.recentColors = updated;
-
-    NSMutableArray<NSString *> *hexes = [NSMutableArray array];
-    for (UIColor *existing in updated) {
-        [hexes addObject:[PXColorPickerView hexStringForColor:existing]];
-    }
-    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyEditorRecentColors,
-                             (__bridge CFArrayRef)hexes,
-                             (__bridge CFStringRef)PXPreferencesDomain);
-    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
 }
 
 #pragma mark - 布局
@@ -779,51 +737,52 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     [self pxSelectColorIndex:(NSInteger)sender.tag];
 }
 
-#pragma mark - 自定义取色器
+#pragma mark - 系统取色器
 
 - (void)pxCustomColorTapped:(UIButton *)sender {
-    if (self.colorPicker) return;
+    // 残留引用自愈：dismiss 动画期引用未清时（presentingViewController 已空）允许重开。
+    if (self.colorPicker && self.colorPicker.presentingViewController != nil) return;
     if (self.isExporting) return;
     [self.canvas commitActiveText];
 
-    self.colorBeforePicker = self.currentColor;
-    self.colorPicker = [[PXColorPickerView alloc] initWithColor:self.currentColor
-                                                   recentColors:self.recentColors];
-    self.colorPicker.delegate = self;
-    [self.colorPicker showInView:self.view animated:YES completion:nil];
+    // 系统 UIColorPickerViewController（网格/光谱/滑块/吸管），样式见 iOS 系统取色面板。
+    // 编辑器内已有 UIAlertController 呈现先例，present 路径与弹窗输入兜底一致。
+    UIColorPickerViewController *picker = [[UIColorPickerViewController alloc] init];
+    picker.supportsAlpha = YES;
+    picker.selectedColor = self.currentColor;
+    picker.delegate = self;
+    picker.presentationController.delegate = self;
+    self.colorPicker = picker;
+    [self presentViewController:picker animated:YES completion:nil];
 }
 
-- (void)colorPicker:(PXColorPickerView *)picker didPreviewColor:(UIColor *)color {
-    // 实时预览：画笔色即时跟随，取消时回退 colorBeforePicker。
-    self.canvas.currentColor = color;
-    [self pxUpdateWidthPreview];
-}
-
-- (void)colorPicker:(PXColorPickerView *)picker didConfirmColor:(UIColor *)color {
-    if (self.colorPicker != picker) return;   // 幂等守卫：dismiss 动画期间忽略二次回调
-    [picker dismissAnimated:YES completion:^{
-        if (self.colorPicker == picker) self.colorPicker = nil;
-    }];
+/// 颜色即时生效（拖动/点选均回调）；continuously=YES 时不入撤销栈语义，此处只改画笔状态无副作用。
+- (void)colorPickerViewController:(UIColorPickerViewController *)viewController
+                   didSelectColor:(UIColor *)color
+                     continuously:(BOOL)continuously {
+    if (self.colorPicker != viewController) return;
     self.currentColor = color;
-    self.colorBeforePicker = nil;
     // 自定义按钮展示所选色（渐变环与“+”让位），便于下次直接取用。
     self.customColorGradient.hidden = YES;
     self.customColorPlusLabel.hidden = YES;
     self.customColorButton.backgroundColor = color;
     [self pxSelectColorIndex:-1];
-    [self pxAddRecentColor:color];
-    PXLogInfo(@"editor custom color confirmed: %@", [PXColorPickerView hexStringForColor:color]);
 }
 
-- (void)colorPickerDidCancel:(PXColorPickerView *)picker {
-    if (self.colorPicker != picker) return;   // 幂等守卫：dismiss 动画期间忽略二次回调
-    [picker dismissAnimated:YES completion:^{
-        if (self.colorPicker == picker) self.colorPicker = nil;
-    }];
-    // 无条件回退拖动期间的实时预览色，避免残留。
-    self.canvas.currentColor = self.colorBeforePicker ?: self.currentColor;
-    self.colorBeforePicker = nil;
-    [self pxUpdateWidthPreview];
+/// 系统 X 关闭按钮已自行 dismiss 该控制器（见 UIKit 头文件注释），这里只清理引用。
+- (void)colorPickerViewControllerDidFinish:(UIColorPickerViewController *)viewController {
+    if (self.colorPicker == viewController) {
+        self.colorPicker = nil;
+    }
+}
+
+/// 兜底：下滑手势关闭 sheet 时系统可能不回调 DidFinish:（iOS 14 起已知行为），
+/// 若不清理引用，自定义取色与面板折叠会被 colorPicker 守卫卡死到编辑器关闭。
+- (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController {
+    if (self.colorPicker &&
+        presentationController.presentedViewController == self.colorPicker) {
+        self.colorPicker = nil;
+    }
 }
 
 - (void)pxStickerTapped:(UIButton *)sender {
