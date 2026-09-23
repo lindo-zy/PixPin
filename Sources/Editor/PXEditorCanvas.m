@@ -526,10 +526,14 @@ typedef NS_ENUM(NSInteger, PXCropHandle) {
                                                             color:self.currentColor
                                                         lineWidth:self.currentLineWidth
                                                             alpha:1.0];
+    if (tool == PXAnnotationTypeMosaic && !self.pixelatedImage) {
+        [self requestPixelatedPreview];   // 起笔预热：首笔涂抹即显马赛克，不落灰色占位
+    }
     annotation.fillStyle = self.currentFillStyle;
     switch (tool) {
         case PXAnnotationTypeBrush:
         case PXAnnotationTypeHighlight:
+        case PXAnnotationTypeMosaic:
         case PXAnnotationTypeLine:
         case PXAnnotationTypeArrow:
             [annotation.points addObject:[NSValue valueWithCGPoint:point]];
@@ -553,7 +557,8 @@ typedef NS_ENUM(NSInteger, PXCropHandle) {
 
     switch (annotation.type) {
         case PXAnnotationTypeBrush:
-        case PXAnnotationTypeHighlight: {
+        case PXAnnotationTypeHighlight:
+        case PXAnnotationTypeMosaic: {
             NSUInteger count = annotation.points.count;
             if (count == 0 ||
                 !CGPointEqualToPoint([annotation.points[count - 1] CGPointValue], point)) {
@@ -592,7 +597,8 @@ typedef NS_ENUM(NSInteger, PXCropHandle) {
         case PXAnnotationTypeHighlight:
         case PXAnnotationTypeLine:
         case PXAnnotationTypeArrow:
-            hasContent = (annotation.points.count >= 2) || (annotation.points.count == 1 && annotation.type == PXAnnotationTypeBrush);
+        case PXAnnotationTypeMosaic:
+            hasContent = (annotation.points.count >= 2) || (annotation.points.count == 1 && (annotation.type == PXAnnotationTypeBrush || annotation.type == PXAnnotationTypeMosaic));
             break;
         default:
             hasContent = (annotation.rect.size.width >= 6 && annotation.rect.size.height >= 6);
@@ -600,6 +606,7 @@ typedef NS_ENUM(NSInteger, PXCropHandle) {
     }
     if (!hasContent) {
         [self setNeedsDisplay];
+        [self pxNotifyContentChanged];   // 无效笔迹也走回收检查（如释放起笔时预热的底图）
         return;   // 过小的误触不进入文档
     }
 

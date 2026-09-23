@@ -7,7 +7,9 @@
 #import "../Common/PXConstants.h"
 
 static const CGFloat PXEditorTopBarHeight = 44.0;
-static const CGFloat PXEditorBottomPanelHeight = 96.0;
+static const CGFloat PXEditorBottomPanelHeight = 168.0;
+static const CGFloat PXEditorGridRows = 3;
+static const CGFloat PXEditorGridColumns = 5;
 static const CGFloat PXEditorMaxZoomFactor = 8.0;
 
 #pragma mark - 工具定义
@@ -16,24 +18,25 @@ typedef struct {
     PXAnnotationType type;
     PXAnnotationFillStyle fillStyle;
     NSString *title;
+    NSString *iconName;   // SF Symbol；缺失时回退显示文字
 } PXEditorToolItem;
 
 static const PXEditorToolItem PXEditorTools[] = {
-    { PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"平移" },
-    { PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"画笔" },
-    { PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"荧光" },
-    { PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"直线" },
-    { PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"箭头" },
-    { PXAnnotationTypeRectangle, PXAnnotationFillStyleHollow, @"方框" },
-    { PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"实心方" },
-    { PXAnnotationTypeOval,      PXAnnotationFillStyleHollow, @"椭圆" },
-    { PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"实心圆" },
-    { PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"马赛克" },
-    { PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"聚光" },
-    { PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"文字" },
-    { PXAnnotationTypeMagnifier, PXAnnotationFillStyleHollow, @"放大镜" },
-    { PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"贴纸" },
-    { PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"图章" },
+    { PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"平移",   @"hand.point.up.left" },
+    { PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"画笔",   @"paintbrush" },
+    { PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"荧光",   @"highlighter" },
+    { PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"直线",   @"line.diagonal" },
+    { PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"箭头",   @"arrow.up.right" },
+    { PXAnnotationTypeRectangle, PXAnnotationFillStyleHollow, @"方框",   @"rectangle" },
+    { PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"实心方", @"rectangle.fill" },
+    { PXAnnotationTypeOval,      PXAnnotationFillStyleHollow, @"椭圆",   @"ellipse" },
+    { PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"实心圆", @"ellipse.fill" },
+    { PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"马赛克", @"squareshape.split.3x3" },
+    { PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"聚光",   @"flashlight.on.fill" },
+    { PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"文字",   @"textformat" },
+    { PXAnnotationTypeMagnifier, PXAnnotationFillStyleHollow, @"放大镜", @"plus.magnifyingglass" },
+    { PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"贴纸",   @"face.smiling" },
+    { PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"图章",   @"checkmark.seal" },
 };
 static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEditorTools[0]);
 
@@ -61,7 +64,7 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
 @property (nonatomic, strong) UIButton *doneButton;
 
 @property (nonatomic, strong) UIView *bottomPanel;
-@property (nonatomic, strong) UIScrollView *toolRow;
+@property (nonatomic, strong) UIView *toolGrid;
 @property (nonatomic, strong) NSMutableArray<UIButton *> *toolButtons;
 @property (nonatomic, strong) UIView *colorRow;
 @property (nonatomic, strong) NSMutableArray<UIButton *> *colorButtons;
@@ -185,21 +188,27 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     _bottomPanel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.88];
     [self.view addSubview:_bottomPanel];
 
-    // 工具行（横向滚动）
-    _toolRow = [[UIScrollView alloc] init];
-    _toolRow.showsHorizontalScrollIndicator = NO;
-    [_bottomPanel addSubview:_toolRow];
+    // 工具网格（3 行 × 5 列，参考系统相册编辑器的多排面板）
+    _toolGrid = [[UIView alloc] init];
+    [_bottomPanel addSubview:_toolGrid];
     for (NSUInteger i = 0; i < PXEditorToolCount; i++) {
         UIButton *tool = [UIButton buttonWithType:UIButtonTypeSystem];
         tool.tintColor = [UIColor whiteColor];
-        tool.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-        [tool setTitle:PXEditorTools[i].title forState:UIControlStateNormal];
-        tool.layer.cornerRadius = 8.0;
-        tool.layer.borderWidth = 1.0;
-        tool.layer.borderColor = [UIColor colorWithWhite:0.4 alpha:1.0].CGColor;
+        tool.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+        tool.layer.cornerRadius = 10.0;
+        tool.accessibilityLabel = PXEditorTools[i].title;
+        NSString *iconName = PXEditorTools[i].iconName;
+        UIImage *icon = iconName.length ? [UIImage systemImageNamed:iconName] : nil;
+        if (icon) {
+            [tool setImage:icon forState:UIControlStateNormal];
+        } else {
+            // 符号缺失兜底：显示中文名
+            [tool setTitle:PXEditorTools[i].title forState:UIControlStateNormal];
+            tool.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+        }
         [tool addTarget:self action:@selector(pxToolTapped:) forControlEvents:UIControlEventTouchUpInside];
         tool.tag = (NSInteger)i;
-        [_toolRow addSubview:tool];
+        [_toolGrid addSubview:tool];
         [self.toolButtons addObject:tool];
     }
 
@@ -348,10 +357,11 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
 
 - (void)pxLayoutBottomPanel {
     CGFloat width = _bottomPanel.bounds.size.width;
-    _toolRow.frame = CGRectMake(0, 6, width, 32);
-    _cropRow.frame = CGRectMake(0, 6, width, 32);
+    CGFloat gridHeight = PXEditorGridRows * 34.0 + (PXEditorGridRows - 1) * 6.0;   // 3×34 + 2×6 = 114
+    _toolGrid.frame = CGRectMake(0, 6, width, gridHeight);
+    _cropRow.frame = CGRectMake(0, 6, width, gridHeight);
 
-    CGFloat rowY = 46.0;
+    CGFloat rowY = 6.0 + gridHeight + 6.0;
     CGFloat colorRowHeight = PXEditorBottomPanelHeight - rowY - 6.0;
     _colorRow.frame = CGRectMake(0, rowY, width, MAX(colorRowHeight, 36.0));
     _stickerRow.frame = CGRectMake(0, rowY, width, MAX(colorRowHeight, 36.0));
@@ -363,14 +373,20 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
 }
 
 - (void)pxLayoutToolButtons {
-    CGFloat x = 10;
-    for (UIButton *button in self.toolButtons) {
-        CGSize fit = [button sizeThatFits:CGSizeMake(160, 28)];
-        // contentEdgeInsets 在 iOS 15+ 被弃用，改用布局期加宽实现内边距。
-        button.frame = CGRectMake(x, 2, ceil(fit.width) + 20, 28);
-        x += ceil(fit.width) + 20 + 8;
+    CGFloat width = _toolGrid.bounds.size.width;
+    NSInteger columns = (NSInteger)PXEditorGridColumns;
+    CGFloat margin = 12.0;
+    CGFloat gap = 8.0;
+    CGFloat buttonHeight = 34.0;
+    CGFloat buttonWidth = floor((width - margin * 2.0 - gap * (columns - 1)) / columns);
+    for (NSUInteger i = 0; i < self.toolButtons.count; i++) {
+        NSInteger row = (NSInteger)i / columns;
+        NSInteger col = (NSInteger)i % columns;
+        UIButton *button = self.toolButtons[i];
+        button.frame = CGRectMake(margin + col * (buttonWidth + gap),
+                                  row * (buttonHeight + 6.0),
+                                  buttonWidth, buttonHeight);
     }
-    self.toolRow.contentSize = CGSizeMake(x + 10, 32);
 }
 
 - (void)pxLayoutColorRow {
@@ -397,8 +413,9 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
 
 - (void)pxLayoutCropRow {
     CGFloat width = _cropRow.bounds.size.width;
-    self.cropCancelButton.frame = CGRectMake(14, 2, (width - 34) / 2.0, 28);
-    self.cropApplyButton.frame = CGRectMake(20 + (width - 34) / 2.0, 2, (width - 34) / 2.0, 28);
+    CGFloat y = (_cropRow.bounds.size.height - 28.0) / 2.0;
+    self.cropCancelButton.frame = CGRectMake(14, y, (width - 34) / 2.0, 28);
+    self.cropApplyButton.frame = CGRectMake(20 + (width - 34) / 2.0, y, (width - 34) / 2.0, 28);
 }
 
 #pragma mark - 缩放容器
@@ -483,7 +500,13 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     for (NSUInteger i = 0; i < self.toolButtons.count; i++) {
         UIButton *button = self.toolButtons[i];
         BOOL selected = (i == index);
-        button.backgroundColor = selected ? [UIColor colorWithWhite:0.35 alpha:1.0] : [UIColor clearColor];
+        // 选中态：图标染当前强调色（参考系统相册编辑器）
+        button.tintColor = selected
+            ? [UIColor colorWithRed:1.0 green:0.78 blue:0.08 alpha:1.0]
+            : [UIColor whiteColor];
+        button.backgroundColor = selected
+            ? [UIColor colorWithWhite:1.0 alpha:0.18]
+            : [UIColor colorWithWhite:1.0 alpha:0.10];
     }
     if (self.canvas) {
         if (self.isCropMode) {
@@ -580,7 +603,7 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     _scrollView.scrollEnabled = NO;
     _scrollView.pinchGestureRecognizer.enabled = NO;
     [self.canvas beginCrop];
-    self.toolRow.hidden = YES;
+    self.toolGrid.hidden = YES;
     self.colorRow.hidden = YES;
     self.stickerRow.hidden = YES;
     self.cropRow.hidden = NO;
@@ -599,7 +622,7 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     _scrollView.pinchGestureRecognizer.enabled = YES;
     self.cropRow.hidden = YES;
     BOOL stickerTool = (PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker);
-    self.toolRow.hidden = NO;
+    self.toolGrid.hidden = NO;
     self.colorRow.hidden = stickerTool;
     self.stickerRow.hidden = !stickerTool;
     [self pxRefreshButtons];

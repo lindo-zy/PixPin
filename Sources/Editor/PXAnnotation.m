@@ -29,6 +29,17 @@ static NSString * const PXAnnotationFontName = @"PingFangSC-Semibold";
 }
 
 - (CGRect)boundsInImageSpace {
+    if (self.type == PXAnnotationTypeMosaic && self.points.count > 0) {
+        // 涂抹式马赛克：跟随笔迹（pad 与渲染半径一致，见 drawAnnotation 的 smearWidth/2）。
+        CGRect bounds = CGRectNull;
+        for (NSValue *value in self.points) {
+            CGPoint point = [value CGPointValue];
+            CGRect pointRect = CGRectMake(point.x, point.y, 0.001, 0.001);
+            bounds = CGRectIsNull(bounds) ? pointRect : CGRectUnion(bounds, pointRect);
+        }
+        CGFloat pad = MAX(self.lineWidth, 4.0);
+        return CGRectInset(bounds, -pad, -pad);
+    }
     switch (self.type) {
         case PXAnnotationTypeRectangle:
         case PXAnnotationTypeOval:
@@ -70,6 +81,10 @@ static NSString * const PXAnnotationFontName = @"PingFangSC-Semibold";
 }
 
 - (BOOL)containsImagePoint:(CGPoint)point slop:(CGFloat)slop {
+    if (self.type == PXAnnotationTypeMosaic && self.points.count > 0) {
+        // 涂抹式马赛克：与画笔一致按笔迹判定。
+        return [self pxStrokeHitTestPoint:point threshold:MAX(self.lineWidth, 4.0) + slop];
+    }
     switch (self.type) {
         case PXAnnotationTypeRectangle:
         case PXAnnotationTypeOval:
@@ -94,26 +109,31 @@ static NSString * const PXAnnotationFontName = @"PingFangSC-Semibold";
         case PXAnnotationTypeHighlight:
         case PXAnnotationTypeLine:
         case PXAnnotationTypeArrow: {
-            CGFloat threshold = MAX(self.lineWidth + slop, slop * 2.0);
-            CGFloat thresholdSq = threshold * threshold;
-            for (NSValue *value in self.points) {
-                CGPoint vertex = [value CGPointValue];
-                CGFloat dx = point.x - vertex.x;
-                CGFloat dy = point.y - vertex.y;
-                if (dx * dx + dy * dy <= thresholdSq) return YES;
-            }
-            for (NSUInteger i = 1; i < self.points.count; i++) {
-                if ([self pxSegmentDistanceFrom:[self.points[i - 1] CGPointValue]
-                                            to:[self.points[i] CGPointValue]
-                                         target:point] <= threshold) {
-                    return YES;
-                }
-            }
-            return NO;
+            return [self pxStrokeHitTestPoint:point threshold:MAX(self.lineWidth + slop, slop * 2.0)];
         }
         default:
             return NO;
     }
+}
+
+/// 笔迹命中：顶点距离 + 相邻线段距离任一满足阈值即命中（阈值已含 slop）。
+- (BOOL)pxStrokeHitTestPoint:(CGPoint)point threshold:(CGFloat)threshold {
+    CGFloat thresholdSq = threshold * threshold;
+    if (self.points.count == 0) return NO;
+    CGPoint firstVertex = [self.points[0] CGPointValue];
+    {
+        CGFloat dx = point.x - firstVertex.x;
+        CGFloat dy = point.y - firstVertex.y;
+        if (dx * dx + dy * dy <= thresholdSq) return YES;
+    }
+    for (NSUInteger i = 1; i < self.points.count; i++) {
+        if ([self pxSegmentDistanceFrom:[self.points[i - 1] CGPointValue]
+                                    to:[self.points[i] CGPointValue]
+                                 target:point] <= threshold) {
+            return YES;
+        }
+    }
+    return NO;
 }
 
 - (CGFloat)pxSegmentDistanceFrom:(CGPoint)a to:(CGPoint)b target:(CGPoint)p {
@@ -148,6 +168,19 @@ static NSString * const PXAnnotationFontName = @"PingFangSC-Semibold";
 - (void)applyScale:(CGFloat)scale {
     if (scale <= 0 || scale == 1.0) return;
     CGPoint center = [self centerInImageSpace];
+    if (self.type == PXAnnotationTypeMosaic && self.points.count > 0) {
+        // 涂抹式马赛克：缩放笔迹并同步涂抹宽度（走 points 族而非 rect）。
+        NSMutableArray<NSValue *> *scaled = [[NSMutableArray alloc] init];
+        for (NSValue *value in self.points) {
+            CGPoint p = [value CGPointValue];
+            [scaled addObject:[NSValue valueWithCGPoint:
+                CGPointMake(center.x + (p.x - center.x) * scale,
+                            center.y + (p.y - center.y) * scale)]];
+        }
+        self.points = scaled;
+        self.lineWidth = MAX(1.0, self.lineWidth * scale);
+        return;
+    }
     switch (self.type) {
         case PXAnnotationTypeText:
             // 字号与外框同步缩放：选中框/命中区/裁剪重映射都以 rect 为准。

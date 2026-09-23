@@ -64,15 +64,48 @@
             break;
         }
         case PXAnnotationTypeMosaic: {
-            CGRect clipRect = CGRectIntersection(annotation.rect,
-                                                 CGRectMake(0, 0, sourceImage.size.width, sourceImage.size.height));
-            if (CGRectIsEmpty(clipRect)) break;
-            CGContextClipToRect(context, clipRect);
-            if (pixelatedImage) {
-                [pixelatedImage drawInRect:CGRectMake(0, 0, sourceImage.size.width, sourceImage.size.height)];
+            CGRect imageBounds = CGRectMake(0, 0, sourceImage.size.width, sourceImage.size.height);
+            if (CGRectIsEmpty(imageBounds)) break;
+
+            if (annotation.points.count > 0) {
+                // 涂抹式：沿笔迹描边生成裁剪区域，再在区域内铺像素化底图。
+                NSArray<NSValue *> *points = annotation.points;
+                CGFloat smearWidth = MAX(annotation.lineWidth * 2.0, 8.0);
+                if (points.count == 1) {
+                    // 单点（轻点一下）：按圆点处理；moveto-only 路径的描边为空。
+                    CGPoint p = [points[0] CGPointValue];
+                    CGContextAddEllipseInRect(context,
+                                              CGRectMake(p.x - smearWidth / 2.0, p.y - smearWidth / 2.0,
+                                                         smearWidth, smearWidth));
+                } else {
+                    CGMutablePathRef strokePath = CGPathCreateMutable();
+                    CGPathMoveToPoint(strokePath, NULL,
+                                      [points[0] CGPointValue].x, [points[0] CGPointValue].y);
+                    for (NSUInteger i = 1; i < points.count; i++) {
+                        CGPoint p = [points[i] CGPointValue];
+                        CGPathAddLineToPoint(strokePath, NULL, p.x, p.y);
+                    }
+                    CGContextSetLineWidth(context, smearWidth);
+                    CGContextSetLineCap(context, kCGLineCapRound);
+                    CGContextSetLineJoin(context, kCGLineJoinRound);
+                    CGContextAddPath(context, strokePath);
+                    CGPathRelease(strokePath);
+                    CGContextReplacePathWithStrokedPath(context);
+                }
+                CGContextClip(context);
             } else {
+                // 兼容旧矩形马赛克。
+                CGRect clipRect = CGRectIntersection(annotation.rect, imageBounds);
+                if (CGRectIsEmpty(clipRect)) break;
+                CGContextClipToRect(context, clipRect);
+            }
+
+            if (pixelatedImage) {
+                [pixelatedImage drawInRect:imageBounds];
+            } else {
+                // 预览底图未就绪时的占位（与源图等铺，裁剪区限制范围）。
                 CGContextSetFillColorWithColor(context, [UIColor colorWithWhite:0.7 alpha:0.9].CGColor);
-                CGContextFillRect(context, clipRect);
+                CGContextFillRect(context, imageBounds);
             }
             break;
         }
