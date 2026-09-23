@@ -347,7 +347,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
                                 mode:PXStringFromCaptureMode(task.mode)
                              message:(message ?: @"截图任务已完成")];
     } else {
-        // 输出失败：保留临时文件，撤回认领以便气泡重试（DEVELOPMENT.md 5.7）。
+        // 输出失败：保留临时文件供诊断，失败原因在气泡中显示（重新截图重试）。
         [task transitionToState:PXCaptureStateFailed];
         [task unclaimOutputAction:PXOutputActionSave];
         [task unclaimOutputAction:PXOutputActionCopy];
@@ -366,6 +366,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         self.resultBubble = [PXResultBubble presentWithImage:nil
                                                      message:(message ?: @"截图完成")
                                                         task:task
+                                                   succeeded:ok
                                                     delegate:self];
         PXResultBubble *bubble = self.resultBubble;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -572,17 +573,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     [self openEditorWithImage:image mode:task.mode];
 }
 
-- (void)resultBubble:(PXResultBubble *)bubble didRequestAction:(PXOutputAction)action {
-    PXCaptureTask *task = bubble.task;
-    if (!task) return;
-    // 动作（尤其分享面板）进行期间暂停气泡自动消失，宿主窗口必须存活。
-    [bubble pushDismissalHold];
-    [self.pipeline performAdditionalAction:action forTask:task presentingWindow:bubble.window completion:^(BOOL ok, NSString *message) {
-        [bubble popDismissalHold];
-        PXLogInfo(@"bubble action %@ ok=%d", PXStringFromOutputAction(action), ok);
-    }];
-}
-
 - (void)resultBubbleDidDismiss:(PXResultBubble *)bubble {
     // 只清理仍指向该气泡的引用，避免误清新气泡（交叠窗口极短但存在）。
     if (self.resultBubble == bubble) {
@@ -620,6 +610,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     self.resultBubble = [PXResultBubble presentWithImage:nil
                                                  message:message
                                                     task:nil
+                                               succeeded:NO
                                                 delegate:self];
     [self pxClearSlotIfCurrent:task];
 }

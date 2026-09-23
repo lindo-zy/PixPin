@@ -16,12 +16,6 @@ NS_ASSUME_NONNULL_BEGIN
       presentingWindow:(nullable UIWindow *)presentingWindow
            completion:(void (^)(BOOL ok, NSString *message))completion;
 
-/// 气泡/编辑器对已存在结果的补充动作（内部会先 claim，已执行过的动作直接返回成功且不重复输出）。
-- (void)performAdditionalAction:(PXOutputAction)action
-                         forTask:(PXCaptureTask *)task
-               presentingWindow:(nullable UIWindow *)presentingWindow
-                      completion:(void (^)(BOOL ok, NSString *message))completion;
-
 @end
 
 NS_ASSUME_NONNULL_END

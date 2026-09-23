@@ -1,6 +1,5 @@
 #import "PXResultBubble.h"
 #import "PXCaptureWindow.h"
-#import "../Common/PXConstants.h"
 #import "../Common/PXLog.h"
 
 @class PXCaptureTask;
@@ -9,37 +8,39 @@
 @property (nonatomic, strong) PXCaptureWindow *window;
 @property (nonatomic, strong) UIImageView *thumbView;
 @property (nonatomic, strong) UILabel *messageLabel;
-@property (nonatomic, strong) UIButton *saveButton;
-@property (nonatomic, strong) UIButton *shareButton;
+@property (nonatomic, strong) UIButton *editButton;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong, nullable) PXCaptureTask *task;
 @property (nonatomic, assign) NSUInteger dismissGeneration;
-@property (nonatomic, assign) NSUInteger dismissalHoldCount;   // 动作进行中 >0，暂停自动消失
 @end
 
 @implementation PXResultBubble
 
-+ (instancetype)presentWithImage:(UIImage *)thumbnail
++ (instancetype)presentWithImage:(nullable UIImage *)thumbnail
                          message:(NSString *)message
-                            task:(PXCaptureTask *)task
+                            task:(nullable PXCaptureTask *)task
+                       succeeded:(BOOL)succeeded
                         delegate:(id<PXResultBubbleDelegate>)delegate {
     if (![NSThread isMainThread]) {
         // 调用契约是主线程；误从后台调用时降级为异步弹出并返回 nil（不做等待式 sync，防死锁埋雷）。
         PXLogWarn(@"result bubble present called off main thread, deferring");
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self pxPresentWithImage:thumbnail message:message task:task delegate:delegate];
+            [self pxPresentWithImage:thumbnail message:message task:task succeeded:succeeded delegate:delegate];
         });
         return nil;
     }
-    return [self pxPresentWithImage:thumbnail message:message task:task delegate:delegate];
+    return [self pxPresentWithImage:thumbnail message:message task:task succeeded:succeeded delegate:delegate];
 }
 
 + (instancetype)pxPresentWithImage:(UIImage *)thumbnail
                            message:(NSString *)message
                               task:(PXCaptureTask *)task
+                         succeeded:(BOOL)succeeded
                           delegate:(id<PXResultBubbleDelegate>)delegate {
     CGRect screenBounds = [UIScreen mainScreen].bounds;
-    CGFloat bubbleWidth = 240.0;
+    // 成功态：缩略图 + 编辑 + 关闭；失败态：错误文字 + 关闭（诊断优先）。
+    BOOL failureStyle = !succeeded || (task == nil);
+    CGFloat bubbleWidth = failureStyle ? 240.0 : 136.0;
     CGFloat bubbleHeight = 54.0;
     CGRect frame = CGRectMake(14.0,
                               screenBounds.size.height - bubbleHeight - 34.0,
@@ -49,9 +50,9 @@
     bubble.task = task;
     bubble.delegate = delegate;
     bubble.thumbView.image = thumbnail;
-    bubble.messageLabel.text = message ?: @"截图完成";
-    bubble.saveButton.hidden = (task == nil);
-    bubble.shareButton.hidden = (task == nil);
+    bubble.messageLabel.text = message ?: (failureStyle ? @"截图失败" : @"截图完成");
+    bubble.editButton.hidden = failureStyle;
+    bubble.messageLabel.hidden = !failureStyle;
 
     PXCaptureWindow *window = [PXCaptureWindow pxCaptureWindow];
     window.windowLevel = 1000001.0;   // 高于选区窗口，低于系统紧急层级
@@ -92,19 +93,19 @@
         _thumbView.backgroundColor = [UIColor colorWithWhite:0.2 alpha:1.0];
         [self addSubview:_thumbView];
 
-        _messageLabel = [[UILabel alloc] initWithFrame:CGRectMake(58, 0, 90, frame.size.height)];
+        CGFloat width = frame.size.width;
+        _messageLabel = [[UILabel alloc] initWithFrame:CGRectMake(58, 0, width - 58 - 38, frame.size.height)];
         _messageLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
         _messageLabel.textColor = [UIColor whiteColor];
         _messageLabel.adjustsFontSizeToFitWidth = YES;
         _messageLabel.text = @"截图完成";
         [self addSubview:_messageLabel];
 
-        _saveButton = [self pxMakeButtonWithTitle:@"存" action:@selector(pxSaveTapped:)];
-        _shareButton = [self pxMakeButtonWithTitle:@"享" action:@selector(pxShareTapped:)];
+        _editButton = [self pxMakeButtonWithTitle:@"编辑" action:@selector(pxEditTapped:)];
         _closeButton = [self pxMakeButtonWithTitle:@"✕" action:@selector(pxCloseTapped:)];
-        _closeButton.frame = CGRectMake(frame.size.width - 34, 0, 34, frame.size.height);
-        _shareButton.frame = CGRectMake(frame.size.width - 68, 0, 34, frame.size.height);
-        _saveButton.frame = CGRectMake(frame.size.width - 102, 0, 34, frame.size.height);
+        _closeButton.frame = CGRectMake(width - 34, 0, 34, frame.size.height);
+        _editButton.frame = CGRectMake(width - 82, 0, 44, frame.size.height);   // 与 ✕ 留 4pt 间隙
+        _editButton.hidden = YES;   // 失败气泡（无任务）没有可编辑结果
 
         UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(pxTapGesture:)];
         [self addGestureRecognizer:tap];
@@ -126,22 +127,18 @@
 
 #pragma mark - 动作
 
-- (void)pxTapGesture:(UITapGestureRecognizer *)gesture {
+- (void)pxNotifyTap {
     if (self.delegate && [self.delegate respondsToSelector:@selector(resultBubbleDidTap:)]) {
         [self.delegate resultBubbleDidTap:self];
     }
 }
 
-- (void)pxSaveTapped:(UIButton *)sender {
-    if (self.delegate && [self.delegate respondsToSelector:@selector(resultBubble:didRequestAction:)]) {
-        [self.delegate resultBubble:self didRequestAction:PXOutputActionSave];
-    }
+- (void)pxTapGesture:(UITapGestureRecognizer *)gesture {
+    [self pxNotifyTap];
 }
 
-- (void)pxShareTapped:(UIButton *)sender {
-    if (self.delegate && [self.delegate respondsToSelector:@selector(resultBubble:didRequestAction:)]) {
-        [self.delegate resultBubble:self didRequestAction:PXOutputActionShare];
-    }
+- (void)pxEditTapped:(UIButton *)sender {
+    [self pxNotifyTap];
 }
 
 - (void)pxCloseTapped:(UIButton *)sender {
@@ -149,16 +146,6 @@
 }
 
 #pragma mark - 关闭
-
-- (void)pushDismissalHold {
-    self.dismissalHoldCount++;
-}
-
-- (void)popDismissalHold {
-    if (self.dismissalHoldCount > 0) {
-        self.dismissalHoldCount--;
-    }
-}
 
 - (void)updateThumbnailImage:(UIImage *)image {
     if (![NSThread isMainThread]) {
@@ -173,15 +160,6 @@
 
 - (void)pxAutoDismissIfGeneration:(NSUInteger)generation {
     if (generation != self.dismissGeneration) return;
-    if (self.dismissalHoldCount > 0) {
-        // 有动作（保存/分享面板）进行中：宿主窗口必须存活，推迟后再查。
-        __weak PXResultBubble *weakBubble = self;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            [weakBubble pxAutoDismissIfGeneration:generation];
-        });
-        return;
-    }
     [self dismissWithCompletion:nil];
 }
 

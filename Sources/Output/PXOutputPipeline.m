@@ -22,14 +22,6 @@
     }
 }
 
-- (void)performAdditionalAction:(PXOutputAction)action
-                         forTask:(PXCaptureTask *)task
-               presentingWindow:(UIWindow *)presentingWindow
-                      completion:(void (^)(BOOL, NSString *))completion {
-    // claim 机制保证幂等：已执行过的动作在这里被过滤。
-    [self performAction:action forTask:task presentingWindow:presentingWindow completion:completion];
-}
-
 #pragma mark - 动作分发
 
 - (void)pxPerformAction:(PXOutputAction)action
