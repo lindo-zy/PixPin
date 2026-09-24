@@ -245,7 +245,7 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     [_bottomPanel addSubview:_widthRow];
     _minWidthIcon = [[UIImageView alloc] initWithImage:[self pxWidthHintIconNamed:@"circle.inset.filled"]];
     [_widthRow addSubview:_minWidthIcon];
-    _maxWidthIcon = [[UIImageView alloc] initWithImage:[self pxWidthHintIconNamed:@"circle"]];
+    _maxWidthIcon = [[UIImageView alloc] initWithImage:[self pxWidthHintIconNamed:@"circle.fill"]];
     [_widthRow addSubview:_maxWidthIcon];
     _widthSlider = [[UISlider alloc] init];
     _widthSlider.minimumTrackTintColor = PXEditorAccentColor();
