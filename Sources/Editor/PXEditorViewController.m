@@ -8,8 +8,8 @@
 static const CGFloat PXEditorTopBarHeight = 48.0;
 static const CGFloat PXEditorMaxZoomFactor = 8.0;
 
-// 工具面板：2 行 × 8 列大图标网格（3×5 小按钮布局已废弃）。
-static const NSUInteger PXEditorGridColumns = 8;
+// 工具面板：2 行 × 7 列大图标网格（对齐 Freeform 风格参考图；2×8 / 3×5 布局已废弃）。
+static const NSUInteger PXEditorGridColumns = 7;
 static const CGFloat PXEditorToolButtonHeight = 44.0;
 static const CGFloat PXEditorGridHeight = 96.0;   // 2 行×44 + 行距 8
 
@@ -38,24 +38,34 @@ typedef struct {
     NSString *iconName;   // SF Symbol；缺失时回退显示文字
 } PXEditorToolItem;
 
+// 顺序对齐 Freeform 风格参考图：第一行 画笔/平移/方框/椭圆/箭头/放大镜/直线，
+// 第二行 马赛克/文字/实心方/荧光/实心圆/聚光/贴纸。
+// 图章（PXAnnotationTypeStamp）不再占用工具位：底层放置与渲染逻辑保留，仅工具栏不可达。
 static const PXEditorToolItem PXEditorTools[] = {
-    { PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"平移",   @"hand.point.up.left" },
     { PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"画笔",   @"paintbrush" },
-    { PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"荧光",   @"highlighter" },
-    { PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"直线",   @"line.diagonal" },
-    { PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"箭头",   @"arrow.up.right" },
+    { PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"平移",   @"hand.point.up.left" },
     { PXAnnotationTypeRectangle, PXAnnotationFillStyleHollow, @"方框",   @"rectangle" },
-    { PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"实心方", @"rectangle.fill" },
     { PXAnnotationTypeOval,      PXAnnotationFillStyleHollow, @"椭圆",   @"ellipse" },
-    { PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"实心圆", @"ellipse.fill" },
-    { PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"马赛克", @"squareshape.split.3x3" },
-    { PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"聚光",   @"flashlight.on.fill" },
-    { PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"文字",   @"textformat" },
+    { PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"箭头",   @"arrow.up.right" },
     { PXAnnotationTypeMagnifier, PXAnnotationFillStyleHollow, @"放大镜", @"plus.magnifyingglass" },
-    { PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"贴纸",   @"face.smiling" },
-    { PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"图章",   @"checkmark.seal" },
+    { PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"直线",   @"line.diagonal" },
+    { PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"马赛克", @"squareshape.split.3x3" },
+    { PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"文字",   @"textformat" },
+    { PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"实心方", @"rectangle.fill" },
+    { PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"荧光",   @"pencil" },
+    { PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"实心圆", @"ellipse.fill" },
+    { PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"聚光",   @"flashlight.on.fill" },
+    { PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"贴纸",   @"photo" },
 };
 static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEditorTools[0]);
+
+/// 打开编辑器的默认工具：平移（随表重排动态定位，避免硬编码索引漂移）。
+static NSUInteger PXEditorDefaultToolIndex(void) {
+    for (NSUInteger i = 0; i < PXEditorToolCount; i++) {
+        if (PXEditorTools[i].type == PXAnnotationTypePan) return i;
+    }
+    return 0;
+}
 
 @interface PXEditorViewController () <
     PXEditorCanvasDelegate,
@@ -150,7 +160,7 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     [self pxBuildBottomPanel];
     [self pxConfigureWidthSlider];
 
-    [self pxSelectToolIndex:0];
+    [self pxSelectToolIndex:PXEditorDefaultToolIndex()];
     [self pxSelectColorIndex:0];
     [self pxUpdatePillIcon];
     [self pxRefreshButtons];
@@ -260,7 +270,7 @@ static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEdi
     [_widthSlider addTarget:self action:@selector(pxWidthChanged:) forControlEvents:UIControlEventValueChanged];
     [_widthRow addSubview:_widthSlider];
 
-    // 工具网格（2 行 × 8 列，参考系统相册编辑器的多排面板）
+    // 工具网格（2 行 × 7 列，顺序对齐 Freeform 风格参考图）
     _toolGrid = [[UIView alloc] init];
     [_bottomPanel addSubview:_toolGrid];
     for (NSUInteger i = 0; i < PXEditorToolCount; i++) {
