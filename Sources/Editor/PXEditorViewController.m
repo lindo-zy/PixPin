@@ -24,10 +24,6 @@ static const CGFloat PXEditorPanelRowGap = 8.0;
 static const CGFloat PXEditorCropRowHeight = 48.0;
 static const CGFloat PXEditorColorButtonSize = 56.0;   // 彩虹环取色钮直径
 
-// 折叠把手：浮在面板上缘，收起后浮在屏幕下缘。
-static const CGFloat PXEditorPillWidth = 52.0;
-static const CGFloat PXEditorPillHeight = 26.0;
-
 static UIColor *PXEditorAccentColor(void) {
     return [UIColor colorWithRed:1.0 green:0.78 blue:0.08 alpha:1.0];
 }
@@ -96,7 +92,6 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 @property (nonatomic, strong) UIButton *frontButton;
 @property (nonatomic, strong) UIButton *doneButton;
 
-@property (nonatomic, strong) UIButton *pillButton;
 @property (nonatomic, strong) UIView *bottomPanel;
 @property (nonatomic, strong) UIView *widthRow;
 @property (nonatomic, strong) UIImageView *minWidthIcon;   // 线宽行左端“最细”示意
@@ -117,7 +112,6 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 
 @property (nonatomic, assign) NSUInteger selectedToolIndex;
 @property (nonatomic, strong) UIColor *currentColor;
-@property (nonatomic, assign) BOOL panelCollapsed;
 @property (nonatomic, assign) BOOL isExporting;
 @property (nonatomic, assign) BOOL isCropMode;
 @end
@@ -151,7 +145,6 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 
     [self pxSelectToolIndex:PXEditorDefaultToolIndex()];
     [self pxApplyCurrentColor];
-    [self pxUpdatePillIcon];
     [self pxRefreshButtons];
     // 马赛克底图不在此预热：布局前画布尺寸为零会导致块尺寸取错，drawRect 首帧会按正确尺寸懒加载。
 }
@@ -230,15 +223,6 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _bottomPanel = [[UIView alloc] init];
     _bottomPanel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.92];
     [self.view addSubview:_bottomPanel];
-
-    // 折叠把手：直属 self.view，必须在 bottomPanel 之后加入以保证 Z 序在上
-    // （把手半嵌在面板上缘，若被面板压住会遮掉一半可点区域）。
-    _pillButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _pillButton.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.16];
-    _pillButton.layer.cornerRadius = PXEditorPillHeight / 2.0;
-    _pillButton.accessibilityLabel = @"收起或展开工具面板";
-    [_pillButton addTarget:self action:@selector(pxPillTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:_pillButton];
 
     // 线宽行：两端“最细/最粗”示意图标 + 白色大圆滑块，置于工具网格上方。
     _widthRow = [[UIView alloc] init];
@@ -400,27 +384,15 @@ static UIImage *PXEditorSliderThumbImage(void) {
     CGFloat viewWidth = self.view.bounds.size.width;
     CGFloat viewHeight = self.view.bounds.size.height;
     CGFloat top = self.view.safeAreaInsets.top;
-    CGFloat bottom = self.view.safeAreaInsets.bottom;
 
     CGFloat panelHeight = [self pxBottomChromeHeight];
     CGFloat panelTop = viewHeight - panelHeight;
-    BOOL collapsed = self.panelCollapsed;
 
     _topBar.frame = CGRectMake(0, 0, viewWidth, top + PXEditorTopBarHeight);
     [self pxLayoutTopBarWithTop:top];
 
-    _bottomPanel.hidden = collapsed;
-    if (!collapsed) {
-        _bottomPanel.frame = CGRectMake(0, panelTop, viewWidth, panelHeight);
-        [self pxLayoutBottomPanel];
-    }
-
-    _pillButton.hidden = self.isCropMode;
-    CGFloat pillY = collapsed
-        ? viewHeight - bottom - PXEditorPillHeight - 8.0
-        : panelTop - PXEditorPillHeight / 2.0;
-    _pillButton.frame = CGRectMake((viewWidth - PXEditorPillWidth) / 2.0, pillY,
-                                   PXEditorPillWidth, PXEditorPillHeight);
+    _bottomPanel.frame = CGRectMake(0, panelTop, viewWidth, panelHeight);
+    [self pxLayoutBottomPanel];
     [self pxLayoutCustomColorGradient];
 
     CGRect scrollFrame = CGRectMake(0, top + PXEditorTopBarHeight,
@@ -435,13 +407,10 @@ static UIImage *PXEditorSliderThumbImage(void) {
     }
 }
 
-/// 底部 UI 总占高（面板或把手浮条 + 安全区），画布可视区据此避让。
-/// 贴纸工具时网格下方追加表情行（面板增高，画布重适配一次，与折叠/展开同语义）。
+/// 底部 UI 总占高（常驻面板 + 安全区），画布可视区据此避让。
+/// 贴纸工具时网格下方追加表情行（面板增高，画布重适配一次）。
 - (CGFloat)pxBottomChromeHeight {
     CGFloat bottom = self.view.safeAreaInsets.bottom;
-    if (self.panelCollapsed) {
-        return bottom + PXEditorPillHeight + 18.0;
-    }
     CGFloat height = bottom + PXEditorPanelPadTop + PXEditorRowSliderHeight + PXEditorPanelRowGap +
                      PXEditorGridHeight + PXEditorPanelPadBottom;
     BOOL stickerTool = (PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker);
@@ -563,7 +532,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
 /// 画布/容器尺寸随文档底图变化（进入、裁剪、旋转后调用）。
 /// 编辑基准为"铺满"：图片至少一轴贴满可视区、另一轴超出可滚动，打开编辑器即满屏显示。
 /// 裁剪需要整图可见可触（滚动已禁用），临时回到适屏基准。
-/// preserveOffset=YES 时按内容比例保留滚动位置（面板折叠等视口变化），否则回到内容原点
+/// preserveOffset=YES 时按内容比例保留滚动位置（贴纸行增减等视口变化），否则回到内容原点
 /// （裁剪/旋转/撤销后图片几何已变，旧位置无意义）。
 - (void)pxRelayoutZoomContainerPreservingOffset:(BOOL)preserve {
     CGSize imageSize = self.document.sourceImage.size;
@@ -624,31 +593,6 @@ static UIImage *PXEditorSliderThumbImage(void) {
 
 - (void)scrollViewDidZoom {
     [self pxCenterContent];
-}
-
-#pragma mark - 面板折叠
-
-- (void)pxUpdatePillIcon {
-    NSString *iconName = self.panelCollapsed ? @"chevron.up" : @"chevron.down";
-    UIImage *icon = [UIImage systemImageNamed:iconName];
-    if (icon) {
-        UIImageSymbolConfiguration *configuration =
-            [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIFontWeightBold];
-        [_pillButton setImage:[icon imageWithConfiguration:configuration]
-                     forState:UIControlStateNormal];
-    } else {
-        [_pillButton setTitle:self.panelCollapsed ? @"▲" : @"▼" forState:UIControlStateNormal];
-    }
-}
-
-/// 折叠/展开工具面板：收起后画布近全屏，全屏截图不再被工具面板遮挡。
-- (void)pxPillTapped:(UIButton *)sender {
-    if (self.isCropMode || self.isExporting || self.canvas.textEditing) return;
-    if (self.colorPicker) return;   // 防御：取色器打开时把手被遮罩挡住，正常不可达
-    self.panelCollapsed = !self.panelCollapsed;
-    [self pxUpdatePillIcon];
-    [self.view setNeedsLayout];
-    [self.view layoutIfNeeded];
 }
 
 #pragma mark - 工具与颜色选择
@@ -736,7 +680,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
 }
 
 /// 兜底：下滑手势关闭 sheet 时系统可能不回调 DidFinish:（iOS 14 起已知行为），
-/// 若不清理引用，自定义取色与面板折叠会被 colorPicker 守卫卡死到编辑器关闭。
+/// 若不清理引用，自定义取色入口会被 colorPicker 守卫卡死到编辑器关闭。
 - (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController {
     if (self.colorPicker &&
         presentationController.presentedViewController == self.colorPicker) {
@@ -852,10 +796,6 @@ static UIImage *PXEditorSliderThumbImage(void) {
 }
 
 - (void)enterCropMode {
-    if (self.panelCollapsed) {
-        self.panelCollapsed = NO;
-        [self pxUpdatePillIcon];
-    }
     self.isCropMode = YES;
     _scrollView.scrollEnabled = NO;
     _scrollView.pinchGestureRecognizer.enabled = NO;
