@@ -4,6 +4,8 @@
 #import "PXEditorRenderer.h"
 #import "../Common/PXLog.h"
 #import "../Common/PXConstants.h"
+#import "../Output/PXClipboardWriter.h"
+#import "../Output/PXSharePresenter.h"
 
 static const CGFloat PXEditorTopBarHeight = 48.0;
 static const CGFloat PXEditorMaxZoomFactor = 8.0;
@@ -88,6 +90,8 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 @property (nonatomic, strong) UIButton *rotateButton;
 @property (nonatomic, strong) UIButton *undoButton;
 @property (nonatomic, strong) UIButton *redoButton;
+@property (nonatomic, strong) UIButton *clipboardButton;
+@property (nonatomic, strong) UIButton *shareButton;
 @property (nonatomic, strong) UIButton *deleteButton;
 @property (nonatomic, strong) UIButton *frontButton;
 @property (nonatomic, strong) UIButton *doneButton;
@@ -192,14 +196,17 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 
     // 顶栏按钮用 SF Symbols 图标（ShellX createIconBtn 风格），避免小屏文字溢出。
     _closeButton = [self pxTopIconNamed:@"xmark" a11y:@"关闭" action:@selector(pxCloseTapped:)];
-    _cropButton = [self pxTopIconNamed:@"crop.rotate" a11y:@"裁剪" action:@selector(pxCropTapped:)];
-    _rotateButton = [self pxTopIconNamed:@"rotate.right" a11y:@"顺时针旋转90度" action:@selector(pxRotateTapped:)];
     _undoButton = [self pxTopIconNamed:@"arrow.uturn.backward" a11y:@"撤销" action:@selector(pxUndoTapped:)];
     _redoButton = [self pxTopIconNamed:@"arrow.uturn.forward" a11y:@"重做" action:@selector(pxRedoTapped:)];
+    _cropButton = [self pxTopIconNamed:@"crop.rotate" a11y:@"裁剪" action:@selector(pxCropTapped:)];
+    _rotateButton = [self pxTopIconNamed:@"rotate.right" a11y:@"顺时针旋转90度" action:@selector(pxRotateTapped:)];
+    _clipboardButton = [self pxTopIconNamed:@"doc.on.doc" a11y:@"复制图片" action:@selector(pxCopyTapped:)];
+    _shareButton = [self pxTopIconNamed:@"square.and.arrow.up" a11y:@"分享图片" action:@selector(pxShareTapped:)];
+    // 删除/置顶与复制/分享同槽位互斥显示（选中标注时替换），见 pxRefreshButtons。
     _deleteButton = [self pxTopIconNamed:@"trash" a11y:@"删除选中标注" action:@selector(pxDeleteTapped:)];
     _frontButton = [self pxTopIconNamed:@"arrow.up.to.line" a11y:@"选中标注置顶" action:@selector(pxFrontTapped:)];
     _doneButton = [self pxTopIconNamed:@"checkmark" a11y:@"完成" action:@selector(pxDoneTapped:)];
-    _doneButton.tintColor = PXEditorAccentColor();
+    _doneButton.tintColor = [UIColor systemGreenColor];
 }
 
 - (UIButton *)pxTopIconNamed:(NSString *)iconName a11y:(NSString *)a11y action:(SEL)action {
@@ -448,14 +455,20 @@ static UIImage *PXEditorSliderThumbImage(void) {
     CGFloat width = self.topBar.bounds.size.width;
     CGFloat y = top;
     CGFloat height = PXEditorTopBarHeight;
-    self.closeButton.frame = CGRectMake(4, y, 40, height);
-    self.cropButton.frame = CGRectMake(48, y, 40, height);
-    self.rotateButton.frame = CGRectMake(92, y, 40, height);
-    self.undoButton.frame = CGRectMake(width - 236, y, 44, height);
-    self.redoButton.frame = CGRectMake(width - 190, y, 44, height);
-    self.deleteButton.frame = CGRectMake(width - 144, y, 44, height);
-    self.frontButton.frame = CGRectMake(width - 98, y, 44, height);
-    self.doneButton.frame = CGRectMake(width - 52, y, 48, height);
+    CGFloat buttonWidth = 40.0;
+    // 左区：关闭 / 撤销 / 重做
+    self.closeButton.frame = CGRectMake(4, y, buttonWidth, height);
+    self.undoButton.frame = CGRectMake(46, y, buttonWidth, height);
+    self.redoButton.frame = CGRectMake(88, y, buttonWidth, height);
+    // 右区右对齐（间隔 4）：完成 / 分享 / 复制 / 旋转 / 裁剪；删除、置顶与复制、分享同槽互斥。
+    self.doneButton.frame = CGRectMake(width - 42.0, y, buttonWidth, height);
+    self.shareButton.frame = CGRectMake(width - 86.0, y, buttonWidth, height);
+    self.clipboardButton.frame = CGRectMake(width - 130.0, y, buttonWidth, height);
+    self.deleteButton.frame = self.clipboardButton.frame;
+    self.rotateButton.frame = CGRectMake(width - 174.0, y, buttonWidth, height);
+    // 下限防更窄理论屏（<375）时与左区重做按钮重叠。
+    self.cropButton.frame = CGRectMake(MAX(width - 218.0, 132.0), y, buttonWidth, height);
+    self.frontButton.frame = self.shareButton.frame;
 }
 
 - (void)pxLayoutBottomPanel {
@@ -755,6 +768,53 @@ static UIImage *PXEditorSliderThumbImage(void) {
     [self pxRefreshButtons];
 }
 
+/// 复制/分享共用：提交进行中输入、放弃未确认裁剪后渲染当前文档（与完成同路径），
+/// 渲染期间 isExporting 锁全 UI（含画布，防止最后一笔不入图）；失败弹窗提示。then 固定主线程回调。
+- (void)pxRenderCurrentImageThen:(void (^)(UIImage *result))then {
+    if (self.isExporting) return;
+    [self.canvas commitActiveText];
+    if (self.isCropMode) {
+        [self pxExitCropModeApply:NO];
+    }
+    self.isExporting = YES;
+    self.canvas.userInteractionEnabled = NO;
+    [self pxRefreshButtons];
+    __weak typeof(self) weakSelf = self;
+    [PXEditorRenderer renderDocument:self.document completion:^(UIImage *result) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        strongSelf.isExporting = NO;
+        strongSelf.canvas.userInteractionEnabled = YES;
+        [strongSelf pxRefreshButtons];
+        if (!result) {
+            PXLogError(@"editor export for copy/share failed");
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"导出失败"
+                                                                           message:@"请重试或取消编辑"
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+            [strongSelf presentViewController:alert animated:YES completion:nil];
+            return;
+        }
+        then(result);
+    }];
+}
+
+- (void)pxCopyTapped:(UIButton *)sender {
+    [self pxRenderCurrentImageThen:^(UIImage *result) {
+        [PXClipboardWriter copyImageAsync:result completion:^(BOOL ok) {}];
+    }];
+}
+
+- (void)pxShareTapped:(UIButton *)sender {
+    __weak typeof(self) weakSelf = self;
+    [self pxRenderCurrentImageThen:^(UIImage *result) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        [PXSharePresenter shareImage:result
+                  fromViewController:strongSelf
+                          completion:^(BOOL completed) {}];
+    }];
+}
+
 - (void)pxDeleteTapped:(UIButton *)sender {
     [self.canvas deleteSelectedAnnotation];
     [self pxRefreshButtons];
@@ -855,10 +915,11 @@ static UIImage *PXEditorSliderThumbImage(void) {
     self.redoButton.enabled = NO;
     self.deleteButton.enabled = NO;
     self.frontButton.enabled = NO;
+    self.clipboardButton.enabled = NO;
+    self.shareButton.enabled = NO;
     self.cropButton.enabled = NO;
     self.rotateButton.enabled = NO;
     self.canvas.userInteractionEnabled = NO;
-
     __weak typeof(self) weakSelf = self;
     [PXEditorRenderer renderDocument:self.document completion:^(UIImage *result) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -889,10 +950,15 @@ static UIImage *PXEditorSliderThumbImage(void) {
     self.undoButton.alpha = self.canvas.canUndo ? 1.0 : 0.4;
     self.redoButton.alpha = self.canvas.canRedo ? 1.0 : 0.4;
     BOOL hasSelection = (self.canvas.selectedAnnotation != nil);
+    // 复制/分享与删除/置顶同槽位：选中标注时前者让位。
     self.deleteButton.hidden = !hasSelection;
     self.frontButton.hidden = !hasSelection;
+    self.clipboardButton.hidden = hasSelection;
+    self.shareButton.hidden = hasSelection;
     self.deleteButton.enabled = hasSelection && !exporting;
     self.frontButton.enabled = hasSelection && !exporting;
+    self.clipboardButton.enabled = !exporting;
+    self.shareButton.enabled = !exporting;
     self.cropButton.enabled = !exporting;
     self.rotateButton.enabled = !exporting;
     self.doneButton.enabled = !exporting;
