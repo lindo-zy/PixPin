@@ -530,8 +530,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
 #pragma mark - 缩放容器
 
 /// 画布/容器尺寸随文档底图变化（进入、裁剪、旋转后调用）。
-/// 编辑基准为"铺满"：图片至少一轴贴满可视区、另一轴超出可滚动，打开编辑器即满屏显示。
-/// 裁剪需要整图可见可触（滚动已禁用），临时回到适屏基准。
+/// 编辑基准为适屏：打开编辑器整图完整可见，细节靠捏合放大（下限即适屏基准，不放得比整图更小）。
 /// preserveOffset=YES 时按内容比例保留滚动位置（贴纸行增减等视口变化），否则回到内容原点
 /// （裁剪/旋转/撤销后图片几何已变，旧位置无意义）。
 - (void)pxRelayoutZoomContainerPreservingOffset:(BOOL)preserve {
@@ -568,7 +567,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
     }
 }
 
-/// 基准缩放：编辑时铺满（取两轴比例较大者，另一轴超出交给滚动）；裁剪时适屏（整图可见）。
+/// 基准缩放：适屏（取两轴比例较小者，整图完整可见，不足视口的轴由 contentInset 居中）。
 - (CGFloat)pxBaseScaleForImageSize:(CGSize)imageSize inBounds:(CGRect)bounds {
     if (imageSize.width <= 0 || imageSize.height <= 0 ||
         bounds.size.width <= 0 || bounds.size.height <= 0) {
@@ -576,7 +575,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
     }
     CGFloat widthScale = bounds.size.width / imageSize.width;
     CGFloat heightScale = bounds.size.height / imageSize.height;
-    return self.isCropMode ? MIN(widthScale, heightScale) : MAX(widthScale, heightScale);
+    return MIN(widthScale, heightScale);
 }
 
 - (void)pxCenterContent {
@@ -808,7 +807,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
     [self.canvas setNeedsDisplay];
-    // 视口尺寸未变不会触发布局重排：显式切到适屏基准，保证裁剪框与手柄整图可见可触。
+    // 视口已切为矮裁剪行：显式按新视口重排一次，保证裁剪框与手柄整图可见可触。
     [self pxRelayoutZoomContainerPreservingOffset:NO];
 }
 
@@ -829,7 +828,8 @@ static UIImage *PXEditorSliderThumbImage(void) {
     // 表情行显隐由 pxLayoutBottomPanel 按 selectedToolIndex 统一恢复。
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
-    // 从适屏基准恢复铺满（applyCrop 的几何回调发生在 isCropMode 复位前，已按适屏重排过一次）。
+    // 视口恢复常驻面板高度，按适屏基准重排（applyCrop 的几何回调发生在 isCropMode 复位前，
+    // 已按当时视口重排过一次，此处为复位后的最终重排）。
     [self pxRelayoutZoomContainerPreservingOffset:NO];
     [self pxRefreshButtons];
 }
