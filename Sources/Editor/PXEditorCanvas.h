@@ -67,9 +67,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// 顺时针旋转 90°（烘焙，可撤销）。
 - (BOOL)rotateImage90Clockwise;
 
-/// 让本画布的 tap 让位于外部双击手势（双击缩放）。
-- (void)requireTapToFail:(UIGestureRecognizer *)otherGesture;
-
 /// 兜底入口：键盘不可用时由弹窗输入后直接落字（画布坐标）。
 - (void)placeTextAnnotationWithText:(NSString *)text atCanvasPoint:(CGPoint)point;
 

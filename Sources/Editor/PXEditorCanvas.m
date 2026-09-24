@@ -1215,14 +1215,6 @@ typedef NS_ENUM(NSInteger, PXCropHandle) {
     [self pxNotifyContentChanged];
 }
 
-- (void)requireTapToFail:(UIGestureRecognizer *)otherGesture {
-    for (UIGestureRecognizer *gesture in self.gestureRecognizers) {
-        if ([gesture isKindOfClass:[UITapGestureRecognizer class]]) {
-            [gesture requireGestureRecognizerToFail:otherGesture];
-        }
-    }
-}
-
 - (void)prepareForDismissal {
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIKeyboardWillChangeFrameNotification

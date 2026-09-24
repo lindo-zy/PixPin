@@ -81,7 +81,6 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIView *zoomContainer;
 @property (nonatomic, strong) UIImageView *imageView;
-@property (nonatomic, strong) UITapGestureRecognizer *doubleTapGesture;
 
 @property (nonatomic, strong) UIView *topBar;
 @property (nonatomic, strong) UIButton *closeButton;
@@ -142,7 +141,6 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 
     [self pxBuildScrollContainer];
     [self pxBuildCanvas];
-    [self.canvas requireTapToFail:self.doubleTapGesture];
     [self pxBuildTopBar];
     [self pxBuildBottomPanel];
     [self pxConfigureWidthSlider];
@@ -177,11 +175,6 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _imageView = [[UIImageView alloc] init];
     _imageView.contentMode = UIViewContentModeScaleToFill;   // 容器尺寸恒等于图片点尺寸，无需保持纵横比
     [_zoomContainer addSubview:_imageView];
-
-    _doubleTapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self
-                                                                action:@selector(pxDoubleTapped:)];
-    _doubleTapGesture.numberOfTapsRequired = 2;
-    [_scrollView addGestureRecognizer:_doubleTapGesture];
 }
 
 - (void)pxBuildCanvas {
@@ -430,7 +423,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
         BOOL needsReset = !CGSizeEqualToSize(_scrollView.frame.size, scrollFrame.size);
         _scrollView.frame = scrollFrame;
         if (needsReset) {
-            [self pxRelayoutZoomContainer];
+            [self pxRelayoutZoomContainerPreservingOffset:YES];
         }
     }
 }
@@ -555,11 +548,17 @@ static UIImage *PXEditorSliderThumbImage(void) {
 #pragma mark - 缩放容器
 
 /// 画布/容器尺寸随文档底图变化（进入、裁剪、旋转后调用）。
-- (void)pxRelayoutZoomContainer {
+/// 编辑基准为"铺满"：图片至少一轴贴满可视区、另一轴超出可滚动，打开编辑器即满屏显示。
+/// 裁剪需要整图可见可触（滚动已禁用），临时回到适屏基准。
+/// preserveOffset=YES 时按内容比例保留滚动位置（面板折叠等视口变化），否则回到内容原点
+/// （裁剪/旋转/撤销后图片几何已变，旧位置无意义）。
+- (void)pxRelayoutZoomContainerPreservingOffset:(BOOL)preserve {
     CGSize imageSize = self.document.sourceImage.size;
     if (imageSize.width <= 0 || imageSize.height <= 0) return;
 
-    CGRect fitted = [self pxFittedRectForImageSize:imageSize inBounds:_scrollView.bounds];
+    CGFloat baseScale = [self pxBaseScaleForImageSize:imageSize inBounds:_scrollView.bounds];
+    CGSize previousSize = _scrollView.contentSize;
+    CGPoint previousOffset = _scrollView.contentOffset;
     // UIScrollView 缩放会给容器挂 scale transform；带 transform 改 frame 的行为是
     // undefined（Apple 文档明确），必须先回到基准再设置尺寸，否则裁剪/旋转/撤销后的
     // 第二次重排会把画布几何算歪（表现为图片显示不全/比例错乱）。
@@ -572,30 +571,30 @@ static UIImage *PXEditorSliderThumbImage(void) {
     _imageView.image = self.document.sourceImage;
     self.canvas.frame = _zoomContainer.bounds;
 
-    CGFloat fitScale = (imageSize.width > 0) ? fitted.size.width / imageSize.width : 1.0;
-    _scrollView.minimumZoomScale = fitScale;
-    _scrollView.maximumZoomScale = fitScale * PXEditorMaxZoomFactor;
-    _scrollView.zoomScale = fitScale;
+    _scrollView.minimumZoomScale = baseScale;
+    _scrollView.maximumZoomScale = baseScale * PXEditorMaxZoomFactor;
+    _scrollView.zoomScale = baseScale;
     [self pxCenterContent];
-    // 裁剪/旋转/撤销重排后强制回到居中位：残留 offset 会造成"图片显示不全"。
-    CGSize contentSize = _scrollView.contentSize;
-    CGSize boundsSize = _scrollView.bounds.size;
-    if (contentSize.width <= boundsSize.width && contentSize.height <= boundsSize.height) {
+    CGSize newSize = _scrollView.contentSize;
+    if (preserve && previousSize.width > 0 && previousSize.height > 0) {
+        _scrollView.contentOffset = CGPointMake(
+            MIN(previousOffset.x / previousSize.width, 1.0) * newSize.width,
+            MIN(previousOffset.y / previousSize.height, 1.0) * newSize.height);
+    } else {
         _scrollView.contentOffset = CGPointMake(-_scrollView.contentInset.left,
                                                 -_scrollView.contentInset.top);
     }
 }
 
-- (CGRect)pxFittedRectForImageSize:(CGSize)imageSize inBounds:(CGRect)bounds {
+/// 基准缩放：编辑时铺满（取两轴比例较大者，另一轴超出交给滚动）；裁剪时适屏（整图可见）。
+- (CGFloat)pxBaseScaleForImageSize:(CGSize)imageSize inBounds:(CGRect)bounds {
     if (imageSize.width <= 0 || imageSize.height <= 0 ||
         bounds.size.width <= 0 || bounds.size.height <= 0) {
-        return CGRectZero;
+        return 1.0;
     }
-    CGFloat scale = MIN(bounds.size.width / imageSize.width, bounds.size.height / imageSize.height);
-    CGSize fitted = CGSizeMake(imageSize.width * scale, imageSize.height * scale);
-    return CGRectMake((bounds.size.width - fitted.width) / 2.0,
-                      (bounds.size.height - fitted.height) / 2.0,
-                      fitted.width, fitted.height);
+    CGFloat widthScale = bounds.size.width / imageSize.width;
+    CGFloat heightScale = bounds.size.height / imageSize.height;
+    return self.isCropMode ? MIN(widthScale, heightScale) : MAX(widthScale, heightScale);
 }
 
 - (void)pxCenterContent {
@@ -612,18 +611,6 @@ static UIImage *PXEditorSliderThumbImage(void) {
 
 - (void)scrollViewDidZoom {
     [self pxCenterContent];
-}
-
-- (void)pxDoubleTapped:(UITapGestureRecognizer *)gesture {
-    if (self.canvas.textEditing || self.isCropMode) return;
-    CGPoint point = [gesture locationInView:_scrollView];
-
-    if (_scrollView.zoomScale > _scrollView.minimumZoomScale * 1.05) {
-        [_scrollView setZoomScale:_scrollView.minimumZoomScale animated:YES];
-    } else {
-        CGRect zoomRect = CGRectMake(point.x - 40, point.y - 40, 80, 80);
-        [_scrollView zoomToRect:zoomRect animated:YES];
-    }
 }
 
 #pragma mark - 面板折叠
@@ -821,6 +808,8 @@ static UIImage *PXEditorSliderThumbImage(void) {
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
     [self.canvas setNeedsDisplay];
+    // 视口尺寸未变不会触发布局重排：显式切到适屏基准，保证裁剪框与手柄整图可见可触。
+    [self pxRelayoutZoomContainerPreservingOffset:NO];
 }
 
 - (void)pxExitCropModeApply:(BOOL)apply {
@@ -840,6 +829,8 @@ static UIImage *PXEditorSliderThumbImage(void) {
     // 表情行显隐由 pxLayoutBottomPanel 按 selectedToolIndex 统一恢复。
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
+    // 从适屏基准恢复铺满（applyCrop 的几何回调发生在 isCropMode 复位前，已按适屏重排过一次）。
+    [self pxRelayoutZoomContainerPreservingOffset:NO];
     [self pxRefreshButtons];
 }
 
@@ -919,7 +910,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
 }
 
 - (void)canvasDidChangeGeometry:(PXEditorCanvas *)canvas {
-    [self pxRelayoutZoomContainer];
+    [self pxRelayoutZoomContainerPreservingOffset:NO];
     [self pxRefreshButtons];
 }
 
