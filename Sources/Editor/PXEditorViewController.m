@@ -8,18 +8,19 @@
 static const CGFloat PXEditorTopBarHeight = 48.0;
 static const CGFloat PXEditorMaxZoomFactor = 8.0;
 
-// 工具面板：2 行 × 7 列大图标网格（对齐 Freeform 风格参考图；2×8 / 3×5 布局已废弃）。
+// 工具面板：2 行 × 7 列大图标网格（对齐参考图；2×8 / 3×5 布局已废弃）。
 static const NSUInteger PXEditorGridColumns = 7;
 static const CGFloat PXEditorToolButtonHeight = 44.0;
 static const CGFloat PXEditorGridHeight = 96.0;   // 2 行×44 + 行距 8
 
-// 面板行：线宽行（工具栏上方）/ 工具网格 / 颜色行（或贴纸行）。
+// 面板行：线宽行（工具栏上方）/ 工具网格（右侧彩虹取色钮）/ 贴纸表情行（仅贴纸工具显示）。
 static const CGFloat PXEditorRowSliderHeight = 44.0;
-static const CGFloat PXEditorRowColorHeight = 44.0;
+static const CGFloat PXEditorRowStickerHeight = 44.0;
 static const CGFloat PXEditorPanelPadTop = 10.0;
 static const CGFloat PXEditorPanelPadBottom = 12.0;
 static const CGFloat PXEditorPanelRowGap = 8.0;
 static const CGFloat PXEditorCropRowHeight = 48.0;
+static const CGFloat PXEditorColorButtonSize = 56.0;   // 彩虹环取色钮直径
 
 // 折叠把手：浮在面板上缘，收起后浮在屏幕下缘。
 static const CGFloat PXEditorPillWidth = 52.0;
@@ -38,8 +39,8 @@ typedef struct {
     NSString *iconName;   // SF Symbol；缺失时回退显示文字
 } PXEditorToolItem;
 
-// 顺序对齐 Freeform 风格参考图：第一行 画笔/平移/方框/椭圆/箭头/放大镜/直线，
-// 第二行 马赛克/文字/实心方/荧光/实心圆/聚光/贴纸。
+// 顺序对齐参考图：第一行 画笔/平移/方框/椭圆/箭头/放大镜/直线，
+// 第二行 马赛克/文字/实心方/实心圆/聚光/荧光/贴纸。
 // 图章（PXAnnotationTypeStamp）不再占用工具位：底层放置与渲染逻辑保留，仅工具栏不可达。
 static const PXEditorToolItem PXEditorTools[] = {
     { PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"画笔",   @"paintbrush" },
@@ -52,9 +53,9 @@ static const PXEditorToolItem PXEditorTools[] = {
     { PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"马赛克", @"squareshape.split.3x3" },
     { PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"文字",   @"textformat" },
     { PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"实心方", @"rectangle.fill" },
-    { PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"荧光",   @"pencil" },
     { PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"实心圆", @"ellipse.fill" },
-    { PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"聚光",   @"flashlight.on.fill" },
+    { PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"聚光",   @"circle.lefthalf.filled" },
+    { PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"荧光",   @"pencil" },
     { PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"贴纸",   @"photo" },
 };
 static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEditorTools[0]);
@@ -95,17 +96,14 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 @property (nonatomic, strong) UIButton *pillButton;
 @property (nonatomic, strong) UIView *bottomPanel;
 @property (nonatomic, strong) UIView *widthRow;
-@property (nonatomic, strong) UIView *widthDotBadge;
-@property (nonatomic, strong) UIView *widthDot;
+@property (nonatomic, strong) UIImageView *minWidthIcon;   // 线宽行左端“最细”示意
+@property (nonatomic, strong) UIImageView *maxWidthIcon;   // 线宽行右端“最粗”示意
 @property (nonatomic, strong) UISlider *widthSlider;
 @property (nonatomic, strong) UIView *toolGrid;
 @property (nonatomic, strong) NSMutableArray<UIButton *> *toolButtons;
-@property (nonatomic, strong) UIView *colorRow;
-@property (nonatomic, strong) NSArray<UIColor *> *colorPresets;
-@property (nonatomic, strong) NSMutableArray<UIButton *> *colorButtons;
-@property (nonatomic, strong) UIButton *customColorButton;
+@property (nonatomic, strong) UIButton *customColorButton;      // 彩虹环取色钮（网格右侧）
 @property (nonatomic, strong) CAGradientLayer *customColorGradient;
-@property (nonatomic, strong) UILabel *customColorPlusLabel;
+@property (nonatomic, strong) UIView *customColorSwatch;        // 环心：显示当前画笔色
 @property (nonatomic, strong) UIScrollView *stickerRow;
 @property (nonatomic, strong) NSMutableArray<UIButton *> *stickerButtons;
 @property (nonatomic, strong) UIView *cropRow;
@@ -129,19 +127,8 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
         _sourceImage = sourceImage;
         _delegate = delegate;
         _toolButtons = [[NSMutableArray alloc] init];
-        _colorButtons = [[NSMutableArray alloc] init];
         _stickerButtons = [[NSMutableArray alloc] init];
         _currentColor = [UIColor redColor];
-        _colorPresets = @[
-            [UIColor redColor],
-            [UIColor colorWithRed:1.0 green:0.55 blue:0.1 alpha:1.0],
-            [UIColor yellowColor],
-            [UIColor colorWithRed:0.15 green:0.75 blue:0.3 alpha:1.0],
-            [UIColor colorWithRed:0.1 green:0.5 blue:1.0 alpha:1.0],
-            [UIColor colorWithRed:0.65 green:0.3 blue:0.95 alpha:1.0],
-            [UIColor blackColor],
-            [UIColor whiteColor],
-        ];
     }
     return self;
 }
@@ -161,7 +148,7 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     [self pxConfigureWidthSlider];
 
     [self pxSelectToolIndex:PXEditorDefaultToolIndex()];
-    [self pxSelectColorIndex:0];
+    [self pxApplyCurrentColor];
     [self pxUpdatePillIcon];
     [self pxRefreshButtons];
     // 马赛克底图不在此预热：布局前画布尺寸为零会导致块尺寸取错，drawRect 首帧会按正确尺寸懒加载。
@@ -253,24 +240,22 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     [_pillButton addTarget:self action:@selector(pxPillTapped:) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:_pillButton];
 
-    // 线宽行：粗细调整独立成行，置于工具网格上方（带当前粗细预览点）。
+    // 线宽行：两端“最细/最粗”示意图标 + 白色大圆滑块，置于工具网格上方。
     _widthRow = [[UIView alloc] init];
     [_bottomPanel addSubview:_widthRow];
-    _widthDotBadge = [[UIView alloc] init];
-    _widthDotBadge.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.08];
-    _widthDotBadge.layer.cornerRadius = 18.0;
-    [_widthRow addSubview:_widthDotBadge];
-    _widthDot = [[UIView alloc] init];
-    _widthDot.backgroundColor = self.currentColor;
-    [_widthDotBadge addSubview:_widthDot];
+    _minWidthIcon = [[UIImageView alloc] initWithImage:[self pxWidthHintIconNamed:@"circle.inset.filled"]];
+    [_widthRow addSubview:_minWidthIcon];
+    _maxWidthIcon = [[UIImageView alloc] initWithImage:[self pxWidthHintIconNamed:@"circle"]];
+    [_widthRow addSubview:_maxWidthIcon];
     _widthSlider = [[UISlider alloc] init];
     _widthSlider.minimumTrackTintColor = PXEditorAccentColor();
     _widthSlider.maximumTrackTintColor = [UIColor colorWithWhite:0.35 alpha:1.0];
+    [_widthSlider setThumbImage:PXEditorSliderThumbImage() forState:UIControlStateNormal];
     _widthSlider.accessibilityLabel = @"画笔粗细";
     [_widthSlider addTarget:self action:@selector(pxWidthChanged:) forControlEvents:UIControlEventValueChanged];
     [_widthRow addSubview:_widthSlider];
 
-    // 工具网格（2 行 × 7 列，顺序对齐 Freeform 风格参考图）
+    // 工具网格（2 行 × 7 列，顺序对齐参考图）；右侧竖排彩虹取色钮跨两行居中
     _toolGrid = [[UIView alloc] init];
     [_bottomPanel addSubview:_toolGrid];
     for (NSUInteger i = 0; i < PXEditorToolCount; i++) {
@@ -296,50 +281,27 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
         [self.toolButtons addObject:tool];
     }
 
-    // 颜色行：预设色 + 自定义取色入口
-    _colorRow = [[UIView alloc] init];
-    [_bottomPanel addSubview:_colorRow];
-    for (NSUInteger i = 0; i < self.colorPresets.count; i++) {
-        UIButton *colorButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        colorButton.backgroundColor = self.colorPresets[i];
-        colorButton.layer.cornerRadius = 15.0;
-        colorButton.layer.borderWidth = 2.0;
-        colorButton.layer.borderColor = [UIColor clearColor].CGColor;
-        colorButton.accessibilityLabel = @"预设颜色";
-        [colorButton addTarget:self action:@selector(pxColorTapped:) forControlEvents:UIControlEventTouchUpInside];
-        colorButton.tag = (NSInteger)i;
-        [_colorRow addSubview:colorButton];
-        [self.colorButtons addObject:colorButton];
-    }
-
+    // 彩虹环取色钮：网格右侧跨两行，外环彩虹渐变、环心显示当前画笔色，点击唤起系统取色器
     _customColorButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    _customColorButton.layer.cornerRadius = 15.0;
-    _customColorButton.layer.borderWidth = 1.0;
-    _customColorButton.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.4].CGColor;
     _customColorButton.accessibilityLabel = @"自定义颜色";
     [_customColorButton addTarget:self action:@selector(pxCustomColorTapped:)
                  forControlEvents:UIControlEventTouchUpInside];
-    [_colorRow addSubview:_customColorButton];
-    // 渐变环 + 独立“+”标签：sublayer 会盖住 UIButton 自绘 title，必须用子视图承载。
+    [_bottomPanel addSubview:_customColorButton];
     _customColorGradient = [CAGradientLayer layer];
     _customColorGradient.type = kCAGradientLayerConic;
-    _customColorGradient.cornerRadius = 13.0;
     NSMutableArray<id> *rainbow = [NSMutableArray array];
     for (NSUInteger i = 0; i <= 6; i++) {
         [rainbow addObject:(id)[UIColor colorWithHue:(CGFloat)i / 6.0 saturation:0.75 brightness:1.0 alpha:1.0].CGColor];
     }
     _customColorGradient.colors = rainbow;
     [_customColorButton.layer addSublayer:_customColorGradient];
-    _customColorPlusLabel = [[UILabel alloc] init];
-    _customColorPlusLabel.text = @"+";
-    _customColorPlusLabel.textColor = [UIColor whiteColor];
-    _customColorPlusLabel.font = [UIFont boldSystemFontOfSize:17];
-    _customColorPlusLabel.textAlignment = NSTextAlignmentCenter;
-    _customColorPlusLabel.userInteractionEnabled = NO;
-    _customColorPlusLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [_customColorButton addSubview:_customColorPlusLabel];
+    _customColorSwatch = [[UIView alloc] init];
+    _customColorSwatch.backgroundColor = self.currentColor;
+    _customColorSwatch.layer.cornerRadius = (PXEditorColorButtonSize - 10.0) / 2.0;
+    _customColorSwatch.userInteractionEnabled = NO;
+    [_customColorButton addSubview:_customColorSwatch];
 
-    // 贴纸行（横向滚动，选中贴纸工具时替换颜色行）
+    // 贴纸行（横向滚动，选中贴纸工具时显示在网格下方）
     _stickerRow = [[UIScrollView alloc] init];
     _stickerRow.showsHorizontalScrollIndicator = NO;
     _stickerRow.hidden = YES;
@@ -391,20 +353,26 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _widthSlider.minimumValue = 2.0;
     _widthSlider.maximumValue = maxValue;
     _widthSlider.value = self.canvas.currentLineWidth;
-    [self pxUpdateWidthPreview];
 }
 
-/// 预览点直径 6→24pt 映射滑条区间；颜色跟随当前画笔色。
-- (void)pxUpdateWidthPreview {
-    CGFloat range = _widthSlider.maximumValue - _widthSlider.minimumValue;
-    CGFloat fraction = range > 0 ? (_widthSlider.value - _widthSlider.minimumValue) / range : 0;
-    CGFloat diameter = 6.0 + MAX(0.0, MIN(1.0, fraction)) * 18.0;
-    CGFloat badgeSize = _widthDotBadge.bounds.size.width;
-    if (badgeSize <= 0) badgeSize = 36.0;
-    _widthDot.frame = CGRectMake((badgeSize - diameter) / 2.0, (badgeSize - diameter) / 2.0,
-                                 diameter, diameter);
-    _widthDot.layer.cornerRadius = diameter / 2.0;
-    _widthDot.backgroundColor = self.canvas.currentColor ?: self.currentColor;
+/// 线宽行两端示意图标（白色，22pt）。
+- (UIImage *)pxWidthHintIconNamed:(NSString *)iconName {
+    UIImage *icon = [UIImage systemImageNamed:iconName];
+    if (!icon) return nil;
+    UIImageSymbolConfiguration *configuration =
+        [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIFontWeightRegular];
+    return [icon imageWithConfiguration:configuration];
+}
+
+/// 线宽滑块：白色大圆（参考图样式）。
+static UIImage *PXEditorSliderThumbImage(void) {
+    CGFloat size = 28.0;
+    UIGraphicsImageRenderer *renderer =
+        [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(size, size)];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGContextSetFillColorWithColor(context.CGContext, [UIColor whiteColor].CGColor);
+        CGContextFillEllipseInRect(context.CGContext, CGRectInset(CGRectMake(0, 0, size, size), 1.0, 1.0));
+    }];
 }
 
 - (CGFloat)pxDefaultLineWidth {
@@ -468,15 +436,19 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 }
 
 /// 底部 UI 总占高（面板或把手浮条 + 安全区），画布可视区据此避让。
-/// 裁剪模式沿用展开高度：面板高度不变 → 画布滚动区不变，进出裁剪不触发
-/// pxRelayoutZoomContainer 强制重适配（对齐旧版行为，用户缩放状态不被打断）。
+/// 贴纸工具时网格下方追加表情行（面板增高，画布重适配一次，与折叠/展开同语义）。
 - (CGFloat)pxBottomChromeHeight {
     CGFloat bottom = self.view.safeAreaInsets.bottom;
     if (self.panelCollapsed) {
         return bottom + PXEditorPillHeight + 18.0;
     }
-    return bottom + PXEditorPanelPadTop + PXEditorRowSliderHeight + PXEditorPanelRowGap +
-           PXEditorGridHeight + PXEditorPanelRowGap + PXEditorRowColorHeight + PXEditorPanelPadBottom;
+    CGFloat height = bottom + PXEditorPanelPadTop + PXEditorRowSliderHeight + PXEditorPanelRowGap +
+                     PXEditorGridHeight + PXEditorPanelPadBottom;
+    BOOL stickerTool = (PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker);
+    if (stickerTool && !self.isCropMode) {
+        height += PXEditorPanelRowGap + PXEditorRowStickerHeight;
+    }
+    return height;
 }
 
 - (void)pxLayoutTopBarWithTop:(CGFloat)top {
@@ -500,22 +472,35 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _widthRow.frame = CGRectMake(0, y, width, PXEditorRowSliderHeight);
     y += PXEditorRowSliderHeight + PXEditorPanelRowGap;
 
-    _toolGrid.frame = CGRectMake(0, y, width, PXEditorGridHeight);
-    y += PXEditorGridHeight + PXEditorPanelRowGap;
+    // 网格与彩虹取色钮并排：钮占右侧固定宽，网格让出余量
+    CGFloat colorX = width - PXEditorPanelPadBottom - PXEditorColorButtonSize;
+    CGFloat gridWidth = MAX(200.0, colorX - PXEditorPanelRowGap);
+    _toolGrid.frame = CGRectMake(0, y, gridWidth, PXEditorGridHeight);
+    _customColorButton.frame = CGRectMake(colorX, y + (PXEditorGridHeight - PXEditorColorButtonSize) / 2.0,
+                                          PXEditorColorButtonSize, PXEditorColorButtonSize);
+    y += PXEditorGridHeight;
 
-    _colorRow.frame = CGRectMake(0, y, width, PXEditorRowColorHeight);
-    _stickerRow.frame = _colorRow.frame;
-    // 裁剪模式沿用展开面板高度（不触发画布重适配），操作行在内容区垂直居中。
-    CGFloat contentHeight = PXEditorPanelPadTop + PXEditorRowSliderHeight + PXEditorPanelRowGap +
-                            PXEditorGridHeight + PXEditorPanelRowGap + PXEditorRowColorHeight;
+    // 表情行仅在贴纸工具（且非裁剪）时显示，占用网格下方一行；
+    // gap 随表情行一起出现，保证与 pxBottomChromeHeight 逐项一致（两种模式底边距均为 PadBottom）。
+    BOOL stickerTool = (PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker);
+    BOOL showStickerRow = (stickerTool && !self.isCropMode);
+    if (showStickerRow) {
+        y += PXEditorPanelRowGap;
+        _stickerRow.frame = CGRectMake(0, y, width, PXEditorRowStickerHeight);
+        y += PXEditorRowStickerHeight;
+    }
+    _stickerRow.hidden = !showStickerRow;
+
+    // 裁剪模式沿用面板高度（不触发画布重适配），操作行在内容区垂直居中。
+    CGFloat contentHeight = y - PXEditorPanelPadTop;
     _cropRow.frame = CGRectMake(0, PXEditorPanelPadTop + (contentHeight - PXEditorCropRowHeight) / 2.0,
                                 width, PXEditorCropRowHeight);
 
     [self pxLayoutToolButtons];
     [self pxLayoutWidthRow];
-    [self pxLayoutColorRow];
     [self pxLayoutStickerRow];
     [self pxLayoutCropRow];
+    [self pxLayoutCustomColorGradient];
 }
 
 - (void)pxLayoutToolButtons {
@@ -537,31 +522,18 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 
 - (void)pxLayoutWidthRow {
     CGFloat width = _widthRow.bounds.size.width;
-    _widthDotBadge.frame = CGRectMake(8, 4, 36, 36);
-    _widthSlider.frame = CGRectMake(54, 4, MAX(40.0, width - 54.0 - 12.0), 36);
-    [self pxUpdateWidthPreview];
-}
-
-- (void)pxLayoutColorRow {
-    CGFloat dotSize = 30.0;
-    CGFloat rowWidth = _colorRow.bounds.size.width;
-    NSUInteger count = self.colorButtons.count + 1;   // 预设 + 自定义
-    CGFloat step = count > 1 ? (rowWidth - 24.0 - dotSize) / (CGFloat)(count - 1) : dotSize;
-    step = MAX(step, dotSize + 4.0);
-    CGFloat x = 12.0;
-    for (UIButton *button in self.colorButtons) {
-        button.frame = CGRectMake(x, 7, dotSize, dotSize);
-        x += step;
-    }
-    _customColorButton.frame = CGRectMake(x, 7, dotSize, dotSize);
-    [self pxLayoutCustomColorGradient];
+    _minWidthIcon.frame = CGRectMake(16, 11, 22, 22);
+    _maxWidthIcon.frame = CGRectMake(MAX(16.0, width - 38.0), 11, 22, 22);
+    _widthSlider.frame = CGRectMake(48, 0, MAX(40.0, width - 48.0 - 44.0), PXEditorRowSliderHeight);
 }
 
 - (void)pxLayoutCustomColorGradient {
     if (!_customColorGradient) return;
-    CGRect bounds = _customColorButton.bounds;
-    _customColorGradient.frame = UIEdgeInsetsInsetRect(bounds, UIEdgeInsetsMake(2, 2, 2, 2));
-    _customColorPlusLabel.frame = bounds;
+    // 渐变铺满整钮作外环，环心 swatch 内缩 5pt 显示当前画笔色。
+    _customColorGradient.frame = _customColorButton.bounds;
+    _customColorGradient.cornerRadius = PXEditorColorButtonSize / 2.0;
+    _customColorSwatch.frame = UIEdgeInsetsInsetRect(_customColorButton.bounds,
+                                                     UIEdgeInsetsMake(5, 5, 5, 5));
 }
 
 - (void)pxLayoutStickerRow {
@@ -701,8 +673,9 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
         self.canvas.currentFillStyle = PXEditorTools[index].fillStyle;
     }
     BOOL stickerTool = (PXEditorTools[index].type == PXAnnotationTypeSticker);
+    // 表情行显隐改变面板高度，交由 viewDidLayoutSubviews 重算（画布随之重适配一次）。
     self.stickerRow.hidden = !stickerTool;
-    self.colorRow.hidden = stickerTool;
+    [self.view setNeedsLayout];
 
     // 线宽行对绘制类工具有效，其余工具置灰提示（保持行高不变，避免切工具时画布重排）。
     PXAnnotationType type = PXEditorTools[index].type;
@@ -714,37 +687,16 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     self.widthSlider.enabled = widthTool;
 }
 
-- (void)pxSelectColorIndex:(NSInteger)index {
-    for (NSUInteger i = 0; i < self.colorButtons.count; i++) {
-        UIButton *button = self.colorButtons[i];
-        button.layer.borderColor = ((NSInteger)i == index)
-            ? [UIColor whiteColor].CGColor
-            : [UIColor clearColor].CGColor;
-    }
-    BOOL customSelected = (index < 0);
-    self.customColorButton.layer.borderWidth = customSelected ? 2.5 : 1.0;
-    self.customColorButton.layer.borderColor = customSelected
-        ? PXEditorAccentColor().CGColor
-        : [UIColor colorWithWhite:1.0 alpha:0.4].CGColor;
-    if (index >= 0 && (NSUInteger)index < self.colorPresets.count) {
-        self.currentColor = self.colorPresets[(NSUInteger)index];
-        // 选中预设色时自定义入口还原成“彩虹环 +”语义；所选自定义色仍保留在按钮上待回选。
-        self.customColorGradient.hidden = NO;
-        self.customColorPlusLabel.hidden = NO;
-        self.customColorButton.backgroundColor = nil;
-    }
+/// 当前画笔色统一应用点：画布 + 彩虹环心 swatch。
+- (void)pxApplyCurrentColor {
     if (self.canvas) {
         self.canvas.currentColor = self.currentColor;
     }
-    [self pxUpdateWidthPreview];
+    self.customColorSwatch.backgroundColor = self.currentColor;
 }
 
 - (void)pxToolTapped:(UIButton *)sender {
     [self pxSelectToolIndex:(NSUInteger)sender.tag];
-}
-
-- (void)pxColorTapped:(UIButton *)sender {
-    [self pxSelectColorIndex:(NSInteger)sender.tag];
 }
 
 #pragma mark - 系统取色器
@@ -772,11 +724,8 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
                      continuously:(BOOL)continuously {
     if (self.colorPicker != viewController) return;
     self.currentColor = color;
-    // 自定义按钮展示所选色（渐变环与“+”让位），便于下次直接取用。
-    self.customColorGradient.hidden = YES;
-    self.customColorPlusLabel.hidden = YES;
-    self.customColorButton.backgroundColor = color;
-    [self pxSelectColorIndex:-1];
+    // 环心 swatch 展示所选色，便于下次直接查看当前色。
+    [self pxApplyCurrentColor];
 }
 
 /// 系统 X 关闭按钮已自行 dismiss 该控制器（见 UIKit 头文件注释），这里只清理引用。
@@ -807,7 +756,6 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 
 - (void)pxWidthChanged:(UISlider *)slider {
     self.canvas.currentLineWidth = [self pxClampLineWidth:slider.value];
-    [self pxUpdateWidthPreview];
 }
 
 - (void)pxUndoTapped:(UIButton *)sender {
@@ -867,7 +815,7 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     [self.canvas beginCrop];
     self.widthRow.hidden = YES;
     self.toolGrid.hidden = YES;
-    self.colorRow.hidden = YES;
+    self.customColorButton.hidden = YES;
     self.stickerRow.hidden = YES;
     self.cropRow.hidden = NO;
     [self.view setNeedsLayout];
@@ -887,10 +835,9 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _scrollView.pinchGestureRecognizer.enabled = YES;
     self.cropRow.hidden = YES;
     self.widthRow.hidden = NO;
-    BOOL stickerTool = (PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker);
     self.toolGrid.hidden = NO;
-    self.colorRow.hidden = stickerTool;
-    self.stickerRow.hidden = !stickerTool;
+    self.customColorButton.hidden = NO;
+    // 表情行显隐由 pxLayoutBottomPanel 按 selectedToolIndex 统一恢复。
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
     [self pxRefreshButtons];
