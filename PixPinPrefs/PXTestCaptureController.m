@@ -27,6 +27,7 @@
     [captureGroup setProperty:@"点击后会先让 SpringBoard 重读设置，再发起截图。本页不再弹出阻塞提示框；区域、冻结和即时模式应直接出现冻结画面、选区与底部操作栏。" forKey:@"footerText"];
     [items addObject:captureGroup];
 
+    [items addObject:[self pxButton:@"全屏标记（截图后直接编辑）" action:@selector(testMarkup:)]];
     [items addObject:[self pxButton:@"测试全屏截图" action:@selector(testFullscreen:)]];
     [items addObject:[self pxButton:@"测试区域截图" action:@selector(testArea:)]];
     [items addObject:[self pxButton:@"测试冻结截图" action:@selector(testFreeze:)]];
@@ -167,6 +168,10 @@
 
 - (void)testInstant:(PSSpecifier *)specifier {
     [self pxRunCaptureNotification:PXDarwinCaptureInstant label:@"即时区域截图"];
+}
+
+- (void)testMarkup:(PSSpecifier *)specifier {
+    [self pxRunCaptureNotification:PXDarwinCaptureMarkup label:@"全屏标记"];
 }
 
 - (void)cancelCapture:(PSSpecifier *)specifier {

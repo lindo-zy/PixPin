@@ -17,6 +17,7 @@ clang \
     "$ROOT_DIR/Sources/Common/PXGeometry.m" \
     "$ROOT_DIR/Sources/Common/PXConstants.m" \
     "$ROOT_DIR/Sources/Common/PXClaimSet.m" \
+    "$ROOT_DIR/Sources/Editor/PXEditorLayout.m" \
     "$ROOT_DIR/Tests/Unit/PXHostTests.m"
 
 "$OUT_BIN"

@@ -2,27 +2,18 @@
 #import "PXEditorCanvas.h"
 #import "PXEditorDocument.h"
 #import "PXEditorRenderer.h"
+#import "PXEditorLayout.h"
 #import "../Common/PXLog.h"
 #import "../Common/PXConstants.h"
 #import "../Output/PXClipboardWriter.h"
 #import "../Output/PXSharePresenter.h"
 
-static const CGFloat PXEditorTopBarHeight = 48.0;
 static const CGFloat PXEditorMaxZoomFactor = 8.0;
-
-// 工具面板：2 行 × 7 列大图标网格（对齐参考图；2×8 / 3×5 布局已废弃）。
-static const NSUInteger PXEditorGridColumns = 7;
-static const CGFloat PXEditorToolButtonHeight = 44.0;
-static const CGFloat PXEditorGridHeight = 96.0;   // 2 行×44 + 行距 8
-
-// 面板行：线宽行（工具栏上方）/ 工具网格（右侧彩虹取色钮）/ 贴纸表情行（仅贴纸工具显示）。
 static const CGFloat PXEditorRowSliderHeight = 44.0;
-static const CGFloat PXEditorRowStickerHeight = 44.0;
 static const CGFloat PXEditorPanelPadTop = 10.0;
 static const CGFloat PXEditorPanelPadBottom = 12.0;
 static const CGFloat PXEditorPanelRowGap = 8.0;
 static const CGFloat PXEditorCropRowHeight = 48.0;
-static const CGFloat PXEditorColorButtonSize = 56.0;   // 彩虹环取色钮直径
 
 static UIColor *PXEditorAccentColor(void) {
     return [UIColor colorWithRed:1.0 green:0.78 blue:0.08 alpha:1.0];
@@ -39,7 +30,7 @@ typedef struct {
 
 // 顺序对齐参考图：第一行 画笔/平移/方框/椭圆/箭头/放大镜/直线，
 // 第二行 马赛克/文字/实心方/实心圆/聚光/荧光/贴纸。
-// 图章（PXAnnotationTypeStamp）不再占用工具位：底层放置与渲染逻辑保留，仅工具栏不可达。
+// 图章保留独立入口，布局按实际工具数量换行。
 static const PXEditorToolItem PXEditorTools[] = {
     { PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"画笔",   @"paintbrush" },
     { PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"平移",   @"hand.point.up.left" },
@@ -55,6 +46,7 @@ static const PXEditorToolItem PXEditorTools[] = {
     { PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"聚光",   @"circle.lefthalf.filled" },
     { PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"荧光",   @"pencil" },
     { PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"贴纸",   @"photo" },
+    { PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"序号图章", @"1.circle" },
 };
 static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEditorTools[0]);
 
@@ -80,6 +72,15 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 @property (nonatomic, strong) UIView *zoomContainer;
 @property (nonatomic, strong) UIImageView *imageView;
 
+@property (nonatomic, strong) UIView *editorCard;
+@property (nonatomic, strong) UIImageView *backdropView;
+@property (nonatomic, strong) UIScrollView *panelScrollView;
+@property (nonatomic, strong) NSArray<UIButton *> *actionButtons;
+@property (nonatomic, strong) UIButton *saveButton;
+@property (nonatomic, strong) UIButton *fitButton;
+@property (nonatomic, strong) UIButton *dockButton;
+@property (nonatomic, assign) BOOL panelAtTop;
+@property (nonatomic, assign) BOOL fitAbovePanel;
 @property (nonatomic, strong) UIView *topBar;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) UIButton *cropButton;
@@ -133,6 +134,16 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor blackColor];
+    self.backdropView = [[UIImageView alloc] initWithImage:self.backdropImage ?: self.sourceImage];
+    self.backdropView.contentMode = UIViewContentModeScaleAspectFill;
+    self.backdropView.alpha = 0.45;
+    self.backdropView.clipsToBounds = YES;
+    [self.view addSubview:self.backdropView];
+    self.editorCard = [[UIView alloc] init];
+    self.editorCard.backgroundColor = [UIColor colorWithWhite:0.10 alpha:1.0];
+    self.editorCard.layer.cornerRadius = self.fullscreenMarkup ? 0.0 : 28.0;
+    self.editorCard.clipsToBounds = YES;
+    [self.view addSubview:self.editorCard];
 
     self.document = [[PXEditorDocument alloc] initWithSourceImage:self.sourceImage];
     self.document.backgroundColor = [UIColor whiteColor];
@@ -142,8 +153,19 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     [self pxBuildTopBar];
     [self pxBuildBottomPanel];
     [self pxConfigureWidthSlider];
+    self.actionButtons = @[self.closeButton, self.undoButton, self.redoButton,
+        self.cropButton, self.rotateButton, self.clipboardButton, self.shareButton,
+        self.saveButton, self.fitButton, self.deleteButton, self.frontButton, self.doneButton];
+    if (self.fullscreenMarkup) {
+        self.actionButtons = @[self.closeButton, self.undoButton, self.redoButton,
+            self.cropButton, self.rotateButton, self.clipboardButton, self.shareButton,
+            self.saveButton, self.fitButton, self.deleteButton, self.frontButton,
+            self.dockButton, self.doneButton];
+        for (UIButton *button in self.actionButtons) [self.toolGrid addSubview:button];
+    }
+    self.dockButton.hidden = !self.fullscreenMarkup;
 
-    [self pxSelectToolIndex:PXEditorDefaultToolIndex()];
+    [self pxSelectToolIndex:self.fullscreenMarkup ? 0 : PXEditorDefaultToolIndex()];
     [self pxApplyCurrentColor];
     [self pxRefreshButtons];
     // 马赛克底图不在此预热：布局前画布尺寸为零会导致块尺寸取错，drawRect 首帧会按正确尺寸懒加载。
@@ -161,10 +183,11 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _scrollView.showsVerticalScrollIndicator = YES;
     _scrollView.showsHorizontalScrollIndicator = YES;
     _scrollView.bouncesZoom = YES;
+    _scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     _scrollView.delegate = self;
     _scrollView.minimumZoomScale = 1.0;
     _scrollView.maximumZoomScale = PXEditorMaxZoomFactor;
-    [self.view addSubview:_scrollView];
+    [self.editorCard addSubview:_scrollView];
 
     _zoomContainer = [[UIView alloc] init];
     [_scrollView addSubview:_zoomContainer];
@@ -185,9 +208,9 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 - (void)pxBuildTopBar {
     _topBar = [[UIView alloc] init];
     _topBar.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.88];
-    [self.view addSubview:_topBar];
+    [self.editorCard addSubview:_topBar];
 
-    // 顶栏按钮用 SF Symbols 图标（ShellX createIconBtn 风格），避免小屏文字溢出。
+    // 所有操作保留独立按钮；小屏自动换行。
     _closeButton = [self pxTopIconNamed:@"xmark" a11y:@"关闭" action:@selector(pxCloseTapped:)];
     _undoButton = [self pxTopIconNamed:@"arrow.uturn.backward" a11y:@"撤销" action:@selector(pxUndoTapped:)];
     _redoButton = [self pxTopIconNamed:@"arrow.uturn.forward" a11y:@"重做" action:@selector(pxRedoTapped:)];
@@ -195,11 +218,14 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _rotateButton = [self pxTopIconNamed:@"rotate.right" a11y:@"顺时针旋转90度" action:@selector(pxRotateTapped:)];
     _clipboardButton = [self pxTopIconNamed:@"doc.on.doc" a11y:@"复制图片" action:@selector(pxCopyTapped:)];
     _shareButton = [self pxTopIconNamed:@"square.and.arrow.up" a11y:@"分享图片" action:@selector(pxShareTapped:)];
-    // 删除/置顶与复制/分享同槽位互斥显示（选中标注时替换），见 pxRefreshButtons。
+    _saveButton = [self pxTopIconNamed:@"square.and.arrow.down" a11y:@"保存到相册" action:@selector(pxSaveTapped:)];
+    _fitButton = [self pxTopIconNamed:@"arrow.up.left.and.arrow.down.right" a11y:@"整图适屏" action:@selector(pxFitTapped:)];
+    _dockButton = [self pxTopIconNamed:@"rectangle.topthird.inset.filled" a11y:@"工具面板移至顶部或底部" action:@selector(pxDockTapped:)];
     _deleteButton = [self pxTopIconNamed:@"trash" a11y:@"删除选中标注" action:@selector(pxDeleteTapped:)];
     _frontButton = [self pxTopIconNamed:@"arrow.up.to.line" a11y:@"选中标注置顶" action:@selector(pxFrontTapped:)];
     _doneButton = [self pxTopIconNamed:@"checkmark" a11y:@"完成" action:@selector(pxDoneTapped:)];
     _doneButton.tintColor = [UIColor systemGreenColor];
+    _closeButton.tintColor = [UIColor systemRedColor];
 }
 
 - (UIButton *)pxTopIconNamed:(NSString *)iconName a11y:(NSString *)a11y action:(SEL)action {
@@ -211,8 +237,12 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
             [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIFontWeightMedium];
         [button setImage:[icon imageWithConfiguration:configuration] forState:UIControlStateNormal];
     } else {
-        [button setTitle:@"·" forState:UIControlStateNormal];   // 符号缺失兜底
+        [button setTitle:a11y forState:UIControlStateNormal];
+        button.titleLabel.font = [UIFont systemFontOfSize:10];
+        button.titleLabel.adjustsFontSizeToFitWidth = YES;
     }
+    button.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.08];
+    button.layer.cornerRadius = 12.0;
     button.accessibilityLabel = a11y;
     [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     [self.topBar addSubview:button];
@@ -221,12 +251,26 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 
 - (void)pxBuildBottomPanel {
     _bottomPanel = [[UIView alloc] init];
-    _bottomPanel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.92];
-    [self.view addSubview:_bottomPanel];
+    _bottomPanel.backgroundColor = self.fullscreenMarkup
+        ? [UIColor colorWithRed:0.02 green:0.23 blue:0.22 alpha:0.94]
+        : [UIColor colorWithWhite:0.13 alpha:1.0];
+    _bottomPanel.layer.cornerRadius = self.fullscreenMarkup ? 24.0 : 0.0;
+    _bottomPanel.clipsToBounds = YES;
+    [self.editorCard addSubview:_bottomPanel];
+    _panelScrollView = [[UIScrollView alloc] init];
+    _panelScrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    _panelScrollView.alwaysBounceVertical = NO;
+    [_bottomPanel addSubview:_panelScrollView];
 
     // 线宽行：两端“最细/最粗”示意图标 + 白色大圆滑块，置于工具网格上方。
     _widthRow = [[UIView alloc] init];
-    [_bottomPanel addSubview:_widthRow];
+    if (self.fullscreenMarkup) {
+        _widthRow.backgroundColor = _bottomPanel.backgroundColor;
+        _widthRow.layer.cornerRadius = 20.0;
+        [self.editorCard addSubview:_widthRow];
+    } else {
+        [_bottomPanel addSubview:_widthRow];
+    }
     _minWidthIcon = [[UIImageView alloc] initWithImage:[self pxWidthHintIconNamed:@"circle.inset.filled"]];
     [_widthRow addSubview:_minWidthIcon];
     _maxWidthIcon = [[UIImageView alloc] initWithImage:[self pxWidthHintIconNamed:@"circle.fill"]];
@@ -239,9 +283,9 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     [_widthSlider addTarget:self action:@selector(pxWidthChanged:) forControlEvents:UIControlEventValueChanged];
     [_widthRow addSubview:_widthSlider];
 
-    // 工具网格（2 行 × 7 列，顺序对齐参考图）；右侧竖排彩虹取色钮跨两行居中
+    // 多排工具网格，列数按最小触控宽度自动计算。
     _toolGrid = [[UIView alloc] init];
-    [_bottomPanel addSubview:_toolGrid];
+    [_panelScrollView addSubview:_toolGrid];
     for (NSUInteger i = 0; i < PXEditorToolCount; i++) {
         UIButton *tool = [UIButton buttonWithType:UIButtonTypeSystem];
         tool.tintColor = [UIColor whiteColor];
@@ -265,12 +309,12 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
         [self.toolButtons addObject:tool];
     }
 
-    // 彩虹环取色钮：网格右侧跨两行，外环彩虹渐变、环心显示当前画笔色，点击唤起系统取色器
+    // 彩虹环作为独立网格项，点击唤起系统取色器。
     _customColorButton = [UIButton buttonWithType:UIButtonTypeCustom];
     _customColorButton.accessibilityLabel = @"自定义颜色";
     [_customColorButton addTarget:self action:@selector(pxCustomColorTapped:)
                  forControlEvents:UIControlEventTouchUpInside];
-    [_bottomPanel addSubview:_customColorButton];
+    [_toolGrid addSubview:_customColorButton];
     _customColorGradient = [CAGradientLayer layer];
     _customColorGradient.type = kCAGradientLayerConic;
     NSMutableArray<id> *rainbow = [NSMutableArray array];
@@ -281,15 +325,16 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     [_customColorButton.layer addSublayer:_customColorGradient];
     _customColorSwatch = [[UIView alloc] init];
     _customColorSwatch.backgroundColor = self.currentColor;
-    _customColorSwatch.layer.cornerRadius = (PXEditorColorButtonSize - 10.0) / 2.0;
+    _customColorSwatch.layer.cornerRadius = 17.0;
     _customColorSwatch.userInteractionEnabled = NO;
     [_customColorButton addSubview:_customColorSwatch];
 
-    // 贴纸行（横向滚动，选中贴纸工具时显示在网格下方）
+    // 贴纸同样使用多排网格，与工具一起纵向滚动。
     _stickerRow = [[UIScrollView alloc] init];
     _stickerRow.showsHorizontalScrollIndicator = NO;
+    _stickerRow.scrollEnabled = NO;
     _stickerRow.hidden = YES;
-    [_bottomPanel addSubview:_stickerRow];
+    [_panelScrollView addSubview:_stickerRow];
     NSArray<NSString *> *stickers = @[
         @"✅", @"❌", @"⚠️", @"🔥", @"⭐️", @"💡", @"📌", @"🎯",
         @"👍", @"👌", @"🙌", @"🤩", @"😂", @"🥰", @"😎", @"🤔",
@@ -378,147 +423,132 @@ static UIImage *PXEditorSliderThumbImage(void) {
 
 #pragma mark - 布局
 
-- (void)viewDidLayoutSubviews {
-    [super viewDidLayoutSubviews];
-
-    CGFloat viewWidth = self.view.bounds.size.width;
-    CGFloat viewHeight = self.view.bounds.size.height;
-    CGFloat top = self.view.safeAreaInsets.top;
-
-    CGFloat panelHeight = [self pxBottomChromeHeight];
-    CGFloat panelTop = viewHeight - panelHeight;
-
-    _topBar.frame = CGRectMake(0, 0, viewWidth, top + PXEditorTopBarHeight);
-    [self pxLayoutTopBarWithTop:top];
-
-    _bottomPanel.frame = CGRectMake(0, panelTop, viewWidth, panelHeight);
-    [self pxLayoutBottomPanel];
-    [self pxLayoutCustomColorGradient];
-
-    CGRect scrollFrame = CGRectMake(0, top + PXEditorTopBarHeight,
-                                    viewWidth,
-                                    panelTop - top - PXEditorTopBarHeight);
-    if (!CGRectEqualToRect(_scrollView.frame, scrollFrame)) {
-        BOOL needsReset = !CGSizeEqualToSize(_scrollView.frame.size, scrollFrame.size);
-        _scrollView.frame = scrollFrame;
-        if (needsReset) {
-            [self pxRelayoutZoomContainerPreservingOffset:YES];
-        }
-    }
+- (NSUInteger)pxGridItemCount {
+    return self.toolButtons.count + 1 + (self.fullscreenMarkup ? self.actionButtons.count : 0);
 }
 
-/// 底部 UI 总占高（常驻面板 + 安全区），画布可视区据此避让。
-/// 贴纸工具时网格下方追加表情行（面板增高，画布重适配一次）。
-- (CGFloat)pxBottomChromeHeight {
-    CGFloat bottom = self.view.safeAreaInsets.bottom;
-    CGFloat height = bottom + PXEditorPanelPadTop + PXEditorRowSliderHeight + PXEditorPanelRowGap +
-                     PXEditorGridHeight + PXEditorPanelPadBottom;
-    BOOL stickerTool = (PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker);
-    if (stickerTool && !self.isCropMode) {
-        height += PXEditorPanelRowGap + PXEditorRowStickerHeight;
+- (PXEditorGridLayout)pxToolLayoutForWidth:(CGFloat)width {
+    return PXEditorGridMake(width, [self pxGridItemCount], self.fullscreenMarkup ? 7 : 6);
+}
+
+- (CGFloat)pxPanelContentHeightForWidth:(CGFloat)width {
+    CGFloat height = [self pxToolLayoutForWidth:width].height;
+    if (PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker) {
+        height += PXEditorPanelRowGap + PXEditorGridMake(width, self.stickerButtons.count, 8).height;
     }
     return height;
 }
 
-- (void)pxLayoutTopBarWithTop:(CGFloat)top {
-    CGFloat width = self.topBar.bounds.size.width;
-    CGFloat y = top;
-    CGFloat height = PXEditorTopBarHeight;
-    CGFloat buttonWidth = 40.0;
-    // 左区：关闭 / 撤销 / 重做
-    self.closeButton.frame = CGRectMake(4, y, buttonWidth, height);
-    self.undoButton.frame = CGRectMake(46, y, buttonWidth, height);
-    self.redoButton.frame = CGRectMake(88, y, buttonWidth, height);
-    // 右区右对齐（间隔 4）：完成 / 分享 / 复制 / 旋转 / 裁剪；删除、置顶与复制、分享同槽互斥。
-    self.doneButton.frame = CGRectMake(width - 42.0, y, buttonWidth, height);
-    self.shareButton.frame = CGRectMake(width - 86.0, y, buttonWidth, height);
-    self.clipboardButton.frame = CGRectMake(width - 130.0, y, buttonWidth, height);
-    self.deleteButton.frame = self.clipboardButton.frame;
-    self.rotateButton.frame = CGRectMake(width - 174.0, y, buttonWidth, height);
-    // 下限防更窄理论屏（<375）时与左区重做按钮重叠。
-    self.cropButton.frame = CGRectMake(MAX(width - 218.0, 132.0), y, buttonWidth, height);
-    self.frontButton.frame = self.shareButton.frame;
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGRect bounds = self.view.bounds;
+    UIEdgeInsets safe = self.view.safeAreaInsets;
+    self.backdropView.frame = bounds;
+    self.backdropView.hidden = self.fullscreenMarkup;
+    CGRect card = self.fullscreenMarkup ? bounds : UIEdgeInsetsInsetRect(bounds,
+        UIEdgeInsetsMake(safe.top + 12, safe.left + 12, safe.bottom + 12, safe.right + 12));
+    self.editorCard.frame = card;
+    CGFloat width = card.size.width;
+    CGFloat height = card.size.height;
+    CGFloat panelWidth = self.fullscreenMarkup ? MIN(600.0, width - safe.left - safe.right - 24.0) : width;
+    CGFloat topHeight = self.fullscreenMarkup ? 0.0 : PXEditorGridMake(width, self.actionButtons.count, 6).height + 20.0;
+    self.topBar.hidden = self.fullscreenMarkup;
+    self.topBar.frame = CGRectMake(0, 0, width, topHeight);
+    PXEditorGridLayout actions = PXEditorGridMake(width, self.actionButtons.count, 6);
+    if (!self.fullscreenMarkup) {
+        for (NSUInteger i = 0; i < self.actionButtons.count; i++) {
+            self.actionButtons[i].frame = CGRectOffset(PXEditorGridFrame(actions, i), 0, 10);
+        }
+    }
+
+    CGFloat sliderSpace = PXEditorRowSliderHeight + PXEditorPanelRowGap;
+    CGFloat wanted = PXEditorPanelPadTop + (self.fullscreenMarkup ? 0 : sliderSpace) +
+        [self pxPanelContentHeightForWidth:panelWidth] + PXEditorPanelPadBottom;
+    // 矮屏和贴纸列表允许面板纵向滚动，始终保留画布；不缩小触控区域。
+    CGFloat availableHeight = self.fullscreenMarkup ? height - safe.top - safe.bottom - 24.0 - sliderSpace : height - topHeight;
+    CGFloat maximum = MAX(112.0, MIN(availableHeight * 0.55, availableHeight - 100.0));
+    CGFloat panelHeight = self.isCropMode ? 76.0 : MIN(wanted, maximum);
+    CGFloat panelY = height - panelHeight;
+    if (self.fullscreenMarkup) {
+        panelY = self.panelAtTop ? safe.top + 12.0 + (self.isCropMode ? 0 : sliderSpace) : height - safe.bottom - 12.0 - panelHeight;
+    }
+    self.bottomPanel.frame = CGRectMake((width - panelWidth) / 2.0, panelY, panelWidth, panelHeight);
+    [self pxLayoutBottomPanel];
+
+    CGRect scrollFrame = CGRectMake(0, topHeight, width, MAX(1.0, panelY - topHeight));
+    if (self.fullscreenMarkup) {
+        scrollFrame = self.editorCard.bounds;
+        if (self.fitAbovePanel || self.isCropMode) {
+            CGFloat y = self.panelAtTop ? CGRectGetMaxY(self.bottomPanel.frame) + 8.0 : safe.top;
+            CGFloat bottom = self.panelAtTop ? height - safe.bottom : panelY - 8.0 - (self.isCropMode ? 0 : sliderSpace);
+            scrollFrame = CGRectMake(safe.left, y, width - safe.left - safe.right, MAX(1.0, bottom - y));
+        }
+    }
+    if (!CGRectEqualToRect(self.scrollView.frame, scrollFrame)) {
+        self.scrollView.frame = scrollFrame;
+        [self pxRelayoutZoomContainerPreservingOffset:YES];
+    }
 }
 
 - (void)pxLayoutBottomPanel {
-    CGFloat width = _bottomPanel.bounds.size.width;
-    CGFloat y = PXEditorPanelPadTop;
-
-    _widthRow.frame = CGRectMake(0, y, width, PXEditorRowSliderHeight);
-    y += PXEditorRowSliderHeight + PXEditorPanelRowGap;
-
-    // 网格与彩虹取色钮并排：钮占右侧固定宽，网格让出余量
-    CGFloat colorX = width - PXEditorPanelPadBottom - PXEditorColorButtonSize;
-    CGFloat gridWidth = MAX(200.0, colorX - PXEditorPanelRowGap);
-    _toolGrid.frame = CGRectMake(0, y, gridWidth, PXEditorGridHeight);
-    _customColorButton.frame = CGRectMake(colorX, y + (PXEditorGridHeight - PXEditorColorButtonSize) / 2.0,
-                                          PXEditorColorButtonSize, PXEditorColorButtonSize);
-    y += PXEditorGridHeight;
-
-    // 表情行仅在贴纸工具（且非裁剪）时显示，占用网格下方一行；
-    // gap 随表情行一起出现，保证与 pxBottomChromeHeight 逐项一致（两种模式底边距均为 PadBottom）。
-    BOOL stickerTool = (PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker);
-    BOOL showStickerRow = (stickerTool && !self.isCropMode);
-    if (showStickerRow) {
-        y += PXEditorPanelRowGap;
-        _stickerRow.frame = CGRectMake(0, y, width, PXEditorRowStickerHeight);
-        y += PXEditorRowStickerHeight;
+    CGFloat width = self.bottomPanel.bounds.size.width;
+    CGFloat height = self.bottomPanel.bounds.size.height;
+    self.widthRow.frame = self.fullscreenMarkup
+        ? CGRectMake(self.bottomPanel.frame.origin.x, self.bottomPanel.frame.origin.y - PXEditorPanelRowGap - PXEditorRowSliderHeight,
+                     width, PXEditorRowSliderHeight)
+        : CGRectMake(0, PXEditorPanelPadTop, width, PXEditorRowSliderHeight);
+    CGFloat gridY = PXEditorPanelPadTop + (self.fullscreenMarkup ? 0 : PXEditorRowSliderHeight + PXEditorPanelRowGap);
+    self.panelScrollView.frame = CGRectMake(0, gridY, width, MAX(0.0, height - gridY - PXEditorPanelPadBottom));
+    PXEditorGridLayout layout = [self pxToolLayoutForWidth:width];
+    self.toolGrid.frame = CGRectMake(0, 0, width, layout.height);
+    NSMutableArray<UIView *> *items = [NSMutableArray array];
+    if (self.fullscreenMarkup) {
+        // 图二的首组工具：画笔、马赛克、文字、荧光、放大镜、聚光。
+        for (NSNumber *index in @[@0, @7, @8, @12, @5, @11, @2, @1, @3, @4, @6, @9, @10, @13, @14]) {
+            [items addObject:self.toolButtons[index.unsignedIntegerValue]];
+        }
+    } else {
+        [items addObjectsFromArray:self.toolButtons];
     }
-    _stickerRow.hidden = !showStickerRow;
-
-    // 裁剪模式沿用面板高度（不触发画布重适配），操作行在内容区垂直居中。
-    CGFloat contentHeight = y - PXEditorPanelPadTop;
-    _cropRow.frame = CGRectMake(0, PXEditorPanelPadTop + (contentHeight - PXEditorCropRowHeight) / 2.0,
-                                width, PXEditorCropRowHeight);
-
-    [self pxLayoutToolButtons];
+    [items addObject:self.customColorButton];
+    if (self.fullscreenMarkup) [items addObjectsFromArray:self.actionButtons];
+    for (NSUInteger i = 0; i < items.count; i++) {
+        CGRect frame = PXEditorGridFrame(layout, i);
+        if (items[i] == self.customColorButton) frame = CGRectInset(frame, (frame.size.width - 44.0) / 2.0, 0);
+        items[i].frame = frame;
+    }
+    BOOL sticker = PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker;
+    self.stickerRow.hidden = !sticker || self.isCropMode;
+    PXEditorGridLayout stickers = PXEditorGridMake(width, self.stickerButtons.count, 8);
+    self.stickerRow.frame = CGRectMake(0, layout.height + PXEditorPanelRowGap, width, stickers.height);
+    for (NSUInteger i = 0; i < self.stickerButtons.count; i++) {
+        self.stickerButtons[i].frame = PXEditorGridFrame(stickers, i);
+    }
+    self.stickerRow.contentSize = self.stickerRow.bounds.size;
+    self.panelScrollView.contentSize = CGSizeMake(width, [self pxPanelContentHeightForWidth:width]);
+    self.panelScrollView.hidden = self.isCropMode;
+    self.cropRow.frame = CGRectMake(0, (height - PXEditorCropRowHeight) / 2.0, width, PXEditorCropRowHeight);
     [self pxLayoutWidthRow];
-    [self pxLayoutStickerRow];
     [self pxLayoutCropRow];
     [self pxLayoutCustomColorGradient];
 }
 
-- (void)pxLayoutToolButtons {
-    CGFloat width = _toolGrid.bounds.size.width;
-    NSInteger columns = (NSInteger)PXEditorGridColumns;
-    CGFloat margin = 10.0;
-    CGFloat gap = 6.0;
-    CGFloat buttonHeight = PXEditorToolButtonHeight;
-    CGFloat buttonWidth = floor((width - margin * 2.0 - gap * (columns - 1)) / columns);
-    for (NSUInteger i = 0; i < self.toolButtons.count; i++) {
-        NSInteger row = (NSInteger)i / columns;
-        NSInteger col = (NSInteger)i % columns;
-        UIButton *button = self.toolButtons[i];
-        button.frame = CGRectMake(margin + col * (buttonWidth + gap),
-                                  row * (buttonHeight + PXEditorPanelRowGap),
-                                  buttonWidth, buttonHeight);
-    }
-}
-
 - (void)pxLayoutWidthRow {
-    CGFloat width = _widthRow.bounds.size.width;
-    _minWidthIcon.frame = CGRectMake(16, 11, 22, 22);
-    _maxWidthIcon.frame = CGRectMake(MAX(16.0, width - 38.0), 11, 22, 22);
-    _widthSlider.frame = CGRectMake(48, 0, MAX(40.0, width - 48.0 - 44.0), PXEditorRowSliderHeight);
+    CGFloat width = self.widthRow.bounds.size.width;
+    self.minWidthIcon.frame = CGRectMake(16, 11, 22, 22);
+    self.maxWidthIcon.frame = CGRectMake(width - 38, 11, 22, 22);
+    self.widthSlider.frame = CGRectMake(48, 0, MAX(40.0, width - 92.0), PXEditorRowSliderHeight);
 }
 
 - (void)pxLayoutCustomColorGradient {
-    if (!_customColorGradient) return;
-    // 渐变铺满整钮作外环，环心 swatch 内缩 5pt 显示当前画笔色。
-    _customColorGradient.frame = _customColorButton.bounds;
-    _customColorGradient.cornerRadius = PXEditorColorButtonSize / 2.0;
-    _customColorSwatch.frame = UIEdgeInsetsInsetRect(_customColorButton.bounds,
-                                                     UIEdgeInsetsMake(5, 5, 5, 5));
+    self.customColorGradient.frame = self.customColorButton.bounds;
+    self.customColorGradient.cornerRadius = self.customColorButton.bounds.size.width / 2.0;
+    self.customColorSwatch.frame = CGRectInset(self.customColorButton.bounds, 5, 5);
+    self.customColorSwatch.layer.cornerRadius = self.customColorSwatch.bounds.size.width / 2.0;
 }
 
-- (void)pxLayoutStickerRow {
-    CGFloat x = 10;
-    for (UIButton *button in self.stickerButtons) {
-        button.frame = CGRectMake(x, 0, 44, 44);
-        x += 50;
-    }
-    self.stickerRow.contentSize = CGSizeMake(x + 10, 44);
-}
+- (BOOL)prefersStatusBarHidden { return YES; }
+- (BOOL)prefersHomeIndicatorAutoHidden { return YES; }
 
 - (void)pxLayoutCropRow {
     CGFloat width = _cropRow.bounds.size.width;
@@ -597,8 +627,9 @@ static UIImage *PXEditorSliderThumbImage(void) {
 #pragma mark - 工具与颜色选择
 
 - (void)pxSelectToolIndex:(NSUInteger)index {
-    if (index >= PXEditorToolCount) return;
+    if (index >= PXEditorToolCount || self.isExporting) return;
     self.selectedToolIndex = index;
+    self.panelScrollView.contentOffset = CGPointZero;
     for (NSUInteger i = 0; i < self.toolButtons.count; i++) {
         UIButton *button = self.toolButtons[i];
         BOOL selected = (i == index);
@@ -647,7 +678,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
 - (void)pxCustomColorTapped:(UIButton *)sender {
     // 残留引用自愈：dismiss 动画期引用未清时（presentingViewController 已空）允许重开。
     if (self.colorPicker && self.colorPicker.presentingViewController != nil) return;
-    if (self.isExporting) return;
+    if (self.isExporting || !self.view.window || self.presentedViewController) return;
     [self.canvas commitActiveText];
 
     // 系统 UIColorPickerViewController（网格/光谱/滑块/吸管），样式见 iOS 系统取色面板。
@@ -711,10 +742,10 @@ static UIImage *PXEditorSliderThumbImage(void) {
     [self pxRefreshButtons];
 }
 
-/// 复制/分享共用：提交进行中输入、放弃未确认裁剪后渲染当前文档（与完成同路径），
+/// 复制/分享/保存/完成共用：提交进行中输入、放弃未确认裁剪后渲染当前文档（与完成同路径），
 /// 渲染期间 isExporting 锁全 UI（含画布，防止最后一笔不入图）；失败弹窗提示。then 固定主线程回调。
 - (void)pxRenderCurrentImageThen:(void (^)(UIImage *result))then {
-    if (self.isExporting) return;
+    if (self.isExporting || !self.view.window || self.presentedViewController) return;
     [self.canvas commitActiveText];
     if (self.isCropMode) {
         [self pxExitCropModeApply:NO];
@@ -725,12 +756,12 @@ static UIImage *PXEditorSliderThumbImage(void) {
     __weak typeof(self) weakSelf = self;
     [PXEditorRenderer renderDocument:self.document completion:^(UIImage *result) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
+        if (!strongSelf || !strongSelf.view.window) return;
         strongSelf.isExporting = NO;
         strongSelf.canvas.userInteractionEnabled = YES;
         [strongSelf pxRefreshButtons];
         if (!result) {
-            PXLogError(@"editor export for copy/share failed");
+            PXLogError(@"editor export failed");
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"导出失败"
                                                                            message:@"请重试或取消编辑"
                                                                     preferredStyle:UIAlertControllerStyleAlert];
@@ -807,7 +838,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
     [self.canvas setNeedsDisplay];
-    // 视口已切为矮裁剪行：显式按新视口重排一次，保证裁剪框与手柄整图可见可触。
+    // 裁剪面板变矮后重排，保证裁剪框与手柄整图可见可触。
     [self pxRelayoutZoomContainerPreservingOffset:NO];
 }
 
@@ -842,44 +873,37 @@ static UIImage *PXEditorSliderThumbImage(void) {
     }
 }
 
-- (void)pxDoneTapped:(UIButton *)sender {
+- (void)pxFitTapped:(UIButton *)sender {
     if (self.isExporting) return;
-    [self.canvas commitActiveText];
-    if (self.isCropMode) {
-        [self pxExitCropModeApply:NO];   // 完成时不强制应用未确认的裁剪
+    if (self.fullscreenMarkup) {
+        self.fitAbovePanel = !self.fitAbovePanel;
+        self.fitButton.accessibilityLabel = self.fitAbovePanel ? @"恢复全屏底图" : @"整图避开面板";
+        [self.view setNeedsLayout];
+        [self.view layoutIfNeeded];
     }
-    self.isExporting = YES;
-    self.doneButton.enabled = NO;
-    self.doneButton.alpha = 0.4;
-    self.undoButton.enabled = NO;
-    self.redoButton.enabled = NO;
-    self.deleteButton.enabled = NO;
-    self.frontButton.enabled = NO;
-    self.clipboardButton.enabled = NO;
-    self.shareButton.enabled = NO;
-    self.cropButton.enabled = NO;
-    self.rotateButton.enabled = NO;
-    self.canvas.userInteractionEnabled = NO;
+    [self pxRelayoutZoomContainerPreservingOffset:NO];
+}
+
+- (void)pxDockTapped:(UIButton *)sender {
+    if (self.isExporting) return;
+    self.panelAtTop = !self.panelAtTop;
+    [self.view setNeedsLayout];
+}
+
+- (void)pxSaveTapped:(UIButton *)sender {
+    [self pxFinishWithAction:PXOutputActionSave];
+}
+
+- (void)pxDoneTapped:(UIButton *)sender {
+    [self pxFinishWithAction:PXOutputActionPreviewOnly];
+}
+
+- (void)pxFinishWithAction:(PXOutputAction)action {
     __weak typeof(self) weakSelf = self;
-    [PXEditorRenderer renderDocument:self.document completion:^(UIImage *result) {
+    [self pxRenderCurrentImageThen:^(UIImage *result) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        strongSelf.isExporting = NO;
-        strongSelf.canvas.userInteractionEnabled = YES;
-        [strongSelf pxRefreshButtons];
-        if (!result) {
-            PXLogError(@"editor export failed");
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"导出失败"
-                                                                           message:@"请重试或取消编辑"
-                                                                    preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
-            [strongSelf presentViewController:alert animated:YES completion:nil];
-            return;
-        }
-        if (strongSelf.delegate &&
-            [strongSelf.delegate respondsToSelector:@selector(editorController:didFinishWithImage:)]) {
-            [strongSelf.delegate editorController:strongSelf didFinishWithImage:result];
-        }
+        if (!strongSelf || !strongSelf.view.window) return;
+        [strongSelf.delegate editorController:strongSelf didFinishWithImage:result action:action];
     }];
 }
 
@@ -890,11 +914,12 @@ static UIImage *PXEditorSliderThumbImage(void) {
     self.undoButton.alpha = self.canvas.canUndo ? 1.0 : 0.4;
     self.redoButton.alpha = self.canvas.canRedo ? 1.0 : 0.4;
     BOOL hasSelection = (self.canvas.selectedAnnotation != nil);
-    // 复制/分享与删除/置顶同槽位：选中标注时前者让位。
-    self.deleteButton.hidden = !hasSelection;
-    self.frontButton.hidden = !hasSelection;
-    self.clipboardButton.hidden = hasSelection;
-    self.shareButton.hidden = hasSelection;
+    self.deleteButton.hidden = NO;
+    self.frontButton.hidden = NO;
+    self.clipboardButton.hidden = NO;
+    self.shareButton.hidden = NO;
+    self.deleteButton.alpha = hasSelection ? 1.0 : 0.35;
+    self.frontButton.alpha = hasSelection ? 1.0 : 0.35;
     self.deleteButton.enabled = hasSelection && !exporting;
     self.frontButton.enabled = hasSelection && !exporting;
     self.clipboardButton.enabled = !exporting;
@@ -903,6 +928,13 @@ static UIImage *PXEditorSliderThumbImage(void) {
     self.rotateButton.enabled = !exporting;
     self.doneButton.enabled = !exporting;
     self.doneButton.alpha = exporting ? 0.4 : 1.0;
+    self.saveButton.enabled = !exporting;
+    self.fitButton.enabled = !exporting;
+    self.dockButton.enabled = !exporting;
+    self.closeButton.enabled = !exporting;
+    self.bottomPanel.userInteractionEnabled = !exporting;
+    self.widthRow.userInteractionEnabled = !exporting;
+    self.scrollView.userInteractionEnabled = !exporting;
 }
 
 #pragma mark - PXEditorCanvasDelegate

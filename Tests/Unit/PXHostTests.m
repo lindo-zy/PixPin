@@ -4,6 +4,7 @@
 #import <Foundation/Foundation.h>
 #import "../../Sources/Common/PXGeometry.h"
 #import "../../Sources/Common/PXClaimSet.h"
+#import "../../Sources/Editor/PXEditorLayout.h"
 
 static NSInteger PXTestFailures = 0;
 static NSInteger PXTestCount = 0;
@@ -141,12 +142,38 @@ static void testClaimSet(void) {
     PXCheckInt(winners, 1, "concurrent claim has exactly one winner");
 }
 
+// 窄屏/常见手机/iPad/横屏面板：完整图标集合必须有可点击区域且互不覆盖。
+static void testEditorLayout(void) {
+    printf("[editor multirow layout]\n");
+    for (NSNumber *widthValue in @[@296, @351, @369, @406, @600, @800]) {
+        CGFloat width = widthValue.doubleValue;
+        for (NSNumber *countValue in @[@12, @16, @24, @29]) {
+            NSUInteger count = countValue.unsignedIntegerValue;
+            PXEditorGridLayout layout = PXEditorGridMake(width, count, 7);
+            BOOL contained = YES, separated = YES, touchable = YES;
+            for (NSUInteger i = 0; i < count; i++) {
+                CGRect frame = PXEditorGridFrame(layout, i);
+                contained &= CGRectContainsRect(CGRectMake(0, 0, width, layout.height), frame);
+                touchable &= frame.size.width >= 44 && frame.size.height >= 44;
+                for (NSUInteger j = 0; j < i; j++) {
+                    separated &= !CGRectIntersectsRect(frame, PXEditorGridFrame(layout, j));
+                }
+            }
+            PXCheck(contained && separated && touchable, "all grid items fit without overlap and retain 44pt targets");
+            PXCheck(layout.rows >= 2, "tools and actions remain multirow");
+        }
+    }
+    PXCheckInt(PXEditorGridMake(369, 0, 6).height, 0, "empty grid consumes no height");
+    PXCheck(PXCaptureStateCanTransition(PXCaptureStateEditing, PXCaptureStateCancelling), "markup can cancel without export");
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
         testStateMachine();
         testGeometry();
         testClaimSet();
+        testEditorLayout();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }

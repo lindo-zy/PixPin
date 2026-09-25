@@ -11,6 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL areaEnabled;
 @property (nonatomic, readonly) BOOL freezeEnabled;
 @property (nonatomic, readonly) BOOL instantEnabled;
+@property (nonatomic, readonly) BOOL markupEnabled;
 @property (nonatomic, readonly) PXOutputAction defaultResultAction;
 @property (nonatomic, readonly) BOOL showResultBubble;
 @property (nonatomic, readonly) BOOL screenshotHaptic;

@@ -28,6 +28,7 @@ static void PXHandleDarwinNotification(CFNotificationCenterRef center,
             PXDarwinCaptureArea,
             PXDarwinCaptureFreeze,
             PXDarwinCaptureInstant,
+            PXDarwinCaptureMarkup,
             PXDarwinCaptureCancel,
             PXDarwinPreferencesReload,
         };

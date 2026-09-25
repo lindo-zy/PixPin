@@ -7,6 +7,7 @@ CFStringRef const PXDarwinCaptureFull = CFSTR("com.pixpin.screenshot/capture/ful
 CFStringRef const PXDarwinCaptureArea = CFSTR("com.pixpin.screenshot/capture/area");
 CFStringRef const PXDarwinCaptureFreeze = CFSTR("com.pixpin.screenshot/capture/freeze");
 CFStringRef const PXDarwinCaptureInstant = CFSTR("com.pixpin.screenshot/capture/instant");
+CFStringRef const PXDarwinCaptureMarkup = CFSTR("com.pixpin.screenshot/capture/markup");
 CFStringRef const PXDarwinCaptureCancel = CFSTR("com.pixpin.screenshot/capture/cancel");
 CFStringRef const PXDarwinPreferencesReload = CFSTR("com.pixpin.screenshot/preferences/reload");
 
@@ -17,6 +18,7 @@ NSString * const PXKeyFullscreenEnabled = @"FullscreenEnabled";
 NSString * const PXKeyAreaEnabled = @"AreaEnabled";
 NSString * const PXKeyFreezeEnabled = @"FreezeEnabled";
 NSString * const PXKeyInstantEnabled = @"InstantEnabled";
+NSString * const PXKeyMarkupEnabled = @"MarkupEnabled";
 NSString * const PXKeyDefaultResultAction = @"DefaultResultAction";
 NSString * const PXKeyAutoSaveToPhotos = @"AutoSaveToPhotos";
 NSString * const PXKeyCopyToClipboard = @"CopyToClipboard";

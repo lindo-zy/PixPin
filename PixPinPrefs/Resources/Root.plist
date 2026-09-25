@@ -100,6 +100,20 @@
 		</dict>
 		<dict>
 			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.pixpin.screenshot</string>
+			<key>key</key>
+			<string>MarkupEnabled</string>
+			<key>label</key>
+			<string>全屏标记</string>
+			<key>PostNotification</key>
+			<string>com.pixpin.screenshot/preferences/reload</string>
+		</dict>
+		<dict>
+			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>输出</string>

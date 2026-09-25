@@ -17,6 +17,7 @@ typedef NS_ENUM(NSInteger, PXCaptureMode) {
     PXCaptureModeArea = 1,
     PXCaptureModeFreeze = 2,
     PXCaptureModeInstant = 3,
+    PXCaptureModeMarkup = 4,
 };
 
 typedef NS_ENUM(NSInteger, PXCaptureState) {

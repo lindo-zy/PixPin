@@ -16,6 +16,7 @@ FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureFull;        // com.pixpin.sc
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureArea;        // com.pixpin.screenshot/capture/area
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureFreeze;      // com.pixpin.screenshot/capture/freeze
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureInstant;     // com.pixpin.screenshot/capture/instant
+FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureMarkup;      // com.pixpin.screenshot/capture/markup
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureCancel;      // com.pixpin.screenshot/capture/cancel
 FOUNDATION_EXPORT CFStringRef const PXDarwinPreferencesReload;  // com.pixpin.screenshot/preferences/reload
 
@@ -30,6 +31,7 @@ FOUNDATION_EXPORT NSString * const PXKeyFullscreenEnabled;
 FOUNDATION_EXPORT NSString * const PXKeyAreaEnabled;
 FOUNDATION_EXPORT NSString * const PXKeyFreezeEnabled;
 FOUNDATION_EXPORT NSString * const PXKeyInstantEnabled;
+FOUNDATION_EXPORT NSString * const PXKeyMarkupEnabled;
 FOUNDATION_EXPORT NSString * const PXKeyDefaultResultAction;
 FOUNDATION_EXPORT NSString * const PXKeyAutoSaveToPhotos;
 FOUNDATION_EXPORT NSString * const PXKeyCopyToClipboard;

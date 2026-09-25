@@ -85,6 +85,7 @@ NSString *PXStringFromCaptureMode(PXCaptureMode mode) {
         case PXCaptureModeFull: return @"full";
         case PXCaptureModeArea: return @"area";
         case PXCaptureModeFreeze: return @"freeze";
+        case PXCaptureModeMarkup: return @"markup";
         case PXCaptureModeInstant: return @"instant";
     }
     return @"unknown";

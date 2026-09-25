@@ -9,6 +9,7 @@
 @property (nonatomic, readwrite) BOOL areaEnabled;
 @property (nonatomic, readwrite) BOOL freezeEnabled;
 @property (nonatomic, readwrite) BOOL instantEnabled;
+@property (nonatomic, readwrite) BOOL markupEnabled;
 @property (nonatomic, readwrite) PXOutputAction defaultResultAction;
 @property (nonatomic, readwrite) BOOL showResultBubble;
 @property (nonatomic, readwrite) BOOL screenshotHaptic;
@@ -24,6 +25,7 @@
         _areaEnabled = YES;
         _freezeEnabled = YES;
         _instantEnabled = YES;
+        _markupEnabled = YES;
         _defaultResultAction = (PXOutputAction)PXDefaultResultAction;
         _showResultBubble = YES;
         _screenshotHaptic = YES;
@@ -88,6 +90,7 @@ static PXConfig *_currentConfig = nil;
     config.areaEnabled = PXPrefBool(PXKeyAreaEnabled, YES);
     config.freezeEnabled = PXPrefBool(PXKeyFreezeEnabled, YES);
     config.instantEnabled = PXPrefBool(PXKeyInstantEnabled, YES);
+    config.markupEnabled = PXPrefBool(PXKeyMarkupEnabled, YES);
     config.showResultBubble = PXPrefBool(PXKeyShowResultBubble, YES);
     config.screenshotHaptic = PXPrefBool(PXKeyScreenshotHaptic, YES);
 
@@ -111,6 +114,7 @@ static PXConfig *_currentConfig = nil;
         case PXCaptureModeArea: return c.areaEnabled;
         case PXCaptureModeFreeze: return c.freezeEnabled;
         case PXCaptureModeInstant: return c.instantEnabled;
+        case PXCaptureModeMarkup: return c.markupEnabled;
     }
     return NO;
 }

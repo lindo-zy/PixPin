@@ -84,8 +84,9 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureArea]) mode = PXCaptureModeArea;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureFreeze]) mode = PXCaptureModeFreeze;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureInstant]) mode = PXCaptureModeInstant;
+    else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureMarkup]) mode = PXCaptureModeMarkup;
 
-    if (mode >= PXCaptureModeFull && mode <= PXCaptureModeInstant) {
+    if (mode >= PXCaptureModeFull && mode <= PXCaptureModeMarkup) {
         [self requestCapture:mode];
     }
 }
@@ -180,7 +181,15 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
                                           image.size.height * image.scale,
                                           captureMethod ?: @"unknown"]];
 
-            if (task.mode == PXCaptureModeFull) {
+            if (task.mode == PXCaptureModeMarkup) {
+                if (isPartial) {
+                    [self pxFailTask:task code:@"partial-capture" message:@"当前抓取接口无法取得完整屏幕，不能开始全屏标记"];
+                    return;
+                }
+                task.resultImage = image;
+                if (![task transitionToState:PXCaptureStatePresenting]) return;
+                [self pxPresentEditorForTask:task];
+            } else if (task.mode == PXCaptureModeFull) {
                 [self pxHandleFullscreenResult:task];
             } else {
                 [self pxPresentSelectionForTask:task];
@@ -420,11 +429,14 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 
     [self pxDestroyEditorWindow];
     PXEditorViewController *editor = [[PXEditorViewController alloc] initWithImage:task.resultImage delegate:self];
+    editor.fullscreenMarkup = (task.mode == PXCaptureModeMarkup);
+    editor.backdropImage = task.baseImage;
     PXCaptureWindow *window = [PXCaptureWindow pxCaptureWindow];
     window.rootViewController = editor;
     self.editorWindow = window;
     self.editorController = editor;
     [window showAnimated:NO];
+    PXLogInfo(@"editor visible (mode %@, task %@)", PXStringFromCaptureMode(task.mode), task.taskID);
 }
 
 /// 气泡重编辑入口：以新任务进入编辑器。
@@ -453,7 +465,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     [self pxPresentEditorForTask:task];
 }
 
-- (void)editorController:(PXEditorViewController *)controller didFinishWithImage:(UIImage *)image {
+- (void)editorController:(PXEditorViewController *)controller didFinishWithImage:(UIImage *)image action:(PXOutputAction)action {
+    if (controller != self.editorController) return;
     PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStateEditing];
     [self pxDestroyEditorWindow];
     self.preEditImage = nil;
@@ -461,10 +474,12 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 
     task.resultImage = image;
     if (![task transitionToState:PXCaptureStatePresenting]) return;
-    [self pxExecuteOutput:task.configSnapshot.defaultResultAction forTask:task presentingWindow:nil];
+    PXOutputAction output = (action == PXOutputActionPreviewOnly) ? task.configSnapshot.defaultResultAction : action;
+    [self pxExecuteOutput:output forTask:task presentingWindow:nil];
 }
 
 - (void)editorControllerDidCancel:(PXEditorViewController *)controller {
+    if (controller != self.editorController) return;
     PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStateEditing];
     [self pxDestroyEditorWindow];
     if (!task) return;
@@ -476,7 +491,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     self.preEditImage = nil;
     if (![task transitionToState:PXCaptureStatePresenting]) return;
 
-    if (task.isReedit) {
+    if (task.isReedit || task.mode == PXCaptureModeMarkup) {
         [self cancelActiveTask];
     } else {
         [self pxExecuteOutput:task.configSnapshot.defaultResultAction forTask:task presentingWindow:nil];
