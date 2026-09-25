@@ -147,7 +147,7 @@ static void testEditorLayout(void) {
     printf("[editor multirow layout]\n");
     for (NSNumber *widthValue in @[@296, @351, @369, @406, @600, @800]) {
         CGFloat width = widthValue.doubleValue;
-        for (NSNumber *countValue in @[@12, @16, @24, @29]) {
+        for (NSNumber *countValue in @[@12, @16, @24, @30]) {
             NSUInteger count = countValue.unsignedIntegerValue;
             PXEditorGridLayout layout = PXEditorGridMake(width, count, 8);
             BOOL contained = YES, separated = YES, touchable = YES;
@@ -164,11 +164,11 @@ static void testEditorLayout(void) {
         }
     }
     PXCheckInt(PXEditorGridMake(351, 16, 8).rows, 2, "region tools fit in two rows on a narrow phone");
-    PXCheckInt(PXEditorGridMake(369, 29, 8).rows, 4, "markup actions and tools fit in four rows");
+    PXCheckInt(PXEditorGridMake(369, 30, 8).rows, 4, "markup actions and tools fit in four rows");
     PXCheckInt(PXEditorGridMake(369, 0, 6).height, 0, "empty grid consumes no height");
     PXCheck(PXCaptureStateCanTransition(PXCaptureStateEditing, PXCaptureStateCancelling), "markup can cancel without export");
 
-    // 冻结整屏图必须落在悬浮面板和独立线宽条之外，顶部/底部两种停靠方式一致。
+    // 用户选择“整图适屏”时，冻结整屏图应避开面板和独立线宽条。
     CGSize screen = CGSizeMake(393, 852);
     CGRect bottomPanel = CGRectMake(12, 650, 369, 164);
     CGRect bottomViewport = PXEditorMarkupImageViewport(screen, bottomPanel, 59, 0, 34, 0, 52, NO);
@@ -183,6 +183,20 @@ static void testEditorLayout(void) {
     PXCheck(CGRectGetMinY(topViewport) >= CGRectGetMaxY(topPanel) &&
             CGRectGetMaxY(topViewport) <= screen.height - 34,
             "top panel leaves complete visible image viewport");
+
+    CGRect safePanelBounds = CGRectMake(12, 123, 369, 683);
+    CGPoint upperLeft = PXEditorClampFloatingOrigin(CGPointMake(-100, -100),
+        CGSizeMake(300, 200), safePanelBounds);
+    CGPoint lowerRight = PXEditorClampFloatingOrigin(CGPointMake(1000, 1000),
+        CGSizeMake(300, 200), safePanelBounds);
+    PXCheck(CGPointEqualToPoint(upperLeft, CGPointMake(12, 123)),
+            "dragged panel stays inside top and left safe bounds");
+    PXCheck(CGPointEqualToPoint(lowerRight, CGPointMake(81, 606)),
+            "dragged panel stays inside bottom and right safe bounds");
+    CGPoint handle = PXEditorClampFloatingOrigin(CGPointMake(220, 200),
+        CGSizeMake(64, 36), safePanelBounds);
+    PXCheck(CGPointEqualToPoint(handle, CGPointMake(220, 200)),
+            "collapsed handle keeps an in-bounds dragged position");
 }
 
 int main(int argc, const char **argv) {

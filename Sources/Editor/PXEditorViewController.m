@@ -14,6 +14,9 @@ static const CGFloat PXEditorPanelPadTop = 10.0;
 static const CGFloat PXEditorPanelPadBottom = 12.0;
 static const CGFloat PXEditorPanelRowGap = 8.0;
 static const CGFloat PXEditorCropRowHeight = 48.0;
+static const CGFloat PXEditorPanelGripHeight = 24.0;
+static const CGFloat PXEditorCollapsedHandleWidth = 64.0;
+static const CGFloat PXEditorCollapsedHandleHeight = 36.0;
 
 static UIColor *PXEditorAccentColor(void) {
     return [UIColor colorWithRed:1.0 green:0.78 blue:0.08 alpha:1.0];
@@ -79,8 +82,14 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 @property (nonatomic, strong) UIButton *saveButton;
 @property (nonatomic, strong) UIButton *fitButton;
 @property (nonatomic, strong) UIButton *dockButton;
+@property (nonatomic, strong) UIButton *collapseButton;
 @property (nonatomic, assign) BOOL panelAtTop;
 @property (nonatomic, assign) BOOL fitAbovePanel;
+@property (nonatomic, assign) BOOL panelCollapsed;
+@property (nonatomic, assign) BOOL hasPanelPosition;
+@property (nonatomic, assign) CGPoint panelOrigin;
+@property (nonatomic, assign) CGPoint panStartOrigin;
+@property (nonatomic, assign) CGPoint collapsedHandleOrigin;
 @property (nonatomic, strong) UIView *topBar;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) UIButton *cropButton;
@@ -94,6 +103,8 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 @property (nonatomic, strong) UIButton *doneButton;
 
 @property (nonatomic, strong) UIView *bottomPanel;
+@property (nonatomic, strong) UIView *panelDragGrip;
+@property (nonatomic, strong) UIButton *collapsedHandle;
 @property (nonatomic, strong) UIView *widthRow;
 @property (nonatomic, strong) UIImageView *minWidthIcon;   // 线宽行左端“最细”示意
 @property (nonatomic, strong) UIImageView *maxWidthIcon;   // 线宽行右端“最粗”示意
@@ -144,8 +155,8 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     self.editorCard.layer.cornerRadius = self.fullscreenMarkup ? 0.0 : 28.0;
     self.editorCard.clipsToBounds = YES;
     [self.view addSubview:self.editorCard];
-    // 首次进入全屏标记就展示整张截图，面板不得盖住图片底部。
-    self.fitAbovePanel = self.fullscreenMarkup;
+    // 全屏标记默认使用全屏画布，工具面板悬浮其上；可按需切换避开面板的视口。
+    self.fitAbovePanel = NO;
 
     self.document = [[PXEditorDocument alloc] initWithSourceImage:self.sourceImage];
     self.document.backgroundColor = [UIColor whiteColor];
@@ -162,11 +173,11 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
         self.actionButtons = @[self.closeButton, self.undoButton, self.redoButton,
             self.cropButton, self.rotateButton, self.clipboardButton, self.shareButton,
             self.saveButton, self.fitButton, self.deleteButton, self.frontButton,
-            self.dockButton, self.doneButton];
+            self.dockButton, self.collapseButton, self.doneButton];
         for (UIButton *button in self.actionButtons) [self.toolGrid addSubview:button];
     }
     self.dockButton.hidden = !self.fullscreenMarkup;
-    self.fitButton.accessibilityLabel = self.fullscreenMarkup ? @"全屏查看" : @"整图适屏";
+    self.fitButton.accessibilityLabel = @"整图适屏";
 
     [self pxSelectToolIndex:self.fullscreenMarkup ? 0 : PXEditorDefaultToolIndex()];
     [self pxApplyCurrentColor];
@@ -224,6 +235,7 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _saveButton = [self pxTopIconNamed:@"square.and.arrow.down" a11y:@"保存到相册" action:@selector(pxSaveTapped:)];
     _fitButton = [self pxTopIconNamed:@"arrow.up.left.and.arrow.down.right" a11y:@"整图适屏" action:@selector(pxFitTapped:)];
     _dockButton = [self pxTopIconNamed:@"rectangle.topthird.inset.filled" a11y:@"工具面板移至顶部或底部" action:@selector(pxDockTapped:)];
+    _collapseButton = [self pxTopIconNamed:@"rectangle.compress.vertical" a11y:@"收起工具面板" action:@selector(pxCollapsePanelTapped:)];
     _deleteButton = [self pxTopIconNamed:@"trash" a11y:@"删除选中标注" action:@selector(pxDeleteTapped:)];
     _frontButton = [self pxTopIconNamed:@"arrow.up.to.line" a11y:@"选中标注置顶" action:@selector(pxFrontTapped:)];
     _doneButton = [self pxTopIconNamed:@"checkmark" a11y:@"完成" action:@selector(pxDoneTapped:)];
@@ -264,6 +276,36 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _panelScrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     _panelScrollView.alwaysBounceVertical = NO;
     [_bottomPanel addSubview:_panelScrollView];
+    if (self.fullscreenMarkup) {
+        _panelDragGrip = [[UIView alloc] init];
+        [_bottomPanel addSubview:_panelDragGrip];
+        UIView *gripLine = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 38, 4)];
+        gripLine.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.65];
+        gripLine.layer.cornerRadius = 2.0;
+        gripLine.tag = 1;
+        gripLine.userInteractionEnabled = NO;
+        [_panelDragGrip addSubview:gripLine];
+        UIPanGestureRecognizer *drag = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pxPanelPan:)];
+        [_panelDragGrip addGestureRecognizer:drag];
+
+        _collapsedHandle = [UIButton buttonWithType:UIButtonTypeSystem];
+        _collapsedHandle.backgroundColor = _bottomPanel.backgroundColor;
+        _collapsedHandle.tintColor = [UIColor whiteColor];
+        _collapsedHandle.layer.cornerRadius = PXEditorCollapsedHandleHeight / 2.0;
+        _collapsedHandle.accessibilityLabel = @"展开工具面板";
+        UIImage *handleIcon = [UIImage systemImageNamed:@"line.3.horizontal"];
+        if (handleIcon) {
+            [_collapsedHandle setImage:handleIcon forState:UIControlStateNormal];
+        } else {
+            [_collapsedHandle setTitle:@"≡" forState:UIControlStateNormal];
+            _collapsedHandle.titleLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightMedium];
+        }
+        [_collapsedHandle addTarget:self action:@selector(pxExpandPanelTapped:) forControlEvents:UIControlEventTouchUpInside];
+        UIPanGestureRecognizer *handleDrag = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pxPanelPan:)];
+        [_collapsedHandle addGestureRecognizer:handleDrag];
+        _collapsedHandle.hidden = YES;
+        [self.editorCard addSubview:_collapsedHandle];
+    }
 
     // 线宽行：两端“最细/最粗”示意图标 + 白色大圆滑块，置于工具网格上方。
     _widthRow = [[UIView alloc] init];
@@ -465,7 +507,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
     }
 
     CGFloat sliderSpace = PXEditorRowSliderHeight + PXEditorPanelRowGap;
-    CGFloat wanted = PXEditorPanelPadTop + (self.fullscreenMarkup ? 0 : sliderSpace) +
+    CGFloat wanted = PXEditorPanelPadTop + (self.fullscreenMarkup ? PXEditorPanelGripHeight : sliderSpace) +
         [self pxPanelContentHeightForWidth:panelWidth] + PXEditorPanelPadBottom;
     // 矮屏和贴纸列表允许面板纵向滚动，始终保留画布；不缩小触控区域。
     CGFloat availableHeight = self.fullscreenMarkup ? height - safe.top - safe.bottom - 24.0 - sliderSpace : height - topHeight;
@@ -475,13 +517,39 @@ static UIImage *PXEditorSliderThumbImage(void) {
     if (self.fullscreenMarkup) {
         panelY = self.panelAtTop ? safe.top + 12.0 + (self.isCropMode ? 0 : sliderSpace) : height - safe.bottom - 12.0 - panelHeight;
     }
-    self.bottomPanel.frame = CGRectMake((width - panelWidth) / 2.0, panelY, panelWidth, panelHeight);
+    CGRect panelAllowed = CGRectMake(safe.left + 12.0,
+        safe.top + 12.0 + (self.isCropMode ? 0.0 : sliderSpace),
+        MAX(1.0, width - safe.left - safe.right - 24.0),
+        MAX(1.0, height - safe.top - safe.bottom - 24.0 - (self.isCropMode ? 0.0 : sliderSpace)));
+    CGPoint origin = CGPointMake((width - panelWidth) / 2.0, panelY);
+    if (self.fullscreenMarkup && self.hasPanelPosition && !self.isCropMode) origin = self.panelOrigin;
+    if (self.fullscreenMarkup) {
+        origin = PXEditorClampFloatingOrigin(origin, CGSizeMake(panelWidth, panelHeight), panelAllowed);
+        if (self.hasPanelPosition && !self.isCropMode) self.panelOrigin = origin;
+    }
+    self.bottomPanel.frame = CGRectMake(origin.x, origin.y, panelWidth, panelHeight);
+    if (self.fullscreenMarkup) {
+        CGRect handleAllowed = CGRectMake(safe.left + 12.0, safe.top + 12.0,
+            MAX(1.0, width - safe.left - safe.right - 24.0),
+            MAX(1.0, height - safe.top - safe.bottom - 24.0));
+        CGPoint handleOrigin = self.panelCollapsed
+            ? self.collapsedHandleOrigin
+            : CGPointMake(origin.x + (panelWidth - PXEditorCollapsedHandleWidth) / 2.0, origin.y);
+        handleOrigin = PXEditorClampFloatingOrigin(handleOrigin,
+            CGSizeMake(PXEditorCollapsedHandleWidth, PXEditorCollapsedHandleHeight), handleAllowed);
+        self.collapsedHandle.frame = CGRectMake(handleOrigin.x, handleOrigin.y,
+            PXEditorCollapsedHandleWidth, PXEditorCollapsedHandleHeight);
+        self.collapsedHandleOrigin = handleOrigin;
+        self.bottomPanel.hidden = self.panelCollapsed;
+        self.widthRow.hidden = self.panelCollapsed || self.isCropMode;
+        self.collapsedHandle.hidden = !self.panelCollapsed || self.isCropMode;
+    }
     [self pxLayoutBottomPanel];
 
     CGRect scrollFrame = CGRectMake(0, topHeight, width, MAX(1.0, panelY - topHeight));
     if (self.fullscreenMarkup) {
         scrollFrame = self.editorCard.bounds;
-        if (self.fitAbovePanel || self.isCropMode) {
+        if ((self.fitAbovePanel && !self.panelCollapsed) || self.isCropMode) {
             scrollFrame = PXEditorMarkupImageViewport(self.editorCard.bounds.size, self.bottomPanel.frame,
                 safe.top, safe.left, safe.bottom, safe.right,
                 self.isCropMode ? 0.0 : sliderSpace, self.panelAtTop);
@@ -500,7 +568,13 @@ static UIImage *PXEditorSliderThumbImage(void) {
         ? CGRectMake(self.bottomPanel.frame.origin.x, self.bottomPanel.frame.origin.y - PXEditorPanelRowGap - PXEditorRowSliderHeight,
                      width, PXEditorRowSliderHeight)
         : CGRectMake(0, PXEditorPanelPadTop, width, PXEditorRowSliderHeight);
-    CGFloat gridY = PXEditorPanelPadTop + (self.fullscreenMarkup ? 0 : PXEditorRowSliderHeight + PXEditorPanelRowGap);
+    CGFloat gridY = PXEditorPanelPadTop + (self.fullscreenMarkup ? PXEditorPanelGripHeight : PXEditorRowSliderHeight + PXEditorPanelRowGap);
+    if (self.fullscreenMarkup) {
+        self.panelDragGrip.hidden = self.isCropMode;
+        self.panelDragGrip.frame = CGRectMake(0, 0, width, PXEditorPanelGripHeight + 2.0);
+        UIView *gripLine = [self.panelDragGrip viewWithTag:1];
+        gripLine.center = CGPointMake(width / 2.0, PXEditorPanelGripHeight / 2.0);
+    }
     self.panelScrollView.frame = CGRectMake(0, gridY, width, MAX(0.0, height - gridY - PXEditorPanelPadBottom));
     PXEditorGridLayout layout = [self pxToolLayoutForWidth:width];
     self.toolGrid.frame = CGRectMake(0, 0, width, layout.height);
@@ -884,7 +958,48 @@ static UIImage *PXEditorSliderThumbImage(void) {
 - (void)pxDockTapped:(UIButton *)sender {
     if (self.isExporting) return;
     self.panelAtTop = !self.panelAtTop;
+    self.hasPanelPosition = NO;
     [self.view setNeedsLayout];
+}
+
+- (void)pxCollapsePanelTapped:(UIButton *)sender {
+    if (self.isExporting || self.isCropMode || !self.fullscreenMarkup) return;
+    self.collapsedHandleOrigin = CGPointMake(
+        CGRectGetMidX(self.bottomPanel.frame) - PXEditorCollapsedHandleWidth / 2.0,
+        CGRectGetMinY(self.bottomPanel.frame));
+    self.panelCollapsed = YES;
+    [self.view setNeedsLayout];
+}
+
+- (void)pxExpandPanelTapped:(UIButton *)sender {
+    if (self.isExporting || !self.fullscreenMarkup) return;
+    self.panelOrigin = CGPointMake(
+        CGRectGetMidX(self.collapsedHandle.frame) - self.bottomPanel.bounds.size.width / 2.0,
+        CGRectGetMinY(self.collapsedHandle.frame));
+    self.hasPanelPosition = YES;
+    self.panelCollapsed = NO;
+    self.panelAtTop = self.panelOrigin.y < CGRectGetMidY(self.editorCard.bounds);
+    [self.view setNeedsLayout];
+}
+
+- (void)pxPanelPan:(UIPanGestureRecognizer *)gesture {
+    if (self.isExporting || self.isCropMode || !self.fullscreenMarkup) return;
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        self.panStartOrigin = self.panelCollapsed ? self.collapsedHandle.frame.origin : self.bottomPanel.frame.origin;
+    } else if (gesture.state == UIGestureRecognizerStateChanged) {
+        CGPoint offset = [gesture translationInView:self.editorCard];
+        CGPoint requested = CGPointMake(self.panStartOrigin.x + offset.x,
+                                        self.panStartOrigin.y + offset.y);
+        if (self.panelCollapsed) {
+            self.collapsedHandleOrigin = requested;
+        } else {
+            self.panelOrigin = requested;
+            self.hasPanelPosition = YES;
+            self.panelAtTop = requested.y < CGRectGetMidY(self.editorCard.bounds);
+        }
+        [self.view setNeedsLayout];
+        [self.view layoutIfNeeded];
+    }
 }
 
 - (void)pxSaveTapped:(UIButton *)sender {
@@ -928,6 +1043,8 @@ static UIImage *PXEditorSliderThumbImage(void) {
     self.saveButton.enabled = !exporting;
     self.fitButton.enabled = !exporting;
     self.dockButton.enabled = !exporting;
+    self.collapseButton.enabled = !exporting;
+    self.collapsedHandle.enabled = !exporting;
     self.closeButton.enabled = !exporting;
     self.bottomPanel.userInteractionEnabled = !exporting;
     self.widthRow.userInteractionEnabled = !exporting;

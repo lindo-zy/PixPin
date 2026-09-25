@@ -17,3 +17,6 @@ CGRect PXEditorMarkupImageViewport(CGSize size, CGRect panel,
                                    CGFloat safeTop, CGFloat safeLeft,
                                    CGFloat safeBottom, CGFloat safeRight,
                                    CGFloat sliderSpace, BOOL panelAtTop);
+
+// 将浮动面板（或折叠把手）完整限制在可用矩形内。
+CGPoint PXEditorClampFloatingOrigin(CGPoint origin, CGSize floatingSize, CGRect allowedBounds);

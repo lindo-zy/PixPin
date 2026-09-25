@@ -22,3 +22,10 @@ CGRect PXEditorMarkupImageViewport(CGSize size, CGRect panel,
     CGFloat bottom = panelAtTop ? size.height - safeBottom : CGRectGetMinY(panel) - sliderSpace - 8.0;
     return CGRectMake(safeLeft, top, MAX(1.0, size.width - safeLeft - safeRight), MAX(1.0, bottom - top));
 }
+
+CGPoint PXEditorClampFloatingOrigin(CGPoint origin, CGSize floatingSize, CGRect allowedBounds) {
+    CGFloat maxX = MAX(CGRectGetMinX(allowedBounds), CGRectGetMaxX(allowedBounds) - floatingSize.width);
+    CGFloat maxY = MAX(CGRectGetMinY(allowedBounds), CGRectGetMaxY(allowedBounds) - floatingSize.height);
+    return CGPointMake(MAX(CGRectGetMinX(allowedBounds), MIN(origin.x, maxX)),
+                       MAX(CGRectGetMinY(allowedBounds), MIN(origin.y, maxY)));
+}
