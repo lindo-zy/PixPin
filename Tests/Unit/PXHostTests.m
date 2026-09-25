@@ -149,22 +149,40 @@ static void testEditorLayout(void) {
         CGFloat width = widthValue.doubleValue;
         for (NSNumber *countValue in @[@12, @16, @24, @29]) {
             NSUInteger count = countValue.unsignedIntegerValue;
-            PXEditorGridLayout layout = PXEditorGridMake(width, count, 7);
+            PXEditorGridLayout layout = PXEditorGridMake(width, count, 8);
             BOOL contained = YES, separated = YES, touchable = YES;
             for (NSUInteger i = 0; i < count; i++) {
                 CGRect frame = PXEditorGridFrame(layout, i);
                 contained &= CGRectContainsRect(CGRectMake(0, 0, width, layout.height), frame);
-                touchable &= frame.size.width >= 44 && frame.size.height >= 44;
+                touchable &= frame.size.width >= 38 && frame.size.height >= 38;
                 for (NSUInteger j = 0; j < i; j++) {
                     separated &= !CGRectIntersectsRect(frame, PXEditorGridFrame(layout, j));
                 }
             }
-            PXCheck(contained && separated && touchable, "all grid items fit without overlap and retain 44pt targets");
+            PXCheck(contained && separated && touchable, "all compact grid items fit without overlap");
             PXCheck(layout.rows >= 2, "tools and actions remain multirow");
         }
     }
+    PXCheckInt(PXEditorGridMake(351, 16, 8).rows, 2, "region tools fit in two rows on a narrow phone");
+    PXCheckInt(PXEditorGridMake(369, 29, 8).rows, 4, "markup actions and tools fit in four rows");
     PXCheckInt(PXEditorGridMake(369, 0, 6).height, 0, "empty grid consumes no height");
     PXCheck(PXCaptureStateCanTransition(PXCaptureStateEditing, PXCaptureStateCancelling), "markup can cancel without export");
+
+    // 冻结整屏图必须落在悬浮面板和独立线宽条之外，顶部/底部两种停靠方式一致。
+    CGSize screen = CGSizeMake(393, 852);
+    CGRect bottomPanel = CGRectMake(12, 650, 369, 164);
+    CGRect bottomViewport = PXEditorMarkupImageViewport(screen, bottomPanel, 59, 0, 34, 0, 52, NO);
+    PXCheck(CGRectGetMaxY(bottomViewport) <= CGRectGetMinY(bottomPanel) - 52,
+            "bottom panel and slider do not cover image viewport");
+    CGFloat fitScale = MIN(bottomViewport.size.width / screen.width, bottomViewport.size.height / screen.height);
+    PXCheck(screen.width * fitScale <= bottomViewport.size.width &&
+            screen.height * fitScale <= bottomViewport.size.height,
+            "full-screen image fits entirely in initial viewport");
+    CGRect topPanel = CGRectMake(12, 123, 369, 164);
+    CGRect topViewport = PXEditorMarkupImageViewport(screen, topPanel, 59, 0, 34, 0, 52, YES);
+    PXCheck(CGRectGetMinY(topViewport) >= CGRectGetMaxY(topPanel) &&
+            CGRectGetMaxY(topViewport) <= screen.height - 34,
+            "top panel leaves complete visible image viewport");
 }
 
 int main(int argc, const char **argv) {
