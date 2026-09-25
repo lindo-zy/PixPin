@@ -254,19 +254,27 @@
     if (CGRectIsEmpty(pointRect)) return nil;
 
     CGFloat scale = MAX(image.scale, 1.0);
-    CGRect pixelRect = CGRectMake(floor(pointRect.origin.x * scale),
-                                  floor(pointRect.origin.y * scale),
-                                  ceil(pointRect.size.width * scale),
-                                  ceil(pointRect.size.height * scale));
+    CGFloat minX = floor(CGRectGetMinX(pointRect) * scale);
+    CGFloat minY = floor(CGRectGetMinY(pointRect) * scale);
+    CGFloat maxX = ceil(CGRectGetMaxX(pointRect) * scale);
+    CGFloat maxY = ceil(CGRectGetMaxY(pointRect) * scale);
+    CGRect pixelRect = CGRectMake(minX, minY, maxX - minX, maxY - minY);
     pixelRect = CGRectIntersection(pixelRect,
                                    CGRectMake(0, 0, CGImageGetWidth(sourceCG), CGImageGetHeight(sourceCG)));
     if (CGRectIsEmpty(pixelRect)) return nil;
 
-    CGImageRef croppedCG = CGImageCreateWithImageInRect(sourceCG, pixelRect);
-    if (!croppedCG) return nil;
-    UIImage *cropped = [UIImage imageWithCGImage:croppedCG scale:scale orientation:UIImageOrientationUp];
-    CGImageRelease(croppedCG);
-    return cropped;
+    // 重绘为独立像素图，文档替换底图后编辑画布直接使用这张裁剪结果。
+    CGSize outputSize = CGSizeMake(pixelRect.size.width / scale, pixelRect.size.height / scale);
+    UIGraphicsImageRendererFormat *format = [[UIGraphicsImageRendererFormat alloc] init];
+    format.scale = scale;
+    format.opaque = NO;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:outputSize format:format];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGContextSetInterpolationQuality(context.CGContext, kCGInterpolationNone);
+        [image drawInRect:CGRectMake(-pixelRect.origin.x / scale,
+                                     -pixelRect.origin.y / scale,
+                                     image.size.width, image.size.height)];
+    }];
 }
 
 + (NSArray<PXAnnotation *> *)annotationsByApplyingCrop:(CGRect)cropRect

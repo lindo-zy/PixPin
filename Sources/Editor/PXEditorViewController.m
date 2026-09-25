@@ -830,14 +830,21 @@ static UIImage *PXEditorSliderThumbImage(void) {
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
     [self.canvas setNeedsDisplay];
-    // 裁剪面板变矮后重排，保证裁剪框与手柄整图可见可触。
-    [self pxRelayoutZoomContainer];
+    // viewDidLayoutSubviews 会按裁剪视口重排一次，保证裁剪框完整可见。
 }
 
 - (void)pxExitCropModeApply:(BOOL)apply {
     if (!self.isCropMode) return;
     if (apply) {
-        [self.canvas applyCrop];
+        if (![self.canvas applyCrop]) {
+            PXLogWarn(@"editor crop: apply failed, keeping crop mode");
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"裁剪失败"
+                                                                           message:@"未能生成裁剪后的图片，请重新调整裁剪区域"
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:alert animated:YES completion:nil];
+            return;
+        }
     } else {
         [self.canvas cancelCrop];
     }
@@ -851,9 +858,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
     // 表情行显隐由 pxLayoutBottomPanel 按 selectedToolIndex 统一恢复。
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
-    // 视口恢复常驻面板高度，按适屏基准重排（applyCrop 的几何回调发生在 isCropMode 复位前，
-    // 已按当时视口重排过一次，此处为复位后的最终重排）。
-    [self pxRelayoutZoomContainer];
+    // viewDidLayoutSubviews 仅按退出裁剪模式后的最终视口适配新底图。
     [self pxRefreshButtons];
 }
 
@@ -940,6 +945,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
 }
 
 - (void)canvasDidChangeGeometry:(PXEditorCanvas *)canvas {
+    if (self.isCropMode) return;   // applyCrop 正在收尾；退出裁剪模式后再适配新底图。
     [self pxRelayoutZoomContainer];
     [self pxRefreshButtons];
 }
