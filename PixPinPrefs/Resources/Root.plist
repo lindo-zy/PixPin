@@ -181,17 +181,7 @@
 			<key>label</key>
 			<string>外部入口</string>
 			<key>footerText</key>
-			<string>点击「URL Scheme」复制默认启动地址，粘贴到快捷指令或其他插件的“打开 URL”中即可触发全屏标记。其他模式：pixpin://capture/full、/area、/freeze、/instant、/markup；取消：pixpin://cancel。</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSTitleValueCell</string>
-			<key>cellClass</key>
-			<string>PXURLSchemeCell</string>
-			<key>label</key>
-			<string>URL Scheme</string>
-			<key>value</key>
-			<string>pixpin://activate</string>
+			<string>点击上方按钮复制默认启动地址，粘贴到快捷指令或其他插件的“打开 URL”中即可触发全屏标记。其他模式：pixpin://capture/full、/area、/freeze、/instant、/markup；取消：pixpin://cancel。</string>
 		</dict>
 
 		<dict>

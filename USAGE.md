@@ -52,7 +52,7 @@ PixPin 在 SpringBoard 内运行。安装后需注销并确保注入成功；“
 | 全屏标记 | `pixpin://capture/markup` | `com.pixpin.screenshot/capture/markup` |
 | 取消当前任务 | `pixpin://cancel` 或 `pixpin://capture/cancel` | `com.pixpin.screenshot/capture/cancel` |
 
-设备上可从 设置 → PixPin → 外部入口 点击「URL Scheme」复制默认启动地址，无需手动输入。
+设备上可从 设置 → PixPin → 外部入口 点击按钮复制默认启动地址，无需手动输入。
 
 其他插件优先使用 Darwin 通知（可从任意线程发送，无需链接 PixPin）：
 
