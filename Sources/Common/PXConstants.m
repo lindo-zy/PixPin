@@ -3,6 +3,8 @@
 NSString * const PXBundleID = @"com.pixpin.screenshot";
 NSString * const PXPreferencesDomain = @"com.pixpin.screenshot";
 
+NSString * const PXExternalURLScheme = @"pixpin";
+CFStringRef const PXDarwinActivate = CFSTR("com.pixpin.screenshot/activate");
 CFStringRef const PXDarwinCaptureFull = CFSTR("com.pixpin.screenshot/capture/full");
 CFStringRef const PXDarwinCaptureArea = CFSTR("com.pixpin.screenshot/capture/area");
 CFStringRef const PXDarwinCaptureFreeze = CFSTR("com.pixpin.screenshot/capture/freeze");

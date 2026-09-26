@@ -134,15 +134,23 @@ PixPin 是一个运行在越狱 iOS 环境中的系统级截图工具。第一�
 建议通知名：
 
 ```text
+com.pixpin.screenshot/activate
 com.pixpin.screenshot/capture/full
 com.pixpin.screenshot/capture/area
 com.pixpin.screenshot/capture/freeze
 com.pixpin.screenshot/capture/instant
+com.pixpin.screenshot/capture/markup
+com.pixpin.screenshot/capture/cancel
 com.pixpin.screenshot/preferences/reload
 com.pixpin.screenshot/result/updated
 ```
 
 通知只负责发出请求，不直接传递图片对象。图片和任务状态通过 `PXCaptureTask`、内存对象或临时文件管理。
+
+外部 URL 协议为 `pixpin://` / `pixpin://activate`（默认全屏标记）、
+`pixpin://capture/{full,area,freeze,instant,markup}`、`pixpin://cancel`。
+URL 白名单解析集中在 `PXExternalRequest`；SpringBoard 接收后与 Darwin 共用协调器，
+不再广播通知，不排队重试。完整接入示例、限制及真机验收见 `USAGE.md` 第 3 节。
 
 ### 2.3 隐私和安全边界
 

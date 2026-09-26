@@ -70,6 +70,10 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 #pragma mark - 请求入口
 
 - (void)handleDarwinNotificationName:(NSString *)name {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self handleDarwinNotificationName:name]; });
+        return;
+    }
     if ([name isEqualToString:(__bridge NSString *)PXDarwinPreferencesReload]) {
         [PXPreferences reload];
         return;
@@ -84,7 +88,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureArea]) mode = PXCaptureModeArea;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureFreeze]) mode = PXCaptureModeFreeze;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureInstant]) mode = PXCaptureModeInstant;
-    else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureMarkup]) mode = PXCaptureModeMarkup;
+    else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureMarkup] ||
+             [name isEqualToString:(__bridge NSString *)PXDarwinActivate]) mode = PXCaptureModeMarkup;
 
     if (mode >= PXCaptureModeFull && mode <= PXCaptureModeMarkup) {
         [self requestCapture:mode];

@@ -33,9 +33,64 @@
 | 入口 | 位置 | 说明 |
 |---|---|---|
 | 测试中心 | 设置 → PixPin → 诊断与测试 | 五种模式、实时阶段、手动取消 |
-| 跨进程通知 | Darwin 通知 | `com.pixpin.screenshot/capture/{full,area,freeze,instant,markup}`，只发信号不带数据，供自动化/未来控制中心接入 |
+| 跨进程通知 | Darwin 通知 | `com.pixpin.screenshot/activate` 默认打开全屏标记，也支持指定模式 |
+| URL Scheme | 外部插件 / 打开 URL 动作 | `pixpin://` 默认打开全屏标记，也支持指定模式 |
 
 控制中心模块与系统截图按钮联动暂未实现（见「已知限制」）。
+
+### 3.1 外部插件接入（1.4.2+）
+
+PixPin 在 SpringBoard 内运行。安装后需注销并确保注入成功；“启动”指触发截图/编辑流程，不会启动独立 App。所有入口遵守总开关和对应模式开关。
+
+| 动作 | URL Scheme | Darwin 通知名称 |
+|---|---|---|
+| 默认启动（全屏标记） | `pixpin://` 或 `pixpin://activate` | `com.pixpin.screenshot/activate` |
+| 全屏截图 | `pixpin://capture/full` | `com.pixpin.screenshot/capture/full` |
+| 区域截图 | `pixpin://capture/area` | `com.pixpin.screenshot/capture/area` |
+| 冻结截图 | `pixpin://capture/freeze` | `com.pixpin.screenshot/capture/freeze` |
+| 即时区域截图 | `pixpin://capture/instant` | `com.pixpin.screenshot/capture/instant` |
+| 全屏标记 | `pixpin://capture/markup` | `com.pixpin.screenshot/capture/markup` |
+| 取消当前任务 | `pixpin://cancel` 或 `pixpin://capture/cancel` | `com.pixpin.screenshot/capture/cancel` |
+
+其他插件优先使用 Darwin 通知（可从任意线程发送，无需链接 PixPin）：
+
+```objc
+#import <notify.h>
+notify_post("com.pixpin.screenshot/activate");
+// 指定模式：notify_post("com.pixpin.screenshot/capture/area");
+// 取消：notify_post("com.pixpin.screenshot/capture/cancel");
+```
+
+也可以使用 CoreFoundation：
+
+```objc
+CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+    CFSTR("com.pixpin.screenshot/activate"), NULL, NULL, true);
+```
+
+通过 URL 调用（UIKit 调用放到主线程）：
+
+```objc
+dispatch_async(dispatch_get_main_queue(), ^{
+    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"pixpin://activate"]
+                                      options:@{}
+                            completionHandler:nil];
+});
+```
+
+- Darwin 是无参数信号，不支持 `userInfo`，没有截图成功回执；不要为一次操作同时发送 URL 和通知。
+- URL 在 SpringBoard 内拦截，未向 LaunchServices 注册独立 App。因此 `canOpenURL:` 可能返回 NO，调用方应直接打开；提前要求已注册 Scheme 的宿主可能拒绝，插件应改用 Darwin。普通 App、快捷指令及其他 URL 插件共存的实际路径尚待真机验收。
+- URL 回调成功只表示指令格式有效且已交给协调器，不表示已截图或保存；关闭模式和任务忙碌仍会拒绝执行。请看测试中心处理状态或 syslog。
+- 活动任务期间重复启动不替换当前任务、不叠加窗口；取消后可再次启动。Darwin 通知可能合并，不能把连续通知当作可靠队列；未注入时的通知不补发。
+- 未知模式、附加路径、query、fragment、用户名和端口均拒绝，不打开外部文件，也不会退回默认模式。其他 Scheme 原样交给系统。
+
+### 3.2 外部入口真机验收（待执行）
+
+1. iOS 16/17 各自在设备冷启动并恢复越狱注入后、热启动时，从桌面和 App 内分别调用默认 URL 与默认 Darwin 通知；预期直接进入全屏标记，底图为触发时屏幕。
+2. 逐项调用上表五种模式，确认与测试中心同模式一致；调用取消后窗口消失且可重新启动。
+3. 面板打开时连续触发 URL/Darwin，确认只有一个任务并出现 `rejected-busy`；关闭总开关/模式开关后触发，确认 `rejected-disabled`。
+4. 打开 `pixpin://capture/unknown` 和 `pixpin://activate?mode=full`，确认不截图；普通 HTTPS、其他 App Scheme 仍按原行为打开。与其他 URL 接管插件同时启用时再次测试。
+5. 收集 `[PixPin]` syslog：加载时应有 `external URL hook installed`（某个版本专属入口可能为 `unavailable`），请求时有 `external request source=url/darwin`；无效指令为 `external URL rejected`。再核对测试中心的 accepted / rejected / cancelled 及最终输出状态。
 
 ## 4. 模式说明
 

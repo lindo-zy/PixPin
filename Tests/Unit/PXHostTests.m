@@ -4,6 +4,8 @@
 #import <Foundation/Foundation.h>
 #import "../../Sources/Common/PXGeometry.h"
 #import "../../Sources/Common/PXClaimSet.h"
+#import "../../Sources/Common/PXConstants.h"
+#import "../../Sources/Common/PXExternalRequest.h"
 #import "../../Sources/Editor/PXEditorLayout.h"
 
 static NSInteger PXTestFailures = 0;
@@ -199,6 +201,37 @@ static void testEditorLayout(void) {
             "collapsed handle keeps an in-bounds dragged position");
 }
 
+static void testExternalRequests(void) {
+    printf("[external requests]\n");
+    NSDictionary *valid = @{
+        @"pixpin://": (__bridge NSString *)PXDarwinActivate,
+        @"pixpin://activate": (__bridge NSString *)PXDarwinActivate,
+        @"PIXPIN://ACTIVATE/": (__bridge NSString *)PXDarwinActivate,
+        @"pixpin://capture/full": (__bridge NSString *)PXDarwinCaptureFull,
+        @"pixpin://capture/area": (__bridge NSString *)PXDarwinCaptureArea,
+        @"pixpin://capture/freeze": (__bridge NSString *)PXDarwinCaptureFreeze,
+        @"pixpin://capture/instant": (__bridge NSString *)PXDarwinCaptureInstant,
+        @"pixpin://capture/markup": (__bridge NSString *)PXDarwinCaptureMarkup,
+        @"pixpin://capture/cancel": (__bridge NSString *)PXDarwinCaptureCancel,
+        @"pixpin://cancel": (__bridge NSString *)PXDarwinCaptureCancel,
+    };
+    for (NSString *url in valid) {
+        PXCheck([PXNotificationNameForExternalURL([NSURL URLWithString:url]) isEqual:valid[url]],
+                url.UTF8String);
+    }
+    for (NSString *url in @[@"https://capture/full", @"other://activate", @"pixpin://unknown",
+                            @"pixpin://capture", @"pixpin://capture/unknown", @"pixpin://capture/full/extra",
+                            @"pixpin://capture/full?mode=markup", @"pixpin://activate#full",
+                            @"pixpin://user@activate", @"pixpin://activate:80",
+                            @"pixpin://capture/%66ull", @"pixpin://capture/../full",
+                            @"pixpin://preferences/reload", @"pixpin:///capture/full"]) {
+        PXCheck(PXNotificationNameForExternalURL([NSURL URLWithString:url]) == nil, url.UTF8String);
+    }
+    PXCheck(!PXIsExternalURL(nil), "nil URL belongs to original handler");
+    PXCheck(PXIsExternalURL([NSURL URLWithString:@"pixpin://unknown"]),
+            "invalid PixPin command is consumed without system fallback");
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
@@ -206,6 +239,7 @@ int main(int argc, const char **argv) {
         testGeometry();
         testClaimSet();
         testEditorLayout();
+        testExternalRequests();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }
