@@ -23,7 +23,10 @@
     NSUInteger insertIndex = items.count;
     PSSpecifier *group = [self pxExternalEntryGroupIn:items];
     if (group) insertIndex = [items indexOfObject:group] + 1;
-    [items insertObject:[self pxURLSchemeSpecifier] atIndex:insertIndex];
+    for (PSSpecifier *specifier in [self pxURLSchemeSpecifiers]) {
+        [items insertObject:specifier atIndex:insertIndex];
+        insertIndex++;
+    }
     return items;
 }
 
@@ -34,53 +37,86 @@
     return nil;
 }
 
-- (NSString *)pxSchemeURL {
-    return [NSString stringWithFormat:@"%@://activate", PXExternalURLScheme];
+- (NSString *)pxSchemeURLForPath:(NSString *)path {
+    return [NSString stringWithFormat:@"%@://%@", PXExternalURLScheme, path];
 }
 
-- (NSString *)pxSchemeEntryTitle {
-    return [NSString stringWithFormat:@"%@（点击复制）", [self pxSchemeURL]];
+// 与 Sources/Common/PXExternalRequest.m 的路由表保持一致，全部指令逐行列出。
+// activate 与裸 pixpin:// 等价，capture/cancel 是 cancel 的别名，不单独占行，见分组 footer。
+- (NSArray<NSArray<NSString *> *> *)pxSchemeEntries {
+    return @[
+        @[@"启动（全屏标记）", @"activate"],
+        @[@"全屏截图", @"capture/full"],
+        @[@"区域截图", @"capture/area"],
+        @[@"冻结截图", @"capture/freeze"],
+        @[@"即时区域截图", @"capture/instant"],
+        @[@"全屏标记", @"capture/markup"],
+        @[@"取消截图", @"cancel"],
+    ];
 }
 
-- (PSSpecifier *)pxURLSchemeSpecifier {
-    PSSpecifier *specifier = [PSSpecifier preferenceSpecifierNamed:[self pxSchemeEntryTitle]
-                                                            target:self
-                                                               set:NULL
-                                                               get:NULL
-                                                            detail:Nil
-                                                              cell:PSButtonCell
-                                                               edit:Nil];
-    specifier.buttonAction = @selector(pxCopyURLScheme:);
-    return specifier;
+- (NSArray<PSSpecifier *> *)pxURLSchemeSpecifiers {
+    NSMutableArray *specifiers = [NSMutableArray array];
+    for (NSArray<NSString *> *entry in [self pxSchemeEntries]) {
+        NSString *url = [self pxSchemeURLForPath:entry[1]];
+        NSString *title = [NSString stringWithFormat:@"%@：%@", entry[0], url];
+        PSSpecifier *specifier = [PSSpecifier preferenceSpecifierNamed:title
+                                                                target:self
+                                                                   set:NULL
+                                                                   get:NULL
+                                                                detail:Nil
+                                                                  cell:PSButtonCell
+                                                                   edit:Nil];
+        specifier.buttonAction = @selector(pxCopyURLScheme:);
+        [specifier setProperty:url forKey:@"pxURL"];
+        [specifier setProperty:title forKey:@"pxTitle"];
+        [specifiers addObject:specifier];
+    }
+    return specifiers;
 }
 
 - (void)pxCopyURLScheme:(PSSpecifier *)specifier {
-    UIPasteboard.generalPasteboard.string = [self pxSchemeURL];
-    PXLogInfo(@"prefs url-scheme copied");
+    NSString *url = [specifier propertyForKey:@"pxURL"];
+    NSString *title = [specifier propertyForKey:@"pxTitle"];
+    if (url.length == 0 || title.length == 0) {
+        PXLogWarn(@"prefs url-scheme specifier missing url/title");
+        return;
+    }
+    UIPasteboard.generalPasteboard.string = url;
+    PXLogInfo(@"prefs url-scheme copied: %@", url);
 
     UISelectionFeedbackGenerator *haptic = [[UISelectionFeedbackGenerator alloc] init];
     [haptic selectionChanged];
 
-    self.copyFeedbackGeneration++;
-    NSInteger generation = self.copyFeedbackGeneration;
+    // 行标题各自延迟恢复，不引入全局代际守卫，避免连续复制多行时前一行停留在反馈文案。
     specifier.name = @"已复制 ✓";
     [self reloadSpecifier:specifier animated:NO];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        specifier.name = title;
+        [self reloadSpecifier:specifier animated:NO];
+    });
 
     // 按钮标题动态刷新未经真机验证，同时用测试中心已验证的分组 footerText 刷新做兜底反馈。
+    // footer 只保留最新一次反馈：原文在离开反馈态时捕获，仅最新点击的定时器执行恢复。
+    self.copyFeedbackGeneration++;
+    NSInteger generation = self.copyFeedbackGeneration;
     PSSpecifier *group = [self pxExternalEntryGroupIn:_specifiers];
-    NSString *originalFooter = [group propertyForKey:@"footerText"];
-    if (group) {
-        [group setProperty:@"已复制到剪贴板 ✓" forKey:@"footerText"];
-        [self reloadSpecifier:group animated:NO];
+    if (!group) return;
+    NSString *feedbackFooter = @"已复制到剪贴板 ✓";
+    NSString *currentFooter = [group propertyForKey:@"footerText"] ?: @"";
+    if (![currentFooter isEqualToString:feedbackFooter]) {
+        [group setProperty:currentFooter forKey:@"pxOriginalFooter"];
     }
+    [group setProperty:feedbackFooter forKey:@"footerText"];
+    [self reloadSpecifier:group animated:NO];
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (generation != self.copyFeedbackGeneration) return;
-        specifier.name = [self pxSchemeEntryTitle];
-        [self reloadSpecifier:specifier animated:NO];
-        if (group) {
-            [group setProperty:originalFooter forKey:@"footerText"];
+        NSString *original = [group propertyForKey:@"pxOriginalFooter"];
+        if (original.length > 0) {
+            [group setProperty:original forKey:@"footerText"];
             [self reloadSpecifier:group animated:NO];
         }
     });
