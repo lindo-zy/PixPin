@@ -1,0 +1,167 @@
+name: Build PixPin RootHide
+
+# 参考 TypeX 的 build-roothide.yml。
+# 版本口径：build.sh 在双平台构建成功后会把 control 的 PATCH +1，
+# 因此 deb 的实际版本是构建时 control 版本的下一个版本（如 control 1.4.8 -> 产出 1.4.9）。
+# 产物改名以 deb 内部版本（dpkg-deb -f Version）为准；发版 tag 请与该版本对齐（如 v1.4.9）。
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pixpin-roothide-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: RootHide packages (iOS 16 and iOS 17)
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup RootHide Theos
+        uses: waruhachi/theos-action@v2.4.6
+        with:
+          theos-src: roothide/theos
+          sdks-src: xybp888/iOS-SDKs
+
+      - name: Verify toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "${THEOS}"
+          # build.sh 的 ios16 / ios17 双目标分别要求这两套 SDK。
+          test -d "${THEOS}/sdks/iPhoneOS16.5.sdk"
+          test -d "${THEOS}/sdks/iPhoneOS17.0.sdk"
+          test -x "${THEOS}/bin/ldid" || command -v ldid
+          xcodebuild -version
+          make --version | head -n 1
+          command -v dpkg-deb
+          command -v plutil
+          bash -n build.sh
+          echo "Using THEOS=${THEOS}"
+
+      - name: Build package
+        shell: bash
+        env:
+          THEOS_PACKAGE_SCHEME: roothide
+        run: |
+          set -euo pipefail
+          # 宿主单元测试 + ios16/ios17 双包 + 包结构校验；notify.local.conf 不存在时自动跳过 Bark 推送。
+          ./build.sh
+
+      - name: Verify and rename packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          for ios in ios16 ios17; do
+            packages=(packages/$ios/*.deb)
+            if (( ${#packages[@]} != 1 )); then
+              echo "Expected exactly one $ios package, found ${#packages[@]}." >&2
+              exit 1
+            fi
+            package="${packages[0]}"
+            test -s "$package"
+
+            # 以 deb 内部元数据的版本为准，避免与 tag 口径不一致。
+            version="$(dpkg-deb -f "$package" Version)"
+            new_name="PixPin-RootHide-${ios}-${version}.deb"
+            mv "$package" "packages/$ios/$new_name"
+            echo "Package: packages/$ios/$new_name"
+          done
+
+      - name: Upload iOS 16 Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixpin-roothide-ios16
+          path: packages/ios16/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload iOS 17 Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixpin-roothide-ios17
+          path: packages/ios17/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          deb_files=(release-assets/*/*.deb)
+          if (( ${#deb_files[@]} < 2 )); then
+            echo "Expected at least two Debian packages, found ${#deb_files[@]}." >&2
+            exit 1
+          fi
+
+          mkdir -p final-assets
+          for package in "${deb_files[@]}"; do
+            cp "$package" final-assets/
+          done
+
+          echo "Final release assets:"
+          ls -l final-assets/*.deb
+
+      - name: Create or update GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          assets=(final-assets/*.deb)
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "Error: No assets found to upload!" >&2
+            exit 1
+          fi
+
+          echo "Tag: $tag"
+          echo "Assets to upload: ${assets[@]}"
+
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "Updating existing release: $tag"
+            gh release upload "$tag" "${assets[@]}" --repo "$GH_REPO" --clobber
+          else
+            echo "Creating new release: $tag"
+            gh release create "$tag" "${assets[@]}" --repo "$GH_REPO" \
+              --title "PixPin $tag" \
+              --generate-notes
+          fi
+
+          echo "Release published successfully!"
