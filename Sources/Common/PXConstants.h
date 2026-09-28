@@ -22,6 +22,14 @@ FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureMarkup;      // com.pixpin.sc
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureCancel;      // com.pixpin.screenshot/capture/cancel
 FOUNDATION_EXPORT CFStringRef const PXDarwinPreferencesReload;  // com.pixpin.screenshot/preferences/reload
 
+// MARK: - Snapper3 兼容别名（外部按 Snapper3 公开通知约定发信号即可触发 PixPin）
+
+FOUNDATION_EXPORT CFStringRef const PXDarwinSnapperForceOpen;        // com.jontelang.snapper3.force.open → 区域截图
+FOUNDATION_EXPORT CFStringRef const PXDarwinSnapperForceInstantOpen; // com.jontelang.snapper3.forceinstant.open → 即时区域截图
+FOUNDATION_EXPORT CFStringRef const PXDarwinSnapperForceFreezeOpen;  // com.jontelang.snapper3.forcefreeze.open → 冻结截图
+FOUNDATION_EXPORT CFStringRef const PXDarwinSnapperCloseAll;         // com.jontelang.snapper3.close.all → 取消当前任务
+FOUNDATION_EXPORT CFStringRef const PXDarwinSnapperCloseCrop;        // com.jontelang.snapper3.closecrop → 取消当前任务
+
 // MARK: - 进程内通知名（同样不携带图片对象，只提示协调器刷新）
 
 FOUNDATION_EXPORT NSString * const PXNotificationResultUpdated; // com.pixpin.screenshot/result/updated

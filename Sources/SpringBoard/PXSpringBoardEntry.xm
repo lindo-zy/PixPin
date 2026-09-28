@@ -111,6 +111,12 @@ static void PXInstallURLHook(Class cls, NSString *selectorName, IMP replacement,
                 PXDarwinCaptureMarkup,
                 PXDarwinCaptureCancel,
                 PXDarwinPreferencesReload,
+                // Snapper3 兼容别名：第三方按 Snapper3 公开约定发通知即可驱动 PixPin。
+                PXDarwinSnapperForceOpen,
+                PXDarwinSnapperForceInstantOpen,
+                PXDarwinSnapperForceFreezeOpen,
+                PXDarwinSnapperCloseAll,
+                PXDarwinSnapperCloseCrop,
             };
             for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
                 CFNotificationCenterAddObserver(center,

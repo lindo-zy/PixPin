@@ -13,6 +13,12 @@ CFStringRef const PXDarwinCaptureMarkup = CFSTR("com.pixpin.screenshot/capture/m
 CFStringRef const PXDarwinCaptureCancel = CFSTR("com.pixpin.screenshot/capture/cancel");
 CFStringRef const PXDarwinPreferencesReload = CFSTR("com.pixpin.screenshot/preferences/reload");
 
+CFStringRef const PXDarwinSnapperForceOpen = CFSTR("com.jontelang.snapper3.force.open");
+CFStringRef const PXDarwinSnapperForceInstantOpen = CFSTR("com.jontelang.snapper3.forceinstant.open");
+CFStringRef const PXDarwinSnapperForceFreezeOpen = CFSTR("com.jontelang.snapper3.forcefreeze.open");
+CFStringRef const PXDarwinSnapperCloseAll = CFSTR("com.jontelang.snapper3.close.all");
+CFStringRef const PXDarwinSnapperCloseCrop = CFSTR("com.jontelang.snapper3.closecrop");
+
 NSString * const PXNotificationResultUpdated = @"com.pixpin.screenshot/result/updated";
 
 NSString * const PXKeyEnabled = @"Enabled";

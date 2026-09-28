@@ -40,6 +40,8 @@
 | 全屏标记 | `pixpin://capture/markup` | `com.pixpin.screenshot/capture/markup` |
 | 取消当前任务 | `pixpin://cancel` | `com.pixpin.screenshot/capture/cancel` |
 
+兼容 Snapper3 调用形式（1.5.5+）：`com.jontelang.snapper3.force.open` / `forceinstant.open` / `forcefreeze.open` 分别触发区域 / 即时区域 / 冻结截图，`close.all`、`closecrop` 取消当前任务；`openlast`、`history` 无对应功能。
+
 其他插件优先使用 Darwin 通知（无需链接 PixPin，任意线程可发）：
 
 ```objc

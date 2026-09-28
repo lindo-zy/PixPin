@@ -233,6 +233,21 @@ static void testExternalRequests(void) {
             "invalid PixPin command is consumed without system fallback");
 }
 
+static void testSnapper3Aliases(void) {
+    printf("[snapper3 aliases]\n");
+    // 字面量必须与 Snapper3 公开文档逐字一致，写错则第三方通知永远无人接收。
+    NSDictionary<NSString *, NSString *> *aliases = @{
+        @"com.jontelang.snapper3.force.open": (__bridge NSString *)PXDarwinSnapperForceOpen,
+        @"com.jontelang.snapper3.forceinstant.open": (__bridge NSString *)PXDarwinSnapperForceInstantOpen,
+        @"com.jontelang.snapper3.forcefreeze.open": (__bridge NSString *)PXDarwinSnapperForceFreezeOpen,
+        @"com.jontelang.snapper3.close.all": (__bridge NSString *)PXDarwinSnapperCloseAll,
+        @"com.jontelang.snapper3.closecrop": (__bridge NSString *)PXDarwinSnapperCloseCrop,
+    };
+    for (NSString *expected in aliases) {
+        PXCheck([aliases[expected] isEqualToString:expected], expected.UTF8String);
+    }
+}
+
 static void testEditorOrder(void) {
     printf("[editor order]\n");
     NSArray<NSString *> *actionDefaults = [PXEditorOrder defaultActionIdentifiers];
@@ -361,6 +376,7 @@ int main(int argc, const char **argv) {
         testClaimSet();
         testEditorLayout();
         testExternalRequests();
+        testSnapper3Aliases();
         testEditorOrder();
         testEditorOverrides();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
