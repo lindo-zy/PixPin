@@ -5,6 +5,7 @@
 #import "PXEditorLayout.h"
 #import "../Common/PXLog.h"
 #import "../Common/PXConstants.h"
+#import "../Common/PXEditorOrder.h"
 #import "../Output/PXClipboardWriter.h"
 #import "../Output/PXSharePresenter.h"
 
@@ -24,41 +25,67 @@ static UIColor *PXEditorAccentColor(void) {
 
 #pragma mark - 工具定义
 
-typedef struct {
-    PXAnnotationType type;
-    PXAnnotationFillStyle fillStyle;
-    NSString *title;
-    NSString *iconName;   // SF Symbol；缺失时回退显示文字
-} PXEditorToolItem;
+@interface PXEditorTool : NSObject
+@property (nonatomic, assign) PXAnnotationType type;
+@property (nonatomic, assign) PXAnnotationFillStyle fillStyle;
+@property (nonatomic, copy) NSString *identifier;   // 对齐 PXEditorOrder 目录 id
+@property (nonatomic, copy) NSString *title;        // 显示名统一取自 PXEditorOrder
+@property (nonatomic, copy) NSString *iconName;     // SF Symbol；缺失时回退显示文字
+@end
+@implementation PXEditorTool
+@end
 
-// 顺序对齐参考图：第一行 画笔/平移/方框/椭圆/箭头/放大镜/直线，
-// 第二行 马赛克/文字/实心方/实心圆/聚光/荧光/贴纸。
-// 图章保留独立入口，布局按实际工具数量换行。
-static const PXEditorToolItem PXEditorTools[] = {
-    { PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"画笔",   @"paintbrush" },
-    { PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"平移",   @"hand.point.up.left" },
-    { PXAnnotationTypeRectangle, PXAnnotationFillStyleHollow, @"方框",   @"rectangle" },
-    { PXAnnotationTypeOval,      PXAnnotationFillStyleHollow, @"椭圆",   @"ellipse" },
-    { PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"箭头",   @"arrow.up.right" },
-    { PXAnnotationTypeMagnifier, PXAnnotationFillStyleHollow, @"放大镜", @"plus.magnifyingglass" },
-    { PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"直线",   @"line.diagonal" },
-    { PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"马赛克", @"squareshape.split.3x3" },
-    { PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"文字",   @"textformat" },
-    { PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"实心方", @"rectangle.fill" },
-    { PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"实心圆", @"ellipse.fill" },
-    { PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"聚光",   @"circle.lefthalf.filled" },
-    { PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"荧光",   @"pencil" },
-    { PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"贴纸",   @"photo" },
-    { PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"序号图章", @"1.circle" },
-};
-static const NSUInteger PXEditorToolCount = sizeof(PXEditorTools) / sizeof(PXEditorTools[0]);
+static PXEditorTool *PXEditorToolMake(PXAnnotationType type, PXAnnotationFillStyle fillStyle,
+                                      NSString *identifier, NSString *iconName) {
+    PXEditorTool *tool = [[PXEditorTool alloc] init];
+    tool.type = type;
+    tool.fillStyle = fillStyle;
+    tool.identifier = identifier;
+    tool.title = [PXEditorOrder displayNameForToolIdentifier:identifier];
+    tool.iconName = iconName;
+    return tool;
+}
 
-/// 打开编辑器的默认工具：平移（随表重排动态定位，避免硬编码索引漂移）。
-static NSUInteger PXEditorDefaultToolIndex(void) {
-    for (NSUInteger i = 0; i < PXEditorToolCount; i++) {
-        if (PXEditorTools[i].type == PXAnnotationTypePan) return i;
+// 全量工具目录：id 是唯一命名来源，显示顺序由设置页排序（PXEditorOrder）决定。
+static NSDictionary<NSString *, PXEditorTool *> *PXEditorToolCatalog(void) {
+    static NSDictionary<NSString *, PXEditorTool *> *catalog;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSArray<PXEditorTool *> *tools = @[
+            PXEditorToolMake(PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"brush",     @"paintbrush"),
+            PXEditorToolMake(PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"pan",       @"hand.point.up.left"),
+            PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleHollow, @"rect",      @"rectangle"),
+            PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleHollow, @"oval",      @"ellipse"),
+            PXEditorToolMake(PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"arrow",     @"arrow.up.right"),
+            PXEditorToolMake(PXAnnotationTypeMagnifier, PXAnnotationFillStyleHollow, @"magnifier", @"plus.magnifyingglass"),
+            PXEditorToolMake(PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"line",      @"line.diagonal"),
+            PXEditorToolMake(PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"mosaic",    @"squareshape.split.3x3"),
+            PXEditorToolMake(PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"text",      @"textformat"),
+            PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"rectSolid", @"rectangle.fill"),
+            PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"ovalSolid", @"ellipse.fill"),
+            PXEditorToolMake(PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"spotlight", @"circle.lefthalf.filled"),
+            PXEditorToolMake(PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"highlight", @"pencil"),
+            PXEditorToolMake(PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"sticker",   @"photo"),
+            PXEditorToolMake(PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"stamp",     @"1.circle"),
+        ];
+        NSMutableDictionary<NSString *, PXEditorTool *> *mapping =
+            [NSMutableDictionary dictionaryWithCapacity:tools.count];
+        for (PXEditorTool *tool in tools) mapping[tool.identifier] = tool;
+        catalog = mapping;
+    });
+    return catalog;
+}
+
+/// 按设置页排序组装编辑器工具列表；未设置时为目录默认顺序。
+static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
+    NSDictionary<NSString *, PXEditorTool *> *catalog = PXEditorToolCatalog();
+    NSArray<NSString *> *order = [PXEditorOrder currentToolOrder];
+    NSMutableArray<PXEditorTool *> *tools = [NSMutableArray arrayWithCapacity:order.count];
+    for (NSString *identifier in order) {
+        PXEditorTool *tool = catalog[identifier];
+        if (tool) [tools addObject:tool];
     }
-    return 0;
+    return tools;
 }
 
 @interface PXEditorViewController () <
@@ -78,6 +105,7 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 @property (nonatomic, strong) UIView *editorCard;
 @property (nonatomic, strong) UIImageView *backdropView;
 @property (nonatomic, strong) UIScrollView *panelScrollView;
+@property (nonatomic, copy) NSArray<PXEditorTool *> *tools;   // 按设置页排序后的展示顺序
 @property (nonatomic, strong) NSArray<UIButton *> *actionButtons;
 @property (nonatomic, strong) UIButton *saveButton;
 @property (nonatomic, strong) UIButton *fitButton;
@@ -163,23 +191,16 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
 
     [self pxBuildScrollContainer];
     [self pxBuildCanvas];
+    // 工具按钮在 pxBuildBottomPanel 内按 self.tools 顺序创建，必须先解析排序偏好。
+    self.tools = PXEditorToolsInPreferredOrder();
     [self pxBuildTopBar];
     [self pxBuildBottomPanel];
     [self pxConfigureWidthSlider];
-    self.actionButtons = @[self.closeButton, self.undoButton, self.redoButton,
-        self.cropButton, self.rotateButton, self.clipboardButton, self.shareButton,
-        self.saveButton, self.fitButton, self.deleteButton, self.frontButton, self.doneButton];
-    if (self.fullscreenMarkup) {
-        self.actionButtons = @[self.closeButton, self.undoButton, self.redoButton,
-            self.cropButton, self.rotateButton, self.clipboardButton, self.shareButton,
-            self.saveButton, self.fitButton, self.deleteButton, self.frontButton,
-            self.dockButton, self.collapseButton, self.doneButton];
-        for (UIButton *button in self.actionButtons) [self.toolGrid addSubview:button];
-    }
+    [self pxAssembleActionButtons];
     self.dockButton.hidden = !self.fullscreenMarkup;
     self.fitButton.accessibilityLabel = @"整图适屏";
 
-    [self pxSelectToolIndex:self.fullscreenMarkup ? 0 : PXEditorDefaultToolIndex()];
+    [self pxSelectToolIndex:self.fullscreenMarkup ? 0 : [self pxDefaultToolIndex]];
     [self pxApplyCurrentColor];
     [self pxRefreshButtons];
     // 马赛克底图不在此预热：布局前画布尺寸为零会导致块尺寸取错，drawRect 首帧会按正确尺寸懒加载。
@@ -224,26 +245,66 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     _topBar.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.88];
     [self.editorCard addSubview:_topBar];
 
-    // 所有操作保留独立按钮；小屏自动换行。
-    _closeButton = [self pxTopIconNamed:@"xmark" a11y:@"关闭" action:@selector(pxCloseTapped:)];
-    _undoButton = [self pxTopIconNamed:@"arrow.uturn.backward" a11y:@"撤销" action:@selector(pxUndoTapped:)];
-    _redoButton = [self pxTopIconNamed:@"arrow.uturn.forward" a11y:@"重做" action:@selector(pxRedoTapped:)];
-    _cropButton = [self pxTopIconNamed:@"crop.rotate" a11y:@"裁剪" action:@selector(pxCropTapped:)];
-    _rotateButton = [self pxTopIconNamed:@"rotate.right" a11y:@"顺时针旋转90度" action:@selector(pxRotateTapped:)];
-    _clipboardButton = [self pxTopIconNamed:@"doc.on.doc" a11y:@"复制图片" action:@selector(pxCopyTapped:)];
-    _shareButton = [self pxTopIconNamed:@"square.and.arrow.up" a11y:@"分享图片" action:@selector(pxShareTapped:)];
-    _saveButton = [self pxTopIconNamed:@"square.and.arrow.down" a11y:@"保存到相册" action:@selector(pxSaveTapped:)];
-    _fitButton = [self pxTopIconNamed:@"arrow.up.left.and.arrow.down.right" a11y:@"整图适屏" action:@selector(pxFitTapped:)];
-    _dockButton = [self pxTopIconNamed:@"rectangle.topthird.inset.filled" a11y:@"工具面板移至顶部或底部" action:@selector(pxDockTapped:)];
-    _collapseButton = [self pxTopIconNamed:@"rectangle.compress.vertical" a11y:@"收起工具面板" action:@selector(pxCollapsePanelTapped:)];
-    _deleteButton = [self pxTopIconNamed:@"trash" a11y:@"删除选中标注" action:@selector(pxDeleteTapped:)];
-    _frontButton = [self pxTopIconNamed:@"arrow.up.to.line" a11y:@"选中标注置顶" action:@selector(pxFrontTapped:)];
-    _doneButton = [self pxTopIconNamed:@"checkmark" a11y:@"完成" action:@selector(pxDoneTapped:)];
+    // 所有操作保留独立按钮；小屏自动换行。a11y 文案与设置页排序条目同源（PXEditorOrder）。
+    _closeButton = [self pxTopIconNamed:@"xmark" identifier:@"close" action:@selector(pxCloseTapped:)];
+    _undoButton = [self pxTopIconNamed:@"arrow.uturn.backward" identifier:@"undo" action:@selector(pxUndoTapped:)];
+    _redoButton = [self pxTopIconNamed:@"arrow.uturn.forward" identifier:@"redo" action:@selector(pxRedoTapped:)];
+    _cropButton = [self pxTopIconNamed:@"crop.rotate" identifier:@"crop" action:@selector(pxCropTapped:)];
+    _rotateButton = [self pxTopIconNamed:@"rotate.right" identifier:@"rotate" action:@selector(pxRotateTapped:)];
+    _clipboardButton = [self pxTopIconNamed:@"doc.on.doc" identifier:@"copy" action:@selector(pxCopyTapped:)];
+    _shareButton = [self pxTopIconNamed:@"square.and.arrow.up" identifier:@"share" action:@selector(pxShareTapped:)];
+    _saveButton = [self pxTopIconNamed:@"square.and.arrow.down" identifier:@"save" action:@selector(pxSaveTapped:)];
+    _fitButton = [self pxTopIconNamed:@"arrow.up.left.and.arrow.down.right" identifier:@"fit" action:@selector(pxFitTapped:)];
+    _dockButton = [self pxTopIconNamed:@"rectangle.topthird.inset.filled" identifier:@"dock" action:@selector(pxDockTapped:)];
+    _collapseButton = [self pxTopIconNamed:@"rectangle.compress.vertical" identifier:@"collapse" action:@selector(pxCollapsePanelTapped:)];
+    _deleteButton = [self pxTopIconNamed:@"trash" identifier:@"delete" action:@selector(pxDeleteTapped:)];
+    _frontButton = [self pxTopIconNamed:@"arrow.up.to.line" identifier:@"front" action:@selector(pxFrontTapped:)];
+    _doneButton = [self pxTopIconNamed:@"checkmark" identifier:@"done" action:@selector(pxDoneTapped:)];
     _doneButton.tintColor = [UIColor systemGreenColor];
     _closeButton.tintColor = [UIColor systemRedColor];
 }
 
-- (UIButton *)pxTopIconNamed:(NSString *)iconName a11y:(NSString *)a11y action:(SEL)action {
+/// 按设置页排序组装操作按钮；面板停靠/收起仅全屏标记显示，其余模式过滤。
+- (void)pxAssembleActionButtons {
+    NSMutableArray<NSString *> *order = [[PXEditorOrder currentActionOrder] mutableCopy];
+    if (!self.fullscreenMarkup) {
+        [order removeObject:@"dock"];
+        [order removeObject:@"collapse"];
+    }
+    NSDictionary<NSString *, UIButton *> *table = [self pxActionButtonTable];
+    NSMutableArray<UIButton *> *buttons = [NSMutableArray arrayWithCapacity:order.count];
+    for (NSString *identifier in order) {
+        UIButton *button = table[identifier];
+        if (button) [buttons addObject:button];
+    }
+    self.actionButtons = buttons;
+    if (self.fullscreenMarkup) {
+        for (UIButton *button in self.actionButtons) [self.toolGrid addSubview:button];
+    }
+}
+
+- (NSDictionary<NSString *, UIButton *> *)pxActionButtonTable {
+    return @{
+        @"close": self.closeButton,
+        @"undo": self.undoButton,
+        @"redo": self.redoButton,
+        @"crop": self.cropButton,
+        @"rotate": self.rotateButton,
+        @"copy": self.clipboardButton,
+        @"share": self.shareButton,
+        @"save": self.saveButton,
+        @"fit": self.fitButton,
+        @"delete": self.deleteButton,
+        @"front": self.frontButton,
+        @"dock": self.dockButton,
+        @"collapse": self.collapseButton,
+        @"done": self.doneButton,
+    };
+}
+
+- (UIButton *)pxTopIconNamed:(NSString *)iconName
+                  identifier:(NSString *)identifier
+                      action:(SEL)action {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     button.tintColor = [UIColor whiteColor];
     UIImage *icon = [UIImage systemImageNamed:iconName];
@@ -252,13 +313,14 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
             [UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIFontWeightMedium];
         [button setImage:[icon imageWithConfiguration:configuration] forState:UIControlStateNormal];
     } else {
+        NSString *a11y = [PXEditorOrder displayNameForActionIdentifier:identifier];
         [button setTitle:a11y forState:UIControlStateNormal];
         button.titleLabel.font = [UIFont systemFontOfSize:10];
         button.titleLabel.adjustsFontSizeToFitWidth = YES;
     }
     button.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.08];
     button.layer.cornerRadius = 9.0;
-    button.accessibilityLabel = a11y;
+    button.accessibilityLabel = [PXEditorOrder displayNameForActionIdentifier:identifier];
     [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     [self.topBar addSubview:button];
     return button;
@@ -328,16 +390,16 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
     [_widthSlider addTarget:self action:@selector(pxWidthChanged:) forControlEvents:UIControlEventValueChanged];
     [_widthRow addSubview:_widthSlider];
 
-    // 多排工具网格，列数按最小触控宽度自动计算。
+    // 多排工具网格，列数按最小触控宽度自动计算；顺序来自设置页排序。
     _toolGrid = [[UIView alloc] init];
     [_panelScrollView addSubview:_toolGrid];
-    for (NSUInteger i = 0; i < PXEditorToolCount; i++) {
+    for (NSUInteger i = 0; i < self.tools.count; i++) {
         UIButton *tool = [UIButton buttonWithType:UIButtonTypeSystem];
         tool.tintColor = [UIColor whiteColor];
         tool.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
         tool.layer.cornerRadius = 9.0;
-        tool.accessibilityLabel = PXEditorTools[i].title;
-        NSString *iconName = PXEditorTools[i].iconName;
+        tool.accessibilityLabel = self.tools[i].title;
+        NSString *iconName = self.tools[i].iconName;
         UIImage *icon = iconName.length ? [UIImage systemImageNamed:iconName] : nil;
         if (icon) {
             UIImageSymbolConfiguration *configuration =
@@ -345,7 +407,7 @@ static NSUInteger PXEditorDefaultToolIndex(void) {
             [tool setImage:[icon imageWithConfiguration:configuration] forState:UIControlStateNormal];
         } else {
             // 符号缺失兜底：显示中文名
-            [tool setTitle:PXEditorTools[i].title forState:UIControlStateNormal];
+            [tool setTitle:self.tools[i].title forState:UIControlStateNormal];
             tool.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
         }
         [tool addTarget:self action:@selector(pxToolTapped:) forControlEvents:UIControlEventTouchUpInside];
@@ -478,7 +540,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
 
 - (CGFloat)pxPanelContentHeightForWidth:(CGFloat)width {
     CGFloat height = [self pxToolLayoutForWidth:width].height;
-    if (PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker) {
+    if (self.tools[self.selectedToolIndex].type == PXAnnotationTypeSticker) {
         height += PXEditorPanelRowGap + PXEditorGridMake(width, self.stickerButtons.count, 8).height;
     }
     return height;
@@ -579,21 +641,14 @@ static UIImage *PXEditorSliderThumbImage(void) {
     PXEditorGridLayout layout = [self pxToolLayoutForWidth:width];
     self.toolGrid.frame = CGRectMake(0, 0, width, layout.height);
     NSMutableArray<UIView *> *items = [NSMutableArray array];
-    if (self.fullscreenMarkup) {
-        // 图二的首组工具：画笔、马赛克、文字、荧光、放大镜、聚光。
-        for (NSNumber *index in @[@0, @7, @8, @12, @5, @11, @2, @1, @3, @4, @6, @9, @10, @13, @14]) {
-            [items addObject:self.toolButtons[index.unsignedIntegerValue]];
-        }
-    } else {
-        [items addObjectsFromArray:self.toolButtons];
-    }
+    [items addObjectsFromArray:self.toolButtons];
     [items addObject:self.customColorButton];
     if (self.fullscreenMarkup) [items addObjectsFromArray:self.actionButtons];
     for (NSUInteger i = 0; i < items.count; i++) {
         CGRect frame = PXEditorGridFrame(layout, i);
         items[i].frame = frame;
     }
-    BOOL sticker = PXEditorTools[self.selectedToolIndex].type == PXAnnotationTypeSticker;
+    BOOL sticker = self.tools[self.selectedToolIndex].type == PXAnnotationTypeSticker;
     self.stickerRow.hidden = !sticker || self.isCropMode;
     PXEditorGridLayout stickers = PXEditorGridMake(width, self.stickerButtons.count, 8);
     self.stickerRow.frame = CGRectMake(0, layout.height + PXEditorPanelRowGap, width, stickers.height);
@@ -692,8 +747,16 @@ static UIImage *PXEditorSliderThumbImage(void) {
 
 #pragma mark - 工具与颜色选择
 
+/// 打开编辑器的默认工具：平移（随排序动态定位，避免硬编码索引漂移）。
+- (NSUInteger)pxDefaultToolIndex {
+    for (NSUInteger i = 0; i < self.tools.count; i++) {
+        if (self.tools[i].type == PXAnnotationTypePan) return i;
+    }
+    return 0;
+}
+
 - (void)pxSelectToolIndex:(NSUInteger)index {
-    if (index >= PXEditorToolCount || self.isExporting) return;
+    if (index >= self.tools.count || self.isExporting) return;
     self.selectedToolIndex = index;
     self.panelScrollView.contentOffset = CGPointZero;
     for (NSUInteger i = 0; i < self.toolButtons.count; i++) {
@@ -709,16 +772,16 @@ static UIImage *PXEditorSliderThumbImage(void) {
         if (self.isCropMode) {
             [self pxExitCropModeApply:NO];
         }
-        self.canvas.currentTool = PXEditorTools[index].type;
-        self.canvas.currentFillStyle = PXEditorTools[index].fillStyle;
+        self.canvas.currentTool = self.tools[index].type;
+        self.canvas.currentFillStyle = self.tools[index].fillStyle;
     }
-    BOOL stickerTool = (PXEditorTools[index].type == PXAnnotationTypeSticker);
+    BOOL stickerTool = (self.tools[index].type == PXAnnotationTypeSticker);
     // 表情行显隐改变面板高度，交由 viewDidLayoutSubviews 重算（画布随之重适配一次）。
     self.stickerRow.hidden = !stickerTool;
     [self.view setNeedsLayout];
 
     // 线宽行对绘制类工具有效，其余工具置灰提示（保持行高不变，避免切工具时画布重排）。
-    PXAnnotationType type = PXEditorTools[index].type;
+    PXAnnotationType type = self.tools[index].type;
     BOOL widthTool = (type == PXAnnotationTypeBrush || type == PXAnnotationTypeHighlight ||
                       type == PXAnnotationTypeLine || type == PXAnnotationTypeArrow ||
                       type == PXAnnotationTypeRectangle || type == PXAnnotationTypeOval ||

@@ -30,6 +30,8 @@ NSString * const PXKeyMuteScreenshotSound = @"MuteScreenshotSound";
 NSString * const PXKeyScreenshotHaptic = @"ScreenshotHaptic";
 NSString * const PXKeyEditorDefaultColor = @"EditorDefaultColor";
 NSString * const PXKeyEditorDefaultLineWidth = @"EditorDefaultLineWidth";
+NSString * const PXKeyEditorActionOrder = @"EditorActionOrder";
+NSString * const PXKeyEditorToolOrder = @"EditorToolOrder";
 
 const NSInteger PXDefaultResultAction = 0;
 const CGFloat PXDefaultEditorLineWidth = 4.0;

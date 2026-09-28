@@ -179,6 +179,23 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
+			<string>编辑器</string>
+			<key>footerText</key>
+			<string>调整图片编辑器顶部操作按钮和工具面板中工具按钮的排列顺序。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>label</key>
+			<string>编辑器按钮排序</string>
+			<key>detail</key>
+			<string>PXEditorOrderController</string>
+		</dict>
+
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
 			<string>外部入口</string>
 			<key>footerText</key>
 			<string>点击任意一行直接复制对应 URL 指令，粘贴到快捷指令或其他插件的“打开 URL”中即可触发。“启动（全屏标记）”与“全屏标记”行为相同；pixpin://activate 可省略为 pixpin://，取消截图也可用 pixpin://capture/cancel。</string>

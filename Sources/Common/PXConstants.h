@@ -43,6 +43,8 @@ FOUNDATION_EXPORT NSString * const PXKeyMuteScreenshotSound;
 FOUNDATION_EXPORT NSString * const PXKeyScreenshotHaptic;
 FOUNDATION_EXPORT NSString * const PXKeyEditorDefaultColor;
 FOUNDATION_EXPORT NSString * const PXKeyEditorDefaultLineWidth;
+FOUNDATION_EXPORT NSString * const PXKeyEditorActionOrder;
+FOUNDATION_EXPORT NSString * const PXKeyEditorToolOrder;
 
 // MARK: - 默认值
 

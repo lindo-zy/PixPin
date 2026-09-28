@@ -5,6 +5,7 @@
 #import "../../Sources/Common/PXGeometry.h"
 #import "../../Sources/Common/PXClaimSet.h"
 #import "../../Sources/Common/PXConstants.h"
+#import "../../Sources/Common/PXEditorOrder.h"
 #import "../../Sources/Common/PXExternalRequest.h"
 #import "../../Sources/Editor/PXEditorLayout.h"
 
@@ -232,6 +233,54 @@ static void testExternalRequests(void) {
             "invalid PixPin command is consumed without system fallback");
 }
 
+static void testEditorOrder(void) {
+    printf("[editor order]\n");
+    NSArray<NSString *> *actionDefaults = [PXEditorOrder defaultActionIdentifiers];
+    NSArray<NSString *> *toolDefaults = [PXEditorOrder defaultToolIdentifiers];
+    PXCheckInt(actionDefaults.count, 14, "action catalog count");
+    PXCheckInt(toolDefaults.count, 15, "tool catalog count");
+    PXCheckInt([NSSet setWithArray:actionDefaults].count, 14, "action ids unique");
+    PXCheckInt([NSSet setWithArray:toolDefaults].count, 15, "tool ids unique");
+    for (NSString *identifier in actionDefaults) {
+        PXCheck([PXEditorOrder displayNameForActionIdentifier:identifier].length > 0, "action display name");
+    }
+    for (NSString *identifier in toolDefaults) {
+        PXCheck([PXEditorOrder displayNameForToolIdentifier:identifier].length > 0, "tool display name");
+    }
+
+    // 空/nil/garbage 输入一律回退完整默认顺序。
+    PXCheck([[PXEditorOrder resolvedActionOrderFromString:nil] isEqualToArray:actionDefaults], "nil csv -> defaults");
+    PXCheck([[PXEditorOrder resolvedToolOrderFromString:@""] isEqualToArray:toolDefaults], "empty csv -> defaults");
+    PXCheck([[PXEditorOrder resolvedToolOrderFromString:@",, "] isEqualToArray:toolDefaults], "blank csv -> defaults");
+    PXCheckInt([PXEditorOrder resolvedToolOrderFromString:@"bogus,brush,nope"].count, 15, "unknown dropped, missing appended");
+
+    // 未知剔除、去重、缺失补尾。
+    // "done, bogus, close, undo, close" -> [done, close, undo] + 默认序剩余项，共 14 项。
+    NSArray<NSString *> *partial = [PXEditorOrder resolvedActionOrderFromString:@"done, bogus, close, undo, close"];
+    PXCheckInt(partial.count, 14, "resolved covers full catalog");
+    PXCheck([partial[0] isEqualToString:@"done"], "first preserved");
+    PXCheck([partial[1] isEqualToString:@"close"], "second preserved");
+    PXCheck([partial[2] isEqualToString:@"undo"], "third preserved");
+    PXCheck([partial[3] isEqualToString:@"redo"], "missing appended in default order");
+    PXCheck([partial[13] isEqualToString:@"collapse"], "missing appended tail");
+    PXCheck(![partial containsObject:@"bogus"], "unknown dropped");
+
+    // 缺失项严格按默认顺序补尾：只排 save 时，其余项依默认顺序跟在后面。
+    NSArray<NSString *> *saveFirst = [PXEditorOrder resolvedActionOrderFromString:@"save"];
+    PXCheck([saveFirst[0] isEqualToString:@"save"], "single reorder first");
+    NSMutableArray<NSString *> *expectedTail = [actionDefaults mutableCopy];
+    [expectedTail removeObject:@"save"];
+    PXCheck([[saveFirst subarrayWithRange:NSMakeRange(1, expectedTail.count)] isEqualToArray:expectedTail],
+            "missing appended matches default order");
+
+    // 完整排列往返无损。
+    NSArray<NSString *> *reversed = [[actionDefaults reverseObjectEnumerator] allObjects];
+    NSString *csv = [PXEditorOrder stringForOrder:reversed];
+    PXCheck([[PXEditorOrder resolvedActionOrderFromString:csv] isEqualToArray:reversed], "full permutation round-trip");
+    PXCheck([[PXEditorOrder resolvedActionOrderFromString:[PXEditorOrder stringForOrder:actionDefaults]]
+             isEqualToArray:actionDefaults], "defaults round-trip");
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
@@ -240,6 +289,7 @@ int main(int argc, const char **argv) {
         testClaimSet();
         testEditorLayout();
         testExternalRequests();
+        testEditorOrder();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }

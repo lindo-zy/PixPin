@@ -9,7 +9,9 @@ BUNDLE_NAME = PixPinPrefs
 
 PixPinPrefs_FILES = PXRootListController.m \
 	PXTestCaptureController.m \
+	PXEditorOrderController.m \
 	../Sources/Common/PXConstants.m \
+	../Sources/Common/PXEditorOrder.m \
 	../Sources/Common/PXLog.m \
 	../Sources/Common/PXRuntimeStatus.m
 
