@@ -4,9 +4,109 @@
 
 @interface PXRootListController ()
 @property (nonatomic, assign) NSInteger copyFeedbackGeneration;
+@property (nonatomic, strong) UIView *brandingHeader;
 @end
 
 @implementation PXRootListController
+
+- (UITableView *)pxSettingsTable {
+    if ([self respondsToSelector:@selector(tableView)]) return self.tableView;
+    if ([self respondsToSelector:@selector(table)]) return self.table;
+    return nil;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    UITableView *table = [self pxSettingsTable];
+    if (!table) {
+        PXLogWarn(@"prefs branding header skipped: table unavailable");
+        return;
+    }
+    NSBundle *bundle = [NSBundle bundleForClass:[PXRootListController class]];
+    NSString *imagePath = [bundle pathForResource:@"PixPinHeader" ofType:@"png"];
+    UIImage *logo = imagePath.length ? [UIImage imageWithContentsOfFile:imagePath] : nil;
+    if (!logo) {
+        PXLogWarn(@"prefs branding logo missing; using bundle icon");
+        logo = [UIImage imageNamed:@"PixPin" inBundle:bundle compatibleWithTraitCollection:self.traitCollection];
+    }
+    id versionValue = [bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    NSString *version = [versionValue isKindOfClass:NSString.class] ? versionValue : nil;
+
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(table.bounds), 270)];
+    header.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    header.backgroundColor = UIColor.clearColor;
+    self.brandingHeader = header;
+
+    // 独立阴影容器保留 Logo 的透明圆角，避免裁掉阴影。
+    UIView *iconContainer = [[UIView alloc] init];
+    iconContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    iconContainer.layer.shadowColor = UIColor.blackColor.CGColor;
+    iconContainer.layer.shadowOpacity = 0.25;
+    iconContainer.layer.shadowRadius = 12;
+    iconContainer.layer.shadowOffset = CGSizeMake(0, 6);
+    [header addSubview:iconContainer];
+    UIImageView *imageView = [[UIImageView alloc] initWithImage:logo];
+    imageView.translatesAutoresizingMaskIntoConstraints = NO;
+    imageView.contentMode = UIViewContentModeScaleAspectFit;
+    imageView.isAccessibilityElement = NO;
+    [iconContainer addSubview:imageView];
+
+    UILabel *nameLabel = [[UILabel alloc] init];
+    nameLabel.text = @"PixPin";
+    UIFontDescriptor *rounded = [[UIFont systemFontOfSize:36 weight:UIFontWeightRegular].fontDescriptor
+        fontDescriptorWithDesign:UIFontDescriptorSystemDesignRounded];
+    nameLabel.font = rounded ? [UIFont fontWithDescriptor:rounded size:36] : [UIFont systemFontOfSize:36];
+    nameLabel.textColor = UIColor.labelColor;
+    nameLabel.textAlignment = NSTextAlignmentCenter;
+    nameLabel.adjustsFontSizeToFitWidth = YES;
+    nameLabel.minimumScaleFactor = 0.7;
+    nameLabel.accessibilityTraits |= UIAccessibilityTraitHeader;
+    nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:nameLabel];
+
+    UILabel *versionLabel = [[UILabel alloc] init];
+    versionLabel.text = version.length ? [NSString stringWithFormat:@"版本 %@", version] : @"版本未知";
+    versionLabel.font = [UIFont systemFontOfSize:14];
+    versionLabel.textColor = UIColor.secondaryLabelColor;
+    versionLabel.textAlignment = NSTextAlignmentCenter;
+    versionLabel.adjustsFontSizeToFitWidth = YES;
+    versionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:versionLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [iconContainer.topAnchor constraintEqualToAnchor:header.topAnchor constant:28],
+        [iconContainer.centerXAnchor constraintEqualToAnchor:header.centerXAnchor],
+        [iconContainer.widthAnchor constraintEqualToConstant:134],
+        [iconContainer.heightAnchor constraintEqualToConstant:134],
+        [imageView.topAnchor constraintEqualToAnchor:iconContainer.topAnchor],
+        [imageView.bottomAnchor constraintEqualToAnchor:iconContainer.bottomAnchor],
+        [imageView.leadingAnchor constraintEqualToAnchor:iconContainer.leadingAnchor],
+        [imageView.trailingAnchor constraintEqualToAnchor:iconContainer.trailingAnchor],
+        [nameLabel.topAnchor constraintEqualToAnchor:iconContainer.bottomAnchor constant:10],
+        [nameLabel.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
+        [nameLabel.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16],
+        [nameLabel.heightAnchor constraintEqualToConstant:48],
+        [versionLabel.topAnchor constraintEqualToAnchor:nameLabel.bottomAnchor constant:2],
+        [versionLabel.leadingAnchor constraintEqualToAnchor:nameLabel.leadingAnchor],
+        [versionLabel.trailingAnchor constraintEqualToAnchor:nameLabel.trailingAnchor],
+        [versionLabel.heightAnchor constraintEqualToConstant:22],
+    ]];
+    table.tableHeaderView = header;
+    PXLogInfo(@"prefs branding header loaded: version=%@", version.length ? version : @"unknown");
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    UITableView *table = [self pxSettingsTable];
+    UIView *header = self.brandingHeader;
+    CGFloat width = CGRectGetWidth(table.bounds);
+    if (header && width > 0 && CGRectGetWidth(header.bounds) != width) {
+        CGRect frame = header.frame;
+        frame.size.width = width;
+        header.frame = frame;
+        table.tableHeaderView = header;
+    }
+}
 
 - (NSArray *)specifiers {
     if (!_specifiers) {

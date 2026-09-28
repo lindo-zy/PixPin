@@ -115,17 +115,28 @@ verify_deb() {
 
     dpkg-deb -x "$deb_path" "$workdir"
 
-    local dylib bundle plentry filter bundle_icon bad
+    local dylib bundle plentry filter bundle_icon bad header_icon bundle_version bundle_build_version deb_version
     dylib="$(find "$workdir" -name 'PixPin.dylib' -print -quit)"
     bundle="$(find "$workdir" -type d -name 'PixPinPrefs.bundle' -print -quit)"
     plentry="$(find "$workdir" -path '*PreferenceLoader/Preferences/PixPinPrefs.plist' -print -quit)"
     filter="$(find "$workdir" -name 'PixPin.plist' -not -path '*PreferenceLoader*' -print -quit)"
     bundle_icon="$(find "$workdir" -path '*PixPinPrefs.bundle/PixPin.png' -print -quit)"
-    if [[ -z "$dylib" || -z "$bundle" || -z "$plentry" || -z "$filter" || -z "$bundle_icon" ]]; then
+    header_icon="$(find "$workdir" -path '*PixPinPrefs.bundle/PixPinHeader.png' -print -quit)"
+    if [[ -z "$dylib" || -z "$bundle" || -z "$plentry" || -z "$filter" || -z "$bundle_icon" || -z "$header_icon" ]]; then
         echo "error: package layout incomplete (dylib=$dylib bundle=$bundle plentry=$plentry filter=$filter icon=$bundle_icon)" >&2
         rm -rf "$workdir"
         return 1
     fi
+
+    bundle_version="$(plutil -extract CFBundleShortVersionString raw -o - "$bundle/Info.plist")"
+    bundle_build_version="$(plutil -extract CFBundleVersion raw -o - "$bundle/Info.plist")"
+    deb_version="$(dpkg-deb -f "$deb_path" Version)"
+    if [[ "$bundle_version" != "$deb_version" || "$bundle_build_version" != "$deb_version" ]]; then
+        echo "error: preferences version mismatch (display=$bundle_version build=$bundle_build_version package=$deb_version)" >&2
+        rm -rf "$workdir"
+        return 1
+    fi
+    echo "  preferences version OK: $bundle_version"
 
     echo "  dylib archs: $(lipo -archs "$dylib" 2>/dev/null || echo unknown)"
 

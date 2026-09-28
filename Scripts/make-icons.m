@@ -2,6 +2,7 @@
 // 用法：
 //   clang -framework Foundation -framework AppKit -o /tmp/make-icons Scripts/make-icons.m
 //   /tmp/make-icons <output_dir>
+//   /tmp/make-icons <output_dir> --header-only  # 仅生成设置首页高清 Logo
 // 重新生成：60×60 与 120×120(@2x) 两个尺寸的 PixPin.png。
 
 #import <AppKit/AppKit.h>
@@ -117,6 +118,12 @@ int main(int argc, const char *argv[]) {
             return 2;
         }
         NSString *outputDir = [NSString stringWithUTF8String:argv[1]];
+        if (argc > 2 && [[NSString stringWithUTF8String:argv[2]] isEqualToString:@"--header-only"]) {
+            BOOL ok = PXWritePNG(PXRenderIcon(512), 512,
+                [outputDir stringByAppendingPathComponent:@"PixPinHeader.png"]);
+            printf("header icon written: %d -> %s\n", ok, argv[1]);
+            return ok ? 0 : 1;
+        }
         NSImage *icon = PXRenderIcon(240);   // 以高分渲染，缩到目标尺寸保持边缘平滑
 
         BOOL ok1 = PXWritePNG(icon, 60, [outputDir stringByAppendingPathComponent:@"PixPin.png"]);
