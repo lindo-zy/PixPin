@@ -32,6 +32,8 @@ NSString * const PXKeyEditorDefaultColor = @"EditorDefaultColor";
 NSString * const PXKeyEditorDefaultLineWidth = @"EditorDefaultLineWidth";
 NSString * const PXKeyEditorActionOrder = @"EditorActionOrder";
 NSString * const PXKeyEditorToolOrder = @"EditorToolOrder";
+NSString * const PXKeyEditorActionHidden = @"EditorActionHidden";
+NSString * const PXKeyEditorToolHidden = @"EditorToolHidden";
 
 const NSInteger PXDefaultResultAction = 0;
 const CGFloat PXDefaultEditorLineWidth = 4.0;

@@ -45,6 +45,8 @@ FOUNDATION_EXPORT NSString * const PXKeyEditorDefaultColor;
 FOUNDATION_EXPORT NSString * const PXKeyEditorDefaultLineWidth;
 FOUNDATION_EXPORT NSString * const PXKeyEditorActionOrder;
 FOUNDATION_EXPORT NSString * const PXKeyEditorToolOrder;
+FOUNDATION_EXPORT NSString * const PXKeyEditorActionHidden;
+FOUNDATION_EXPORT NSString * const PXKeyEditorToolHidden;
 
 // MARK: - 默认值
 

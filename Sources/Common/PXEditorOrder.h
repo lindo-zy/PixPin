@@ -18,6 +18,10 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSString *)displayNameForActionIdentifier:(NSString *)identifier;
 + (NSString *)displayNameForToolIdentifier:(NSString *)identifier;
 
+/// SF Symbol 名（编辑器按钮与设置页排序条目共用）；无对应符号返回 nil。
++ (NSString *)iconNameForActionIdentifier:(NSString *)identifier;
++ (NSString *)iconNameForToolIdentifier:(NSString *)identifier;
+
 // MARK: 解析与序列化
 
 /// 把任意偏好字符串解析为覆盖全部 id 的合法顺序；入参为空返回默认顺序。
@@ -28,6 +32,14 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSArray<NSString *> *)resolvedOrderFromString:(nullable NSString *)csv
                                         defaults:(NSArray<NSString *> *)defaults;
 
+/// 隐藏集：只保留目录内 id 并去重（乱序无关）；入参为空返回空集。
++ (NSArray<NSString *> *)normalizedHiddenFromString:(nullable NSString *)csv
+                                           defaults:(NSArray<NSString *> *)defaults;
+
+/// 可见项 = 顺序表中不在隐藏集内的项；全部被隐藏时回退为完整顺序（编辑器不允许空面板）。
++ (NSArray<NSString *> *)visibleOrderForOrder:(NSArray<NSString *> *)order
+                                       hidden:(NSArray<NSString *> *)hidden;
+
 + (NSString *)stringForOrder:(NSArray<NSString *> *)order;
 
 // MARK: 偏好读写（CFPreferences，域 com.pixpin.screenshot）
@@ -36,9 +48,17 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSArray<NSString *> *)currentActionOrder;
 + (NSArray<NSString *> *)currentToolOrder;
 
+/// 当前隐藏集（目录内 id）；未设置时为空集。
++ (NSArray<NSString *> *)currentActionHidden;
++ (NSArray<NSString *> *)currentToolHidden;
+
 /// 写入原始 CSV（不做合法化，读取侧统一解析）；供设置页保存完整顺序。
 + (void)saveActionOrderString:(nullable NSString *)csv;
 + (void)saveToolOrderString:(nullable NSString *)csv;
+
+/// 写入隐藏集 CSV；传 nil/空串即清空（全部显示）。
++ (void)saveActionHiddenString:(nullable NSString *)csv;
++ (void)saveToolHiddenString:(nullable NSString *)csv;
 
 @end
 

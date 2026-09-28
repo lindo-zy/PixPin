@@ -82,6 +82,59 @@
     return [self toolDisplayNames][identifier] ?: identifier;
 }
 
++ (NSDictionary<NSString *, NSString *> *)actionIconNames {
+    static NSDictionary<NSString *, NSString *> *icons;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        icons = @{@"close": @"xmark",
+                  @"undo": @"arrow.uturn.backward",
+                  @"redo": @"arrow.uturn.forward",
+                  @"crop": @"crop.rotate",
+                  @"rotate": @"rotate.right",
+                  @"copy": @"doc.on.doc",
+                  @"share": @"square.and.arrow.up",
+                  @"save": @"square.and.arrow.down",
+                  @"fit": @"arrow.up.left.and.arrow.down.right",
+                  @"delete": @"trash",
+                  @"front": @"arrow.up.to.line",
+                  @"dock": @"rectangle.topthird.inset.filled",
+                  @"collapse": @"rectangle.compress.vertical",
+                  @"done": @"checkmark"};
+    });
+    return icons;
+}
+
++ (NSDictionary<NSString *, NSString *> *)toolIconNames {
+    static NSDictionary<NSString *, NSString *> *icons;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        icons = @{@"brush": @"paintbrush",
+                  @"pan": @"hand.point.up.left",
+                  @"rect": @"rectangle",
+                  @"oval": @"ellipse",
+                  @"arrow": @"arrow.up.right",
+                  @"magnifier": @"plus.magnifyingglass",
+                  @"line": @"line.diagonal",
+                  @"mosaic": @"squareshape.split.3x3",
+                  @"text": @"textformat",
+                  @"rectSolid": @"rectangle.fill",
+                  @"ovalSolid": @"ellipse.fill",
+                  @"spotlight": @"circle.lefthalf.filled",
+                  @"highlight": @"pencil",
+                  @"sticker": @"photo",
+                  @"stamp": @"1.circle"};
+    });
+    return icons;
+}
+
++ (NSString *)iconNameForActionIdentifier:(NSString *)identifier {
+    return [self actionIconNames][identifier];
+}
+
++ (NSString *)iconNameForToolIdentifier:(NSString *)identifier {
+    return [self toolIconNames][identifier];
+}
+
 + (NSArray<NSString *> *)resolvedActionOrderFromString:(NSString *)csv {
     return [self resolvedOrderFromString:csv defaults:[self defaultActionIdentifiers]];
 }
@@ -110,6 +163,30 @@
     return [order copy];
 }
 
++ (NSArray<NSString *> *)normalizedHiddenFromString:(NSString *)csv
+                                           defaults:(NSArray<NSString *> *)defaults {
+    NSMutableSet<NSString *> *known = [NSMutableSet setWithArray:defaults];
+    NSMutableSet<NSString *> *hidden = [NSMutableSet set];
+    for (NSString *piece in [csv componentsSeparatedByString:@","]) {
+        NSString *identifier = [piece stringByTrimmingCharactersInSet:
+            [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (identifier.length == 0 || ![known containsObject:identifier]) continue;
+        [hidden addObject:identifier];
+    }
+    return [hidden allObjects];
+}
+
++ (NSArray<NSString *> *)visibleOrderForOrder:(NSArray<NSString *> *)order
+                                       hidden:(NSArray<NSString *> *)hidden {
+    NSSet<NSString *> *hiddenSet = [NSSet setWithArray:hidden];
+    NSMutableArray<NSString *> *visible = [NSMutableArray arrayWithCapacity:order.count];
+    for (NSString *identifier in order) {
+        if (![hiddenSet containsObject:identifier]) [visible addObject:identifier];
+    }
+    // 全部隐藏时回退为完整顺序：编辑器不允许出现没有任何按钮的面板。
+    return visible.count > 0 ? [visible copy] : [order copy];
+}
+
 + (NSString *)stringForOrder:(NSArray<NSString *> *)order {
     return [order componentsJoinedByString:@","];
 }
@@ -131,6 +208,16 @@
     return [self resolvedToolOrderFromString:[self preferenceForKey:PXKeyEditorToolOrder]];
 }
 
++ (NSArray<NSString *> *)currentActionHidden {
+    return [self normalizedHiddenFromString:[self preferenceForKey:PXKeyEditorActionHidden]
+                                   defaults:[self defaultActionIdentifiers]];
+}
+
++ (NSArray<NSString *> *)currentToolHidden {
+    return [self normalizedHiddenFromString:[self preferenceForKey:PXKeyEditorToolHidden]
+                                   defaults:[self defaultToolIdentifiers]];
+}
+
 + (void)saveActionOrderString:(NSString *)csv {
     CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyEditorActionOrder,
                              (__bridge CFStringRef)csv,
@@ -140,6 +227,20 @@
 
 + (void)saveToolOrderString:(NSString *)csv {
     CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyEditorToolOrder,
+                             (__bridge CFStringRef)csv,
+                             (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
++ (void)saveActionHiddenString:(NSString *)csv {
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyEditorActionHidden,
+                             (__bridge CFStringRef)csv,
+                             (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
++ (void)saveToolHiddenString:(NSString *)csv {
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyEditorToolHidden,
                              (__bridge CFStringRef)csv,
                              (__bridge CFStringRef)PXPreferencesDomain);
     CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);

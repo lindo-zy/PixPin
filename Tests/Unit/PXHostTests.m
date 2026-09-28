@@ -279,6 +279,24 @@ static void testEditorOrder(void) {
     PXCheck([[PXEditorOrder resolvedActionOrderFromString:csv] isEqualToArray:reversed], "full permutation round-trip");
     PXCheck([[PXEditorOrder resolvedActionOrderFromString:[PXEditorOrder stringForOrder:actionDefaults]]
              isEqualToArray:actionDefaults], "defaults round-trip");
+
+    // 隐藏集：未知剔除、去重，空输入为空集。
+    PXCheckInt([PXEditorOrder normalizedHiddenFromString:nil defaults:toolDefaults].count, 0, "nil hidden -> empty");
+    NSArray<NSString *> *normalized = [PXEditorOrder normalizedHiddenFromString:@"bogus,brush,brush"
+                                                                       defaults:toolDefaults];
+    PXCheckInt(normalized.count, 1, "hidden normalized");
+    PXCheck([normalized containsObject:@"brush"], "hidden keeps known id");
+    PXCheck([[PXEditorOrder normalizedHiddenFromString:@" brush ,stamp" defaults:toolDefaults]
+             containsObject:@"brush"], "hidden trimmed");
+
+    // 可见过滤：保留相对顺序；全隐藏回退完整顺序。
+    NSArray<NSString *> *visible = [PXEditorOrder visibleOrderForOrder:actionDefaults
+                                                                hidden:@[@"undo", @"redo", @"bogus"]];
+    PXCheckInt(visible.count, 12, "visible count");
+    PXCheck(![visible containsObject:@"undo"] && ![visible containsObject:@"redo"], "hidden removed");
+    PXCheck([visible[0] isEqualToString:@"close"] && [visible[1] isEqualToString:@"crop"], "visible order preserved");
+    NSArray<NSString *> *fallback = [PXEditorOrder visibleOrderForOrder:actionDefaults hidden:actionDefaults];
+    PXCheck([fallback isEqualToArray:actionDefaults], "all hidden falls back to full order");
 }
 
 int main(int argc, const char **argv) {

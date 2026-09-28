@@ -181,7 +181,7 @@
 			<key>label</key>
 			<string>编辑器</string>
 			<key>footerText</key>
-			<string>调整图片编辑器顶部操作按钮和工具面板中工具按钮的排列顺序。</string>
+			<string>调整图片编辑器按钮的排列顺序，并可用开关控制各按钮是否显示。</string>
 		</dict>
 		<dict>
 			<key>cell</key>

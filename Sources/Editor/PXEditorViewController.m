@@ -36,37 +36,37 @@ static UIColor *PXEditorAccentColor(void) {
 @end
 
 static PXEditorTool *PXEditorToolMake(PXAnnotationType type, PXAnnotationFillStyle fillStyle,
-                                      NSString *identifier, NSString *iconName) {
+                                      NSString *identifier) {
     PXEditorTool *tool = [[PXEditorTool alloc] init];
     tool.type = type;
     tool.fillStyle = fillStyle;
     tool.identifier = identifier;
     tool.title = [PXEditorOrder displayNameForToolIdentifier:identifier];
-    tool.iconName = iconName;
+    tool.iconName = [PXEditorOrder iconNameForToolIdentifier:identifier];
     return tool;
 }
 
-// 全量工具目录：id 是唯一命名来源，显示顺序由设置页排序（PXEditorOrder）决定。
+// 全量工具目录：id 是唯一命名来源，显示顺序与显隐由设置页（PXEditorOrder）决定。
 static NSDictionary<NSString *, PXEditorTool *> *PXEditorToolCatalog(void) {
     static NSDictionary<NSString *, PXEditorTool *> *catalog;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         NSArray<PXEditorTool *> *tools = @[
-            PXEditorToolMake(PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"brush",     @"paintbrush"),
-            PXEditorToolMake(PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"pan",       @"hand.point.up.left"),
-            PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleHollow, @"rect",      @"rectangle"),
-            PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleHollow, @"oval",      @"ellipse"),
-            PXEditorToolMake(PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"arrow",     @"arrow.up.right"),
-            PXEditorToolMake(PXAnnotationTypeMagnifier, PXAnnotationFillStyleHollow, @"magnifier", @"plus.magnifyingglass"),
-            PXEditorToolMake(PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"line",      @"line.diagonal"),
-            PXEditorToolMake(PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"mosaic",    @"squareshape.split.3x3"),
-            PXEditorToolMake(PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"text",      @"textformat"),
-            PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"rectSolid", @"rectangle.fill"),
-            PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"ovalSolid", @"ellipse.fill"),
-            PXEditorToolMake(PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"spotlight", @"circle.lefthalf.filled"),
-            PXEditorToolMake(PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"highlight", @"pencil"),
-            PXEditorToolMake(PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"sticker",   @"photo"),
-            PXEditorToolMake(PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"stamp",     @"1.circle"),
+            PXEditorToolMake(PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"brush"),
+            PXEditorToolMake(PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"pan"),
+            PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleHollow, @"rect"),
+            PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleHollow, @"oval"),
+            PXEditorToolMake(PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"arrow"),
+            PXEditorToolMake(PXAnnotationTypeMagnifier, PXAnnotationFillStyleHollow, @"magnifier"),
+            PXEditorToolMake(PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"line"),
+            PXEditorToolMake(PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"mosaic"),
+            PXEditorToolMake(PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"text"),
+            PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"rectSolid"),
+            PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"ovalSolid"),
+            PXEditorToolMake(PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"spotlight"),
+            PXEditorToolMake(PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"highlight"),
+            PXEditorToolMake(PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"sticker"),
+            PXEditorToolMake(PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"stamp"),
         ];
         NSMutableDictionary<NSString *, PXEditorTool *> *mapping =
             [NSMutableDictionary dictionaryWithCapacity:tools.count];
@@ -76,10 +76,11 @@ static NSDictionary<NSString *, PXEditorTool *> *PXEditorToolCatalog(void) {
     return catalog;
 }
 
-/// 按设置页排序组装编辑器工具列表；未设置时为目录默认顺序。
+/// 按设置页排序组装编辑器工具列表；被隐藏的工具不出现，全部隐藏时回退为完整列表。
 static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
     NSDictionary<NSString *, PXEditorTool *> *catalog = PXEditorToolCatalog();
-    NSArray<NSString *> *order = [PXEditorOrder currentToolOrder];
+    NSArray<NSString *> *order = [PXEditorOrder visibleOrderForOrder:[PXEditorOrder currentToolOrder]
+                                                              hidden:[PXEditorOrder currentToolHidden]];
     NSMutableArray<PXEditorTool *> *tools = [NSMutableArray arrayWithCapacity:order.count];
     for (NSString *identifier in order) {
         PXEditorTool *tool = catalog[identifier];
@@ -246,31 +247,35 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
     [self.editorCard addSubview:_topBar];
 
     // 所有操作保留独立按钮；小屏自动换行。a11y 文案与设置页排序条目同源（PXEditorOrder）。
-    _closeButton = [self pxTopIconNamed:@"xmark" identifier:@"close" action:@selector(pxCloseTapped:)];
-    _undoButton = [self pxTopIconNamed:@"arrow.uturn.backward" identifier:@"undo" action:@selector(pxUndoTapped:)];
-    _redoButton = [self pxTopIconNamed:@"arrow.uturn.forward" identifier:@"redo" action:@selector(pxRedoTapped:)];
-    _cropButton = [self pxTopIconNamed:@"crop.rotate" identifier:@"crop" action:@selector(pxCropTapped:)];
-    _rotateButton = [self pxTopIconNamed:@"rotate.right" identifier:@"rotate" action:@selector(pxRotateTapped:)];
-    _clipboardButton = [self pxTopIconNamed:@"doc.on.doc" identifier:@"copy" action:@selector(pxCopyTapped:)];
-    _shareButton = [self pxTopIconNamed:@"square.and.arrow.up" identifier:@"share" action:@selector(pxShareTapped:)];
-    _saveButton = [self pxTopIconNamed:@"square.and.arrow.down" identifier:@"save" action:@selector(pxSaveTapped:)];
-    _fitButton = [self pxTopIconNamed:@"arrow.up.left.and.arrow.down.right" identifier:@"fit" action:@selector(pxFitTapped:)];
-    _dockButton = [self pxTopIconNamed:@"rectangle.topthird.inset.filled" identifier:@"dock" action:@selector(pxDockTapped:)];
-    _collapseButton = [self pxTopIconNamed:@"rectangle.compress.vertical" identifier:@"collapse" action:@selector(pxCollapsePanelTapped:)];
-    _deleteButton = [self pxTopIconNamed:@"trash" identifier:@"delete" action:@selector(pxDeleteTapped:)];
-    _frontButton = [self pxTopIconNamed:@"arrow.up.to.line" identifier:@"front" action:@selector(pxFrontTapped:)];
-    _doneButton = [self pxTopIconNamed:@"checkmark" identifier:@"done" action:@selector(pxDoneTapped:)];
+    _closeButton = [self pxTopIconForIdentifier:@"close" action:@selector(pxCloseTapped:)];
+    _undoButton = [self pxTopIconForIdentifier:@"undo" action:@selector(pxUndoTapped:)];
+    _redoButton = [self pxTopIconForIdentifier:@"redo" action:@selector(pxRedoTapped:)];
+    _cropButton = [self pxTopIconForIdentifier:@"crop" action:@selector(pxCropTapped:)];
+    _rotateButton = [self pxTopIconForIdentifier:@"rotate" action:@selector(pxRotateTapped:)];
+    _clipboardButton = [self pxTopIconForIdentifier:@"copy" action:@selector(pxCopyTapped:)];
+    _shareButton = [self pxTopIconForIdentifier:@"share" action:@selector(pxShareTapped:)];
+    _saveButton = [self pxTopIconForIdentifier:@"save" action:@selector(pxSaveTapped:)];
+    _fitButton = [self pxTopIconForIdentifier:@"fit" action:@selector(pxFitTapped:)];
+    _dockButton = [self pxTopIconForIdentifier:@"dock" action:@selector(pxDockTapped:)];
+    _collapseButton = [self pxTopIconForIdentifier:@"collapse" action:@selector(pxCollapsePanelTapped:)];
+    _deleteButton = [self pxTopIconForIdentifier:@"delete" action:@selector(pxDeleteTapped:)];
+    _frontButton = [self pxTopIconForIdentifier:@"front" action:@selector(pxFrontTapped:)];
+    _doneButton = [self pxTopIconForIdentifier:@"done" action:@selector(pxDoneTapped:)];
     _doneButton.tintColor = [UIColor systemGreenColor];
     _closeButton.tintColor = [UIColor systemRedColor];
 }
 
-/// 按设置页排序组装操作按钮；面板停靠/收起仅全屏标记显示，其余模式过滤。
+/// 按设置页排序与显隐组装操作按钮；面板停靠/收起仅全屏标记显示。
+/// 关闭/完成是编辑器唯一出口，设置页开关禁用，这里再兜底强制补回。
 - (void)pxAssembleActionButtons {
-    NSMutableArray<NSString *> *order = [[PXEditorOrder currentActionOrder] mutableCopy];
+    NSMutableArray<NSString *> *order = [[PXEditorOrder visibleOrderForOrder:[PXEditorOrder currentActionOrder]
+                                                                      hidden:[PXEditorOrder currentActionHidden]] mutableCopy];
     if (!self.fullscreenMarkup) {
         [order removeObject:@"dock"];
         [order removeObject:@"collapse"];
     }
+    if (![order containsObject:@"close"]) [order insertObject:@"close" atIndex:0];
+    if (![order containsObject:@"done"]) [order addObject:@"done"];
     NSDictionary<NSString *, UIButton *> *table = [self pxActionButtonTable];
     NSMutableArray<UIButton *> *buttons = [NSMutableArray arrayWithCapacity:order.count];
     for (NSString *identifier in order) {
@@ -302,12 +307,11 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
     };
 }
 
-- (UIButton *)pxTopIconNamed:(NSString *)iconName
-                  identifier:(NSString *)identifier
-                      action:(SEL)action {
+- (UIButton *)pxTopIconForIdentifier:(NSString *)identifier
+                              action:(SEL)action {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     button.tintColor = [UIColor whiteColor];
-    UIImage *icon = [UIImage systemImageNamed:iconName];
+    UIImage *icon = [UIImage systemImageNamed:[PXEditorOrder iconNameForActionIdentifier:identifier]];
     if (icon) {
         UIImageSymbolConfiguration *configuration =
             [UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIFontWeightMedium];
