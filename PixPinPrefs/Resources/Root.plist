@@ -181,7 +181,7 @@
 			<key>label</key>
 			<string>编辑器</string>
 			<key>footerText</key>
-			<string>调整图片编辑器按钮的排列顺序，并可用开关控制各按钮是否显示。</string>
+			<string>调整编辑操作与标记工具图标的顺序、显隐、名称和大小，顶部实时预览排列效果。</string>
 		</dict>
 		<dict>
 			<key>cell</key>

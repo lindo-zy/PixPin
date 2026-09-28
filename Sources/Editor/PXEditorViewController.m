@@ -48,31 +48,28 @@ static PXEditorTool *PXEditorToolMake(PXAnnotationType type, PXAnnotationFillSty
 
 // 全量工具目录：id 是唯一命名来源，显示顺序与显隐由设置页（PXEditorOrder）决定。
 static NSDictionary<NSString *, PXEditorTool *> *PXEditorToolCatalog(void) {
-    static NSDictionary<NSString *, PXEditorTool *> *catalog;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSArray<PXEditorTool *> *tools = @[
-            PXEditorToolMake(PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"brush"),
-            PXEditorToolMake(PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"pan"),
-            PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleHollow, @"rect"),
-            PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleHollow, @"oval"),
-            PXEditorToolMake(PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"arrow"),
-            PXEditorToolMake(PXAnnotationTypeMagnifier, PXAnnotationFillStyleHollow, @"magnifier"),
-            PXEditorToolMake(PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"line"),
-            PXEditorToolMake(PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"mosaic"),
-            PXEditorToolMake(PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"text"),
-            PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"rectSolid"),
-            PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"ovalSolid"),
-            PXEditorToolMake(PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"spotlight"),
-            PXEditorToolMake(PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"highlight"),
-            PXEditorToolMake(PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"sticker"),
-            PXEditorToolMake(PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"stamp"),
-        ];
-        NSMutableDictionary<NSString *, PXEditorTool *> *mapping =
-            [NSMutableDictionary dictionaryWithCapacity:tools.count];
-        for (PXEditorTool *tool in tools) mapping[tool.identifier] = tool;
-        catalog = mapping;
-    });
+    // 每次打开重新读取名称和图标，避免 SpringBoard 常驻缓存旧偏好。
+    NSArray<PXEditorTool *> *tools = @[
+        PXEditorToolMake(PXAnnotationTypeBrush,     PXAnnotationFillStyleHollow, @"brush"),
+        PXEditorToolMake(PXAnnotationTypePan,       PXAnnotationFillStyleHollow, @"pan"),
+        PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleHollow, @"rect"),
+        PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleHollow, @"oval"),
+        PXEditorToolMake(PXAnnotationTypeArrow,     PXAnnotationFillStyleHollow, @"arrow"),
+        PXEditorToolMake(PXAnnotationTypeMagnifier, PXAnnotationFillStyleHollow, @"magnifier"),
+        PXEditorToolMake(PXAnnotationTypeLine,      PXAnnotationFillStyleHollow, @"line"),
+        PXEditorToolMake(PXAnnotationTypeMosaic,    PXAnnotationFillStyleHollow, @"mosaic"),
+        PXEditorToolMake(PXAnnotationTypeText,      PXAnnotationFillStyleHollow, @"text"),
+        PXEditorToolMake(PXAnnotationTypeRectangle, PXAnnotationFillStyleSolid,  @"rectSolid"),
+        PXEditorToolMake(PXAnnotationTypeOval,      PXAnnotationFillStyleSolid,  @"ovalSolid"),
+        PXEditorToolMake(PXAnnotationTypeSpotlight, PXAnnotationFillStyleHollow, @"spotlight"),
+        PXEditorToolMake(PXAnnotationTypeHighlight, PXAnnotationFillStyleHollow, @"highlight"),
+        PXEditorToolMake(PXAnnotationTypeSticker,   PXAnnotationFillStyleHollow, @"sticker"),
+        PXEditorToolMake(PXAnnotationTypeStamp,     PXAnnotationFillStyleHollow, @"stamp"),
+    ];
+    NSMutableDictionary<NSString *, PXEditorTool *> *mapping =
+        [NSMutableDictionary dictionaryWithCapacity:tools.count];
+    for (PXEditorTool *tool in tools) mapping[tool.identifier] = tool;
+    NSDictionary<NSString *, PXEditorTool *> *catalog = mapping;
     return catalog;
 }
 
@@ -268,14 +265,9 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
 /// 按设置页排序与显隐组装操作按钮；面板停靠/收起仅全屏标记显示。
 /// 关闭/完成是编辑器唯一出口，设置页开关禁用，这里再兜底强制补回。
 - (void)pxAssembleActionButtons {
-    NSMutableArray<NSString *> *order = [[PXEditorOrder visibleOrderForOrder:[PXEditorOrder currentActionOrder]
-                                                                      hidden:[PXEditorOrder currentActionHidden]] mutableCopy];
-    if (!self.fullscreenMarkup) {
-        [order removeObject:@"dock"];
-        [order removeObject:@"collapse"];
-    }
-    if (![order containsObject:@"close"]) [order insertObject:@"close" atIndex:0];
-    if (![order containsObject:@"done"]) [order addObject:@"done"];
+    NSArray<NSString *> *order = [PXEditorOrder visibleActionOrderForOrder:[PXEditorOrder currentActionOrder]
+                                                                  hidden:[PXEditorOrder currentActionHidden]
+                                                        fullscreenMarkup:self.fullscreenMarkup];
     NSDictionary<NSString *, UIButton *> *table = [self pxActionButtonTable];
     NSMutableArray<UIButton *> *buttons = [NSMutableArray arrayWithCapacity:order.count];
     for (NSString *identifier in order) {

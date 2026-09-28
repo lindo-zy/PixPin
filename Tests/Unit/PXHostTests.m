@@ -297,6 +297,26 @@ static void testEditorOrder(void) {
     PXCheck([visible[0] isEqualToString:@"close"] && [visible[1] isEqualToString:@"crop"], "visible order preserved");
     NSArray<NSString *> *fallback = [PXEditorOrder visibleOrderForOrder:actionDefaults hidden:actionDefaults];
     PXCheck([fallback isEqualToArray:actionDefaults], "all hidden falls back to full order");
+
+    // 设置预览与真实编辑器共用模式过滤，保留自定义顺序。
+    NSArray<NSString *> *custom = [PXEditorOrder resolvedActionOrderFromString:@"save,done,dock,close,collapse"];
+    NSArray<NSString *> *imageActions = [PXEditorOrder visibleActionOrderForOrder:custom
+                                                                         hidden:@[@"undo"] fullscreenMarkup:NO];
+    PXCheck(![imageActions containsObject:@"dock"] && ![imageActions containsObject:@"collapse"],
+            "image preview excludes markup-only actions");
+    PXCheck(([[imageActions subarrayWithRange:NSMakeRange(0, 3)] isEqualToArray:@[@"save", @"done", @"close"]]),
+            "mode filtering preserves custom order including exits");
+    NSArray<NSString *> *markupActions = [PXEditorOrder visibleActionOrderForOrder:custom
+                                                                          hidden:@[@"undo"] fullscreenMarkup:YES];
+    PXCheck([markupActions containsObject:@"dock"] && [markupActions containsObject:@"collapse"],
+            "markup preview includes panel controls");
+    PXCheck(![markupActions containsObject:@"undo"], "markup preview honors visibility");
+    NSArray<NSString *> *safeActions = [PXEditorOrder visibleActionOrderForOrder:custom
+                                                                        hidden:@[@"close", @"done"] fullscreenMarkup:NO];
+    PXCheck(([[safeActions subarrayWithRange:NSMakeRange(0, 3)] isEqualToArray:@[@"save", @"done", @"close"]]),
+            "legacy hidden exits remain visible at their configured positions");
+    PXCheck([[PXEditorOrder visibleOrderForOrder:toolDefaults hidden:toolDefaults] isEqualToArray:toolDefaults],
+            "empty tool preview matches editor fallback");
 }
 
 static void testEditorOverrides(void) {

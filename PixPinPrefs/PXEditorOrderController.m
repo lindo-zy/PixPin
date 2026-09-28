@@ -4,7 +4,10 @@
 #import "../Sources/Common/PXEditorOrder.h"
 #import "../Sources/Common/PXLog.h"
 
-@interface PXEditorOrderController ()
+@interface PXEditorOrderController () <UITableViewDataSource, UITableViewDelegate>
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) UISegmentedControl *previewMode;
+@property (nonatomic, assign) CGFloat previewWidth;
 // 必须 strong：copy 语义会把 NSMutableArray 存成不可变 NSArray，拖动时 removeObjectAtIndex 直接崩溃。
 @property (nonatomic, strong) NSMutableArray<NSString *> *actionOrder;
 @property (nonatomic, strong) NSMutableArray<NSString *> *toolOrder;
@@ -15,34 +18,129 @@
 
 @implementation PXEditorOrderController
 
-- (instancetype)initWithStyle:(UITableViewStyle)style {
-    if (self = [super initWithStyle:UITableViewStyleGrouped]) {
-        self.title = @"编辑器按钮排序";
-        self.navigationItem.rightBarButtonItem =
-            [[UIBarButtonItem alloc] initWithTitle:@"恢复默认"
-                                             style:UIBarButtonItemStylePlain
-                                            target:self
-                                            action:@selector(pxResetTapped:)];
-    }
-    return self;
+- (void)loadView {
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
+    self.view = self.tableView;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.title = @"编辑与标记图标排序";
+    self.navigationItem.rightBarButtonItem =
+        [[UIBarButtonItem alloc] initWithTitle:@"恢复默认" style:UIBarButtonItemStylePlain
+                                      target:self action:@selector(pxResetTapped:)];
     [self pxReloadFromPreferences];
-    // 拖动手柄需要编辑模式；无插入/删除样式。开关在 accessoryView，编辑模式仍可点；行点击进图标/名称编辑。
+    self.tableView.dataSource = self;
+    self.tableView.delegate = self;
+    self.tableView.rowHeight = 64.0;
+    // 编辑模式使用 editingAccessoryView，保留右侧拖动手柄。
     self.tableView.editing = YES;
     self.tableView.allowsSelectionDuringEditing = YES;
+    self.previewMode = [[UISegmentedControl alloc] initWithItems:@[@"图片编辑", @"全屏标记"]];
+    self.previewMode.selectedSegmentIndex = 0;
+    [self.previewMode addTarget:self action:@selector(pxPreviewModeChanged:)
+              forControlEvents:UIControlEventValueChanged];
+    PXLogInfo(@"prefs editor order opened");
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    if (width > 0 && fabs(width - self.previewWidth) > 0.5) [self pxRefreshPreview];
 }
 
 - (void)pxReloadFromPreferences {
     self.actionOrder = [[PXEditorOrder currentActionOrder] mutableCopy];
     self.toolOrder = [[PXEditorOrder currentToolOrder] mutableCopy];
     self.actionHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentActionHidden]];
+    [self.actionHidden removeObject:@"close"];
+    [self.actionHidden removeObject:@"done"];
     self.toolHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentToolHidden]];
 }
 
 #pragma mark - 数据源
+
+- (void)pxPreviewModeChanged:(UISegmentedControl *)sender {
+    [self pxRefreshPreview];
+}
+
+// 预览只展示可排序的按钮；和编辑器共用顺序、显隐、模式过滤及图标来源。
+// 不创建截图窗口、不启动编辑任务，所有更新由 UIKit 主线程事件驱动。
+- (void)pxRefreshPreview {
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    if (width <= 0) return;
+    self.previewWidth = width;
+    CGFloat inset = MAX(16.0, self.tableView.safeAreaInsets.left + 16.0);
+    CGFloat rightInset = MAX(16.0, self.tableView.safeAreaInsets.right + 16.0);
+    CGFloat contentWidth = MAX(1.0, width - inset - rightInset);
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 1)];
+    self.previewMode.frame = CGRectMake(inset, 12, contentWidth, 32);
+    [header addSubview:self.previewMode];
+
+    NSArray<NSString *> *actions = [PXEditorOrder visibleActionOrderForOrder:self.actionOrder
+                                                                    hidden:self.actionHidden.allObjects
+                                                          fullscreenMarkup:self.previewMode.selectedSegmentIndex == 1];
+    NSArray<NSString *> *tools = [PXEditorOrder visibleOrderForOrder:self.toolOrder hidden:self.toolHidden.allObjects];
+    NSArray<NSArray<NSString *> *> *groups = @[actions, tools];
+    CGFloat y = 58.0;
+    CGFloat gap = 6.0;
+    CGFloat padding = 12.0;
+    NSInteger columns = MAX(1, MIN(7, (NSInteger)floor((contentWidth - 2 * padding + gap) / (44.0 + gap))));
+    CGFloat side = floor((contentWidth - 2 * padding - (columns - 1) * gap) / columns);
+    CGFloat iconSize = [PXEditorOrder buttonIconPointSize];
+    for (NSInteger section = 0; section < 2; section++) {
+        UILabel *caption = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 22)];
+        caption.text = section == 0 ? @"编辑操作预览" : @"标记工具预览";
+        caption.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+        caption.textColor = UIColor.secondaryLabelColor;
+        [header addSubview:caption];
+        y += 28;
+        NSArray<NSString *> *order = groups[section];
+        NSInteger rows = (order.count + columns - 1) / columns;
+        CGFloat cardHeight = padding * 2 + rows * side + MAX(0, rows - 1) * gap;
+        UIView *card = [[UIView alloc] initWithFrame:CGRectMake(inset, y, contentWidth, cardHeight)];
+        card.backgroundColor = [UIColor colorWithWhite:0.14 alpha:1.0];
+        card.layer.cornerRadius = 22.0;
+        [header addSubview:card];
+        for (NSUInteger i = 0; i < order.count; i++) {
+            NSString *identifier = order[i];
+            NSString *name = [self displayNameForIdentifier:identifier section:section];
+            NSString *symbol = section == 0 ? [PXEditorOrder iconNameForActionIdentifier:identifier]
+                                            : [PXEditorOrder iconNameForToolIdentifier:identifier];
+            UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+            button.frame = CGRectMake(padding + (i % columns) * (side + gap),
+                                      padding + (i / columns) * (side + gap), side, side);
+            button.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
+            button.layer.cornerRadius = 10.0;
+            button.tintColor = UIColor.whiteColor;
+            button.userInteractionEnabled = NO;
+            button.accessibilityLabel = name;
+            button.accessibilityTraits = UIAccessibilityTraitImage;
+            UIImage *icon = symbol.length ? [UIImage systemImageNamed:symbol] : nil;
+            if (icon) {
+                [button setImage:[icon imageWithConfiguration:
+                    [UIImageSymbolConfiguration configurationWithPointSize:iconSize weight:UIImageSymbolWeightMedium]]
+                        forState:UIControlStateNormal];
+            } else {
+                [button setTitle:name forState:UIControlStateNormal];
+                button.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+                button.titleLabel.adjustsFontSizeToFitWidth = YES;
+            }
+            [card addSubview:button];
+        }
+        y += cardHeight + 14;
+    }
+    UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 0)];
+    note.text = @"拖动下方手柄排序，预览实时更新。两种模式共用排序；实际面板按可用宽度换行。";
+    note.font = [UIFont systemFontOfSize:12];
+    note.textColor = UIColor.secondaryLabelColor;
+    note.numberOfLines = 0;
+    CGSize noteSize = [note sizeThatFits:CGSizeMake(contentWidth - 8, CGFLOAT_MAX)];
+    note.frame = CGRectMake(inset + 4, y, contentWidth - 8, noteSize.height);
+    [header addSubview:note];
+    header.frame = CGRectMake(0, 0, width, y + noteSize.height + 8);
+    self.tableView.tableHeaderView = header;
+}
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return 3;
@@ -55,8 +153,8 @@
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 0) return @"操作按钮（面板停靠、收起面板仅全屏标记显示）";
-    if (section == 1) return @"工具按钮";
+    if (section == 0) return @"编辑操作图标";
+    if (section == 1) return @"标记工具图标";
     return @"外观";
 }
 
@@ -85,7 +183,7 @@
     NSString *identifier = [self identifierAtIndexPath:indexPath];
     NSString *displayName = [self displayNameForIdentifier:identifier section:indexPath.section];
     cell.textLabel.text = displayName;
-    cell.detailTextLabel.text = @"点击修改图标与名称";
+    cell.detailTextLabel.text = @"拖动右侧排序 · 点击修改图标";
     NSString *iconName = indexPath.section == 0
         ? [PXEditorOrder iconNameForActionIdentifier:identifier]
         : [PXEditorOrder iconNameForToolIdentifier:identifier];
@@ -97,6 +195,7 @@
         [toggle addTarget:self action:@selector(pxVisibilityChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = toggle;
     }
+    cell.editingAccessoryView = toggle;
     // 复用会换行，开关的无障碍名称必须每次随行重设。
     toggle.accessibilityLabel = [NSString stringWithFormat:@"显示%@", displayName ?: @""];
     BOOL alwaysVisible = (indexPath.section == 0 && ([identifier isEqualToString:@"close"] ||
@@ -121,6 +220,7 @@
         self.sizeValueLabel = cell.detailTextLabel;
     }
     UISlider *slider = (UISlider *)cell.accessoryView;
+    cell.editingAccessoryView = slider;
     CGFloat size = [PXEditorOrder buttonIconPointSize];
     if (slider.value != size) slider.value = size;   // 拖动中重入时避免打断
     cell.detailTextLabel.text = [NSString stringWithFormat:@"%.0fpt", size];
@@ -163,6 +263,7 @@
         ? [PXEditorOrder customNameForActionIdentifier:identifier]
         : [PXEditorOrder customNameForToolIdentifier:identifier];
 
+    __weak typeof(self) weakSelf = self;
     PXEditorButtonEditController *editor =
         [[PXEditorButtonEditController alloc] initWithIdentifier:identifier
                                                        isAction:isAction
@@ -171,6 +272,8 @@
                                                      customName:customName
                                                  customIconName:customIcon
                                                          onSave:^(NSString *name, NSString *iconName) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || !self.presentedViewController.view.window) return;
             if (isAction) {
                 [PXEditorOrder saveActionName:name forIdentifier:identifier];
                 [PXEditorOrder saveActionIconName:iconName forIdentifier:identifier];
@@ -178,10 +281,11 @@
                 [PXEditorOrder saveToolName:name forIdentifier:identifier];
                 [PXEditorOrder saveToolIconName:iconName forIdentifier:identifier];
             }
-            PXLogInfo(@"prefs editor button override saved: %@ name=%@ icon=%@", identifier, name, iconName);
+            PXLogInfo(@"prefs editor button override saved: %@", identifier);
             [self.tableView reloadRowsAtIndexPaths:@[indexPath]
                                   withRowAnimation:UITableViewRowAnimationNone];
-            [self.navigationController dismissViewControllerAnimated:YES completion:nil];
+            [self pxRefreshPreview];
+            [self dismissViewControllerAnimated:YES completion:nil];
         }];
     [self presentViewController:[[UINavigationController alloc] initWithRootViewController:editor]
                        animated:YES completion:nil];
@@ -202,6 +306,7 @@
         [hidden addObject:identifier];
     }
     [self pxPersistAll];
+    [self pxRefreshPreview];
     [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
 }
 
@@ -211,6 +316,7 @@
     CGFloat size = MAX(12.0, MIN(28.0, sender.value));
     [PXEditorOrder saveButtonIconPointSize:size];
     self.sizeValueLabel.text = [NSString stringWithFormat:@"%.0fpt", size];
+    [self pxRefreshPreview];
 }
 
 #pragma mark - 拖动排序
@@ -230,11 +336,22 @@
 - (void)tableView:(UITableView *)tableView
     moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath
            toIndexPath:(NSIndexPath *)destinationIndexPath {
+    if (sourceIndexPath.section >= 2 || sourceIndexPath.section != destinationIndexPath.section) return;
     NSMutableArray<NSString *> *order = sourceIndexPath.section == 0 ? self.actionOrder : self.toolOrder;
+    if (sourceIndexPath.row >= order.count || destinationIndexPath.row >= order.count) return;
     NSString *identifier = order[sourceIndexPath.row];
     [order removeObjectAtIndex:sourceIndexPath.row];
     [order insertObject:identifier atIndex:destinationIndexPath.row];
     [self pxPersistAll];
+    [self pxRefreshPreview];
+}
+
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return UITableViewCellEditingStyleNone;
+}
+
+- (BOOL)tableView:(UITableView *)tableView shouldIndentWhileEditingRowAtIndexPath:(NSIndexPath *)indexPath {
+    return NO;
 }
 
 #pragma mark - 持久化
@@ -273,6 +390,7 @@
         [PXEditorOrder saveButtonIconPointSize:17.0];
         [self pxReloadFromPreferences];
         [self.tableView reloadData];
+        [self pxRefreshPreview];
         PXLogInfo(@"prefs editor buttons reset to defaults");
     }]];
     [self presentViewController:alert animated:YES completion:nil];

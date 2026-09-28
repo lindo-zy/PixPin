@@ -327,6 +327,22 @@
     return [order componentsJoinedByString:@","];
 }
 
++ (NSArray<NSString *> *)visibleActionOrderForOrder:(NSArray<NSString *> *)order
+                                             hidden:(NSArray<NSString *> *)hidden
+                                   fullscreenMarkup:(BOOL)fullscreenMarkup {
+    NSMutableArray<NSString *> *effectiveHidden = [hidden mutableCopy];
+    [effectiveHidden removeObject:@"close"];
+    [effectiveHidden removeObject:@"done"];
+    NSMutableArray<NSString *> *visible = [[self visibleOrderForOrder:order hidden:effectiveHidden] mutableCopy];
+    if (!fullscreenMarkup) {
+        [visible removeObject:@"dock"];
+        [visible removeObject:@"collapse"];
+    }
+    if (![visible containsObject:@"close"]) [visible insertObject:@"close" atIndex:0];
+    if (![visible containsObject:@"done"]) [visible addObject:@"done"];
+    return [visible copy];
+}
+
 + (nullable NSString *)preferenceForKey:(NSString *)key {
     id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key,
                                                            (__bridge CFStringRef)PXPreferencesDomain));

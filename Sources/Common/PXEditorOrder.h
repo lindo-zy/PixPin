@@ -64,6 +64,11 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSArray<NSString *> *)visibleOrderForOrder:(NSArray<NSString *> *)order
                                        hidden:(NSArray<NSString *> *)hidden;
 
+/// 编辑器与设置预览共用：按模式过滤操作，并兜底保留关闭、完成两个出口。
++ (NSArray<NSString *> *)visibleActionOrderForOrder:(NSArray<NSString *> *)order
+                                             hidden:(NSArray<NSString *> *)hidden
+                                   fullscreenMarkup:(BOOL)fullscreenMarkup;
+
 + (NSString *)stringForOrder:(NSArray<NSString *> *)order;
 
 // MARK: 偏好读写（CFPreferences，域 com.pixpin.screenshot）
