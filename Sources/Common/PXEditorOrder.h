@@ -19,8 +19,32 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSString *)displayNameForToolIdentifier:(NSString *)identifier;
 
 /// SF Symbol 名（编辑器按钮与设置页排序条目共用）；无对应符号返回 nil。
+/// 均为"自定义覆盖优先，缺省回目录默认"；自定义符号失效时由调用方回退显示名称。
 + (NSString *)iconNameForActionIdentifier:(NSString *)identifier;
 + (NSString *)iconNameForToolIdentifier:(NSString *)identifier;
+
+/// 目录默认符号（不含覆盖），供编辑页展示"默认"项。
++ (NSString *)defaultIconNameForActionIdentifier:(NSString *)identifier;
++ (NSString *)defaultIconNameForToolIdentifier:(NSString *)identifier;
+
+// MARK: 自定义名称/图标覆盖（设置页"点击行修改"，存 id=值 CSV；nil 值即清除覆盖）
+
++ (nullable NSString *)customNameForActionIdentifier:(NSString *)identifier;
++ (nullable NSString *)customNameForToolIdentifier:(NSString *)identifier;
++ (nullable NSString *)customIconNameForActionIdentifier:(NSString *)identifier;
++ (nullable NSString *)customIconNameForToolIdentifier:(NSString *)identifier;
+
+/// 写入前必须清洗：名称去除逗号/等号并截断到 12 字符；符号传空串清除覆盖。
++ (void)saveActionName:(nullable NSString *)name forIdentifier:(NSString *)identifier;
++ (void)saveToolName:(nullable NSString *)name forIdentifier:(NSString *)identifier;
++ (void)saveActionIconName:(nullable NSString *)symbolName forIdentifier:(NSString *)identifier;
++ (void)saveToolIconName:(nullable NSString *)symbolName forIdentifier:(NSString *)identifier;
+
+// MARK: 外观
+
+/// 编辑器按钮图标点大小（操作与工具通用），默认 17，夹取 12–28。
++ (CGFloat)buttonIconPointSize;
++ (void)saveButtonIconPointSize:(CGFloat)size;
 
 // MARK: 解析与序列化
 

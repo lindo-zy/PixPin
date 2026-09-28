@@ -34,6 +34,11 @@ NSString * const PXKeyEditorActionOrder = @"EditorActionOrder";
 NSString * const PXKeyEditorToolOrder = @"EditorToolOrder";
 NSString * const PXKeyEditorActionHidden = @"EditorActionHidden";
 NSString * const PXKeyEditorToolHidden = @"EditorToolHidden";
+NSString * const PXKeyEditorActionNames = @"EditorActionNames";
+NSString * const PXKeyEditorToolNames = @"EditorToolNames";
+NSString * const PXKeyEditorActionIcons = @"EditorActionIcons";
+NSString * const PXKeyEditorToolIcons = @"EditorToolIcons";
+NSString * const PXKeyEditorButtonIconSize = @"EditorButtonIconSize";
 
 const NSInteger PXDefaultResultAction = 0;
 const CGFloat PXDefaultEditorLineWidth = 4.0;

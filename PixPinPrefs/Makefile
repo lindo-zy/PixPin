@@ -10,6 +10,7 @@ BUNDLE_NAME = PixPinPrefs
 PixPinPrefs_FILES = PXRootListController.m \
 	PXTestCaptureController.m \
 	PXEditorOrderController.m \
+	PXEditorButtonEditController.m \
 	../Sources/Common/PXConstants.m \
 	../Sources/Common/PXEditorOrder.m \
 	../Sources/Common/PXLog.m \

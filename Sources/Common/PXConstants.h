@@ -47,6 +47,11 @@ FOUNDATION_EXPORT NSString * const PXKeyEditorActionOrder;
 FOUNDATION_EXPORT NSString * const PXKeyEditorToolOrder;
 FOUNDATION_EXPORT NSString * const PXKeyEditorActionHidden;
 FOUNDATION_EXPORT NSString * const PXKeyEditorToolHidden;
+FOUNDATION_EXPORT NSString * const PXKeyEditorActionNames;
+FOUNDATION_EXPORT NSString * const PXKeyEditorToolNames;
+FOUNDATION_EXPORT NSString * const PXKeyEditorActionIcons;
+FOUNDATION_EXPORT NSString * const PXKeyEditorToolIcons;
+FOUNDATION_EXPORT NSString * const PXKeyEditorButtonIconSize;
 
 // MARK: - 默认值
 

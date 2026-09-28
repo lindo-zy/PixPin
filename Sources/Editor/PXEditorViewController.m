@@ -311,10 +311,11 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
                               action:(SEL)action {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     button.tintColor = [UIColor whiteColor];
+    CGFloat iconSize = [PXEditorOrder buttonIconPointSize];
     UIImage *icon = [UIImage systemImageNamed:[PXEditorOrder iconNameForActionIdentifier:identifier]];
     if (icon) {
         UIImageSymbolConfiguration *configuration =
-            [UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIFontWeightMedium];
+            [UIImageSymbolConfiguration configurationWithPointSize:iconSize weight:UIFontWeightMedium];
         [button setImage:[icon imageWithConfiguration:configuration] forState:UIControlStateNormal];
     } else {
         NSString *a11y = [PXEditorOrder displayNameForActionIdentifier:identifier];
@@ -407,7 +408,8 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
         UIImage *icon = iconName.length ? [UIImage systemImageNamed:iconName] : nil;
         if (icon) {
             UIImageSymbolConfiguration *configuration =
-                [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIFontWeightMedium];
+                [UIImageSymbolConfiguration configurationWithPointSize:[PXEditorOrder buttonIconPointSize]
+                                                                weight:UIFontWeightMedium];
             [tool setImage:[icon imageWithConfiguration:configuration] forState:UIControlStateNormal];
         } else {
             // 符号缺失兜底：显示中文名

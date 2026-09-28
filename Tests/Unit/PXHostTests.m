@@ -299,6 +299,40 @@ static void testEditorOrder(void) {
     PXCheck([fallback isEqualToArray:actionDefaults], "all hidden falls back to full order");
 }
 
+static void testEditorOverrides(void) {
+    printf("[editor overrides]\n");
+    NSString *identifier = @"brush";
+    PXCheck([PXEditorOrder customNameForToolIdentifier:identifier] == nil, "no override by default");
+    PXCheck([[PXEditorOrder displayNameForToolIdentifier:identifier] isEqualToString:@"画笔"], "default name");
+    PXCheck([[PXEditorOrder iconNameForToolIdentifier:identifier] isEqualToString:@"paintbrush"], "default icon");
+
+    // 名称覆盖：优先于目录默认；带脏字符清洗、超长截断。
+    [PXEditorOrder saveToolName:@"我的画笔,=x" forIdentifier:identifier];
+    NSString *saved = [PXEditorOrder customNameForToolIdentifier:identifier];
+    PXCheck([saved isEqualToString:@"我的画笔 x"], "name sanitized");
+    PXCheck([[PXEditorOrder displayNameForToolIdentifier:identifier] isEqualToString:@"我的画笔 x"], "custom name wins");
+    [PXEditorOrder saveToolName:@"一二三四五六七八九十一二三" forIdentifier:identifier];
+    PXCheckInt([PXEditorOrder customNameForToolIdentifier:identifier].length, 12, "name truncated to 12");
+
+    // 图标覆盖：优先于目录默认；清空恢复默认。
+    [PXEditorOrder saveToolIconName:@"star" forIdentifier:identifier];
+    PXCheck([[PXEditorOrder iconNameForToolIdentifier:identifier] isEqualToString:@"star"], "custom icon wins");
+    PXCheck([[PXEditorOrder defaultIconNameForToolIdentifier:identifier] isEqualToString:@"paintbrush"], "default icon intact");
+    [PXEditorOrder saveToolIconName:nil forIdentifier:identifier];
+    PXCheck([[PXEditorOrder iconNameForToolIdentifier:identifier] isEqualToString:@"paintbrush"], "icon override cleared");
+    [PXEditorOrder saveToolName:nil forIdentifier:identifier];
+    PXCheck([PXEditorOrder customNameForToolIdentifier:identifier] == nil, "name override cleared");
+    PXCheck([[PXEditorOrder displayNameForToolIdentifier:identifier] isEqualToString:@"画笔"], "name back to default");
+
+    // 图标点大小：默认 17，夹取 12–28。
+    PXCheckInt((NSInteger)[PXEditorOrder buttonIconPointSize], 17, "icon size default");
+    [PXEditorOrder saveButtonIconPointSize:99.0];
+    PXCheckInt((NSInteger)[PXEditorOrder buttonIconPointSize], 28, "icon size clamped high");
+    [PXEditorOrder saveButtonIconPointSize:5.0];
+    PXCheckInt((NSInteger)[PXEditorOrder buttonIconPointSize], 12, "icon size clamped low");
+    [PXEditorOrder saveButtonIconPointSize:17.0];
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
@@ -308,6 +342,7 @@ int main(int argc, const char **argv) {
         testEditorLayout();
         testExternalRequests();
         testEditorOrder();
+        testEditorOverrides();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }

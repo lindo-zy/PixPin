@@ -75,11 +75,13 @@
 }
 
 + (NSString *)displayNameForActionIdentifier:(NSString *)identifier {
-    return [self actionDisplayNames][identifier] ?: identifier;
+    NSString *custom = [self customNameForActionIdentifier:identifier];
+    return custom.length > 0 ? custom : ([self actionDisplayNames][identifier] ?: identifier);
 }
 
 + (NSString *)displayNameForToolIdentifier:(NSString *)identifier {
-    return [self toolDisplayNames][identifier] ?: identifier;
+    NSString *custom = [self customNameForToolIdentifier:identifier];
+    return custom.length > 0 ? custom : ([self toolDisplayNames][identifier] ?: identifier);
 }
 
 + (NSDictionary<NSString *, NSString *> *)actionIconNames {
@@ -128,10 +130,144 @@
 }
 
 + (NSString *)iconNameForActionIdentifier:(NSString *)identifier {
-    return [self actionIconNames][identifier];
+    NSString *custom = [self customIconNameForActionIdentifier:identifier];
+    return custom.length > 0 ? custom : [self actionIconNames][identifier];
 }
 
 + (NSString *)iconNameForToolIdentifier:(NSString *)identifier {
+    NSString *custom = [self customIconNameForToolIdentifier:identifier];
+    return custom.length > 0 ? custom : [self toolIconNames][identifier];
+}
+
+// MARK: 自定义名称/图标覆盖（id=值 CSV 字典）
+
++ (NSDictionary<NSString *, NSString *> *)overridesDictionaryForKey:(NSString *)key {
+    NSString *csv = [self preferenceForKey:key];
+    if (csv.length == 0) return @{};
+    NSMutableDictionary<NSString *, NSString *> *overrides = [NSMutableDictionary dictionary];
+    for (NSString *piece in [csv componentsSeparatedByString:@","]) {
+        NSArray<NSString *> *pair = [piece componentsSeparatedByString:@"="];
+        if (pair.count != 2 || pair[0].length == 0 || pair[1].length == 0) continue;
+        overrides[pair[0]] = pair[1];
+    }
+    return overrides;
+}
+
++ (void)saveOverridesDictionary:(NSDictionary<NSString *, NSString *> *)overrides
+                            key:(NSString *)key {
+    NSMutableArray<NSString *> *pairs = [NSMutableArray array];
+    for (NSString *identifier in overrides) {
+        NSString *value = overrides[identifier];
+        if (identifier.length == 0 || value.length == 0) continue;
+        [pairs addObject:[NSString stringWithFormat:@"%@=%@", identifier, value]];
+    }
+    NSString *csv = pairs.count > 0 ? [pairs componentsJoinedByString:@","] : nil;
+    CFPreferencesSetAppValue((__bridge CFStringRef)key,
+                             (__bridge CFStringRef)csv,
+                             (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
+/// 名称清洗：去除逗号/等号/换行（破坏 CSV 结构的字符），截断到 12 字符。
++ (NSString *)sanitizedOverrideName:(NSString *)name {
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    for (NSString *part in [name componentsSeparatedByCharactersInSet:
+        [NSCharacterSet characterSetWithCharactersInString:@",=\n\r"]]) {
+        if (part.length > 0) [parts addObject:part];
+    }
+    NSString *cleaned = [[parts componentsJoinedByString:@" "]
+        stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (cleaned.length > 12) {
+        cleaned = [cleaned substringToIndex:12];
+        // UTF-16 截断可能切断 emoji 代理对，去掉悬挂的高代理位。
+        unichar last = [cleaned characterAtIndex:cleaned.length - 1];
+        if (CFStringIsSurrogateHighCharacter(last)) {
+            cleaned = [cleaned substringToIndex:cleaned.length - 1];
+        }
+    }
+    return cleaned;
+}
+
++ (NSString *)customNameForActionIdentifier:(NSString *)identifier {
+    return [self overridesDictionaryForKey:PXKeyEditorActionNames][identifier];
+}
+
++ (NSString *)customNameForToolIdentifier:(NSString *)identifier {
+    return [self overridesDictionaryForKey:PXKeyEditorToolNames][identifier];
+}
+
++ (NSString *)customIconNameForActionIdentifier:(NSString *)identifier {
+    return [self overridesDictionaryForKey:PXKeyEditorActionIcons][identifier];
+}
+
++ (NSString *)customIconNameForToolIdentifier:(NSString *)identifier {
+    return [self overridesDictionaryForKey:PXKeyEditorToolIcons][identifier];
+}
+
++ (void)writeOverrideValue:(NSString *)value
+                 dictKey:(NSString *)dictKey
+              identifier:(NSString *)identifier {
+    if (identifier.length == 0) return;
+    NSMutableDictionary<NSString *, NSString *> *overrides =
+        [[self overridesDictionaryForKey:dictKey] mutableCopy];
+    if (value.length > 0) {
+        overrides[identifier] = value;
+    } else {
+        [overrides removeObjectForKey:identifier];   // 空值 = 清除覆盖，回到目录默认
+    }
+    [self saveOverridesDictionary:overrides key:dictKey];
+}
+
++ (void)saveActionName:(NSString *)name forIdentifier:(NSString *)identifier {
+    [self writeOverrideValue:[self sanitizedOverrideName:name]
+                      dictKey:PXKeyEditorActionNames
+                   identifier:identifier];
+}
+
++ (void)saveToolName:(NSString *)name forIdentifier:(NSString *)identifier {
+    [self writeOverrideValue:[self sanitizedOverrideName:name]
+                      dictKey:PXKeyEditorToolNames
+                   identifier:identifier];
+}
+
++ (void)saveActionIconName:(NSString *)symbolName forIdentifier:(NSString *)identifier {
+    [self writeOverrideValue:[symbolName stringByTrimmingCharactersInSet:
+        [NSCharacterSet whitespaceAndNewlineCharacterSet]]
+                      dictKey:PXKeyEditorActionIcons
+                   identifier:identifier];
+}
+
++ (void)saveToolIconName:(NSString *)symbolName forIdentifier:(NSString *)identifier {
+    [self writeOverrideValue:[symbolName stringByTrimmingCharactersInSet:
+        [NSCharacterSet whitespaceAndNewlineCharacterSet]]
+                      dictKey:PXKeyEditorToolIcons
+                   identifier:identifier];
+}
+
+// MARK: 外观
+
++ (CGFloat)buttonIconPointSize {
+    id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)PXKeyEditorButtonIconSize,
+                                                           (__bridge CFStringRef)PXPreferencesDomain));
+    if ([value isKindOfClass:[NSNumber class]]) {
+        return MAX(12.0, MIN(28.0, [(NSNumber *)value doubleValue]));
+    }
+    return 17.0;
+}
+
++ (void)saveButtonIconPointSize:(CGFloat)size {
+    NSNumber *number = @(MAX(12.0, MIN(28.0, size)));
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyEditorButtonIconSize,
+                             (__bridge CFTypeRef)number,
+                             (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
++ (NSString *)defaultIconNameForActionIdentifier:(NSString *)identifier {
+    return [self actionIconNames][identifier];
+}
+
++ (NSString *)defaultIconNameForToolIdentifier:(NSString *)identifier {
     return [self toolIconNames][identifier];
 }
 
