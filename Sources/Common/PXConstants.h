@@ -30,6 +30,14 @@ FOUNDATION_EXPORT CFStringRef const PXDarwinSnapperForceFreezeOpen;  // com.jont
 FOUNDATION_EXPORT CFStringRef const PXDarwinSnapperCloseAll;         // com.jontelang.snapper3.close.all → 取消当前任务
 FOUNDATION_EXPORT CFStringRef const PXDarwinSnapperCloseCrop;        // com.jontelang.snapper3.closecrop → 取消当前任务
 
+// MARK: - SHELLX 兼容别名（SHELLX 约定调用方在 Darwin 或 Distributed 任一中心发一条，
+// 两个中心都必须监听；history/openlast/ready 无对应功能不注册）
+
+FOUNDATION_EXPORT CFStringRef const PXDarwinShellXOpen;        // com.iosdump.screenshotshell.open → 区域截图
+FOUNDATION_EXPORT CFStringRef const PXDarwinShellXOpenInstant; // com.iosdump.screenshotshell.open.instant → 即时区域截图
+FOUNDATION_EXPORT CFStringRef const PXDarwinShellXOpenFreeze;  // com.iosdump.screenshotshell.open.freeze → 冻结截图
+FOUNDATION_EXPORT CFStringRef const PXDarwinShellXClose;       // com.iosdump.screenshotshell.close → 取消当前任务
+
 // MARK: - 进程内通知名（同样不携带图片对象，只提示协调器刷新）
 
 FOUNDATION_EXPORT NSString * const PXNotificationResultUpdated; // com.pixpin.screenshot/result/updated

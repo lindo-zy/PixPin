@@ -3,6 +3,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <substrate.h>
+#import <dlfcn.h>
 #import "../Common/PXConstants.h"
 #import "../Common/PXExternalRequest.h"
 #import "../Common/PXLog.h"
@@ -18,12 +19,29 @@ static void PXDispatchExternalRequest(NSString *name, NSString *source) {
     });
 }
 
-static void PXHandleDarwinNotification(CFNotificationCenterRef center,
-                                       void *observer,
-                                       CFStringRef name,
-                                       const void *object,
-                                       CFDictionaryRef userInfo) {
-    if (name) PXDispatchExternalRequest([(__bridge NSString *)name copy], @"darwin");
+// observer 传 PXDistributedObserverTag 标记 Distributed 中心注册，便于日志区分来源；
+// CF 仅把它当不透明指针原样回传，只比较不解引用。若未来新增移除逻辑，必须用同一指针。
+#define PXDistributedObserverTag ((void *)1)
+static void PXHandleExternalNotification(CFNotificationCenterRef center,
+                                         void *observer,
+                                         CFStringRef name,
+                                         const void *object,
+                                         CFDictionaryRef userInfo) {
+    if (name) {
+        PXDispatchExternalRequest([(__bridge NSString *)name copy],
+                                  observer == PXDistributedObserverTag ? @"distributed" : @"darwin");
+    }
+}
+
+// iOS SDK 头文件不再声明 Distributed 中心，符号仍在 CoreFoundation 内：
+// dlsym 取用，缺失时返回 NULL，调用方跳过 Distributed 注册（Darwin 通道不受影响）。
+static CFNotificationCenterRef PXDistributedCenter(void) {
+    static CFNotificationCenterRef (*pxDistributedCenter)(void);
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        *(void **)&pxDistributedCenter = dlsym(RTLD_DEFAULT, "CFNotificationCenterGetDistributedCenter");
+    });
+    return pxDistributedCenter ? pxDistributedCenter() : NULL;
 }
 
 // withResult / withCompletion 为 FrontBoard 的 NSError * 回调；nil 表示请求已接收，
@@ -121,10 +139,36 @@ static void PXInstallURLHook(Class cls, NSString *selectorName, IMP replacement,
             for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
                 CFNotificationCenterAddObserver(center,
                                                 NULL,
-                                                PXHandleDarwinNotification,
+                                                PXHandleExternalNotification,
                                                 names[i],
                                                 NULL,
                                                 CFNotificationSuspensionBehaviorDeliverImmediately);
+            }
+
+            // SHELLX 兼容别名：其调用约定允许把通知发到 Darwin 或 Distributed 任一中心
+            //（每次只发一条），所以两个中心都要监听，漏一个就会丢调用。
+            CFStringRef shellXNames[] = {
+                PXDarwinShellXOpen,
+                PXDarwinShellXOpenInstant,
+                PXDarwinShellXOpenFreeze,
+                PXDarwinShellXClose,
+            };
+            CFNotificationCenterRef distributed = PXDistributedCenter();
+            for (size_t i = 0; i < sizeof(shellXNames) / sizeof(shellXNames[0]); i++) {
+                CFNotificationCenterAddObserver(center,
+                                                NULL,
+                                                PXHandleExternalNotification,
+                                                shellXNames[i],
+                                                NULL,
+                                                CFNotificationSuspensionBehaviorDeliverImmediately);
+                if (distributed) {
+                    CFNotificationCenterAddObserver(distributed,
+                                                    PXDistributedObserverTag,
+                                                    PXHandleExternalNotification,
+                                                    shellXNames[i],
+                                                    NULL,
+                                                    CFNotificationSuspensionBehaviorDeliverImmediately);
+                }
             }
 
             PXInstallURLHook(NSClassFromString(@"SBMainWorkspace"),

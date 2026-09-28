@@ -101,6 +101,21 @@ dispatch_async(dispatch_get_main_queue(), ^{
 
 注意：Darwin 通知是广播。若设备上同时装有 Snapper3 本体，一条通知会同时触发双方动作；请按需停用其中一方，避免一次触发出现两个截图/贴图流程。
 
+### 3.1.2 SHELLX 兼容（1.5.8+）
+
+按 SHELLX 公开通知约定发送的通知同样生效，原本对接 SHELLX 的入口（快捷指令、Myrtle、Activator 等）无需改造即可驱动 PixPin。SHELLX 约定调用方把通知发到 Darwin 或 Distributed 任一中心（每次只发一条），PixPin 两个中心都监听：
+
+| SHELLX 通知 | PixPin 行为 |
+|---|---|
+| `com.iosdump.screenshotshell.open` | 区域截图 |
+| `com.iosdump.screenshotshell.open.instant` | 即时区域截图 |
+| `com.iosdump.screenshotshell.open.freeze` | 冻结截图 |
+| `com.iosdump.screenshotshell.close` | 取消当前任务 |
+
+`history`、`openlast` 在 PixPin 无对应功能，`ready` 是 SHELLX 自身就绪信号，均不响应。别名与自有通知走同一门禁：总开关/对应模式开关关闭时拒绝（`rejected-disabled`），任务忙碌时拒绝（`rejected-busy`）。
+
+注意：通知是广播。若设备上同时装有 SHELLX 本体，一条通知会同时触发双方动作；请按需停用其中一方，避免一次触发出现两个截图流程。
+
 ### 3.2 外部入口真机验收（待执行）
 
 1. iOS 16/17 各自在设备冷启动并恢复越狱注入后、热启动时，从桌面和 App 内分别调用默认 URL 与默认 Darwin 通知；预期直接进入全屏标记，底图为触发时屏幕。
@@ -109,6 +124,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 4. 打开 `pixpin://capture/unknown` 和 `pixpin://activate?mode=full`，确认不截图；普通 HTTPS、其他 App Scheme 仍按原行为打开。与其他 URL 接管插件同时启用时再次测试。
 5. 收集 `[PixPin]` syslog：加载时应有 `external URL hook installed`（某个版本专属入口可能为 `unavailable`），请求时有 `external request source=url/darwin`；无效指令为 `external URL rejected`。再核对测试中心的 accepted / rejected / cancelled 及最终输出状态。
 6. Snapper3 兼容别名：`notify_post` 逐条发送 3.1.1 表中五条通知，确认分别进入区域 / 即时区域 / 冻结截图与取消当前任务；开关关闭与任务忙碌时同样出现 `rejected-disabled` / `rejected-busy`。
+7. SHELLX 兼容别名：逐条发送 3.1.2 表中四条通知，Darwin 与 Distributed 两个中心各发一轮，确认进入对应模式或取消当前任务；开关关闭与任务忙碌时同样出现 `rejected-disabled` / `rejected-busy`；syslog 来源分别为 `source=darwin` / `source=distributed`。
 
 ## 4. 模式说明
 

@@ -248,6 +248,20 @@ static void testSnapper3Aliases(void) {
     }
 }
 
+static void testShellXAliases(void) {
+    printf("[shellx aliases]\n");
+    // 字面量必须与 SHELLX 插件文档逐字一致；history/openlast/ready 无对应功能，不注册。
+    NSDictionary<NSString *, NSString *> *aliases = @{
+        @"com.iosdump.screenshotshell.open": (__bridge NSString *)PXDarwinShellXOpen,
+        @"com.iosdump.screenshotshell.open.instant": (__bridge NSString *)PXDarwinShellXOpenInstant,
+        @"com.iosdump.screenshotshell.open.freeze": (__bridge NSString *)PXDarwinShellXOpenFreeze,
+        @"com.iosdump.screenshotshell.close": (__bridge NSString *)PXDarwinShellXClose,
+    };
+    for (NSString *expected in aliases) {
+        PXCheck([aliases[expected] isEqualToString:expected], expected.UTF8String);
+    }
+}
+
 static void testEditorOrder(void) {
     printf("[editor order]\n");
     NSArray<NSString *> *actionDefaults = [PXEditorOrder defaultActionIdentifiers];
@@ -377,6 +391,7 @@ int main(int argc, const char **argv) {
         testEditorLayout();
         testExternalRequests();
         testSnapper3Aliases();
+        testShellXAliases();
         testEditorOrder();
         testEditorOverrides();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);

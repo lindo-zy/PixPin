@@ -42,6 +42,8 @@
 
 兼容 Snapper3 调用形式（1.5.5+）：`com.jontelang.snapper3.force.open` / `forceinstant.open` / `forcefreeze.open` 分别触发区域 / 即时区域 / 冻结截图，`close.all`、`closecrop` 取消当前任务；`openlast`、`history` 无对应功能。
 
+兼容 SHELLX 调用形式（1.5.8+）：`com.iosdump.screenshotshell.open` / `open.instant` / `open.freeze` 分别触发区域 / 即时区域 / 冻结截图，`close` 取消当前任务；Darwin 与 Distributed 两个中心都监听；`history`、`openlast`、`ready` 无对应功能。
+
 其他插件优先使用 Darwin 通知（无需链接 PixPin，任意线程可发）：
 
 ```objc

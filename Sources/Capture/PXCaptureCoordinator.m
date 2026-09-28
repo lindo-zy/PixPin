@@ -80,7 +80,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }
     if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureCancel] ||
         [name isEqualToString:(__bridge NSString *)PXDarwinSnapperCloseAll] ||
-        [name isEqualToString:(__bridge NSString *)PXDarwinSnapperCloseCrop]) {
+        [name isEqualToString:(__bridge NSString *)PXDarwinSnapperCloseCrop] ||
+        [name isEqualToString:(__bridge NSString *)PXDarwinShellXClose]) {
         [self cancelActiveTask];
         return;
     }
@@ -96,6 +97,10 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinSnapperForceOpen]) mode = PXCaptureModeArea;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinSnapperForceInstantOpen]) mode = PXCaptureModeInstant;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinSnapperForceFreezeOpen]) mode = PXCaptureModeFreeze;
+    // SHELLX 兼容别名：open/open.instant/open.freeze 与其框选/即时/冻结流程对应。
+    else if ([name isEqualToString:(__bridge NSString *)PXDarwinShellXOpen]) mode = PXCaptureModeArea;
+    else if ([name isEqualToString:(__bridge NSString *)PXDarwinShellXOpenInstant]) mode = PXCaptureModeInstant;
+    else if ([name isEqualToString:(__bridge NSString *)PXDarwinShellXOpenFreeze]) mode = PXCaptureModeFreeze;
 
     if (mode >= PXCaptureModeFull && mode <= PXCaptureModeMarkup) {
         [self requestCapture:mode];
