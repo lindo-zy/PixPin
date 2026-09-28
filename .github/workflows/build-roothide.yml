@@ -38,6 +38,14 @@ jobs:
           theos-src: roothide/theos
           sdks-src: xybp888/iOS-SDKs
 
+      - name: Install package tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          # theos 打包走自带 dm.pl，但 build.sh 的包校验直接调用 dpkg-deb -f/-x，CI runner 需要单装。
+          brew install dpkg
+          command -v dpkg-deb
+
       - name: Verify toolchain
         shell: bash
         run: |
