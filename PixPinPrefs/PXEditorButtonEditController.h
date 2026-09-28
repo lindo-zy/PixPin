@@ -2,7 +2,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// 编辑器按钮的图标/名称编辑页：名称输入 + 精选 SF Symbol 网格（首项"默认"恢复目录图标）。
+/// 编辑器按钮的图标/名称编辑页：名称输入 + SF Symbol 名称输入/预览 + 精选网格（首项恢复默认）。
 /// 由排序页在点击行时模态呈现；保存经 block 回调，由排序页写入 PXEditorOrder。
 /// customName/customIconName 传 nil 表示当前无覆盖；onSave 的 name/iconName 为 nil 表示清除覆盖。
 @interface PXEditorButtonEditController : UIViewController

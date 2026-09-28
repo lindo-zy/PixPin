@@ -9,6 +9,8 @@ static const CGFloat PXIconItemSide = 52.0;
 @property (nonatomic, copy) NSString *defaultIconName;
 @property (nonatomic, copy) NSString *customName;
 @property (nonatomic, strong) UITextField *nameField;
+@property (nonatomic, strong) UITextField *symbolField;
+@property (nonatomic, strong) UIImageView *symbolPreview;
 @property (nonatomic, strong) UICollectionView *iconGrid;
 // 选中的符号名；NSNull = 使用默认图标（与 customIcon 为空同义）。
 @property (nonatomic, strong) id selectedIcon;
@@ -68,6 +70,37 @@ static const CGFloat PXIconItemSide = 52.0;
     _nameField.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:_nameField];
 
+    UILabel *symbolCaption = [[UILabel alloc] init];
+    symbolCaption.text = @"SF 图标名称（留空恢复默认）";
+    symbolCaption.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+    symbolCaption.textColor = [UIColor secondaryLabelColor];
+    symbolCaption.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:symbolCaption];
+
+    _symbolField = [[UITextField alloc] init];
+    _symbolField.borderStyle = UITextBorderStyleRoundedRect;
+    _symbolField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    _symbolField.returnKeyType = UIReturnKeyDone;
+    _symbolField.keyboardType = UIKeyboardTypeASCIICapable;
+    _symbolField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    _symbolField.autocorrectionType = UITextAutocorrectionTypeNo;
+    _symbolField.spellCheckingType = UITextSpellCheckingTypeNo;
+    _symbolField.smartDashesType = UITextSmartDashesTypeNo;
+    _symbolField.smartQuotesType = UITextSmartQuotesTypeNo;
+    _symbolField.delegate = self;
+    _symbolField.placeholder = self.defaultIconName ?: @"例如：star.fill";
+    _symbolField.accessibilityLabel = symbolCaption.text;
+    _symbolField.text = [self.selectedIcon isKindOfClass:[NSString class]] ? self.selectedIcon : @"";
+    [_symbolField addTarget:self action:@selector(pxSymbolChanged:) forControlEvents:UIControlEventEditingChanged];
+    _symbolField.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:_symbolField];
+
+    _symbolPreview = [[UIImageView alloc] init];
+    _symbolPreview.contentMode = UIViewContentModeScaleAspectFit;
+    _symbolPreview.tintColor = [UIColor systemBlueColor];
+    _symbolPreview.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:_symbolPreview];
+
     UILabel *iconCaption = [[UILabel alloc] init];
     iconCaption.text = @"图标";
     iconCaption.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
@@ -95,7 +128,18 @@ static const CGFloat PXIconItemSide = 52.0;
         [_nameField.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
         [_nameField.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
         [_nameField.heightAnchor constraintEqualToConstant:38],
-        [iconCaption.topAnchor constraintEqualToAnchor:_nameField.bottomAnchor constant:16],
+        [symbolCaption.topAnchor constraintEqualToAnchor:_nameField.bottomAnchor constant:16],
+        [symbolCaption.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
+        [symbolCaption.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
+        [_symbolField.topAnchor constraintEqualToAnchor:symbolCaption.bottomAnchor constant:6],
+        [_symbolField.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
+        [_symbolField.trailingAnchor constraintEqualToAnchor:_symbolPreview.leadingAnchor constant:-12],
+        [_symbolField.heightAnchor constraintEqualToConstant:38],
+        [_symbolPreview.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
+        [_symbolPreview.centerYAnchor constraintEqualToAnchor:_symbolField.centerYAnchor],
+        [_symbolPreview.widthAnchor constraintEqualToConstant:30],
+        [_symbolPreview.heightAnchor constraintEqualToConstant:30],
+        [iconCaption.topAnchor constraintEqualToAnchor:_symbolField.bottomAnchor constant:16],
         [iconCaption.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
         [iconCaption.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
         [_iconGrid.topAnchor constraintEqualToAnchor:iconCaption.bottomAnchor constant:6],
@@ -103,6 +147,7 @@ static const CGFloat PXIconItemSide = 52.0;
         [_iconGrid.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
         [_iconGrid.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
     ]];
+    [self pxSymbolChanged:_symbolField];
 }
 
 #pragma mark - 符号清单
@@ -125,7 +170,22 @@ static const CGFloat PXIconItemSide = 52.0;
     return available;
 }
 
-#pragma mark - 名称输入
+#pragma mark - 名称与符号输入
+
+- (NSString *)pxEnteredSymbol {
+    return [self.symbolField.text stringByTrimmingCharactersInSet:
+        [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+- (void)pxSymbolChanged:(UITextField *)sender {
+    NSString *symbol = [self pxEnteredSymbol];
+    self.selectedIcon = symbol.length > 0 ? (id)symbol : NSNull.null;
+    NSString *previewName = symbol.length > 0 ? symbol : self.defaultIconName;
+    UIImage *preview = previewName.length > 0 ? [UIImage systemImageNamed:previewName] : nil;
+    self.symbolPreview.image = preview;
+    self.symbolField.textColor = symbol.length > 0 && !preview ? UIColor.systemRedColor : UIColor.labelColor;
+    [self.iconGrid reloadData];
+}
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
@@ -175,18 +235,27 @@ static const CGFloat PXIconItemSide = 52.0;
 
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
     [collectionView deselectItemAtIndexPath:indexPath animated:NO];
-    [self.nameField resignFirstResponder];
-    self.selectedIcon = indexPath.item == 0 ? NSNull.null : self.symbols[indexPath.item - 1];
-    [self.iconGrid reloadData];
+    [self.view endEditing:YES];
+    self.symbolField.text = indexPath.item == 0 ? @"" : self.symbols[indexPath.item - 1];
+    [self pxSymbolChanged:self.symbolField];
 }
 
 #pragma mark - 保存/取消
 
 - (void)pxSaveTapped:(UIBarButtonItem *)sender {
+    [self.view endEditing:YES];
+    NSString *icon = [self pxEnteredSymbol];
+    if (icon.length > 0 && ![UIImage systemImageNamed:icon]) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"SF 图标不可用"
+            message:@"请检查符号名称，或选择当前系统支持的图标。留空可恢复默认图标。"
+            preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
     NSString *name = [self.nameField.text stringByTrimmingCharactersInSet:
         [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    NSString *icon = [self.selectedIcon isKindOfClass:[NSString class]] ? self.selectedIcon : nil;
-    if (self.onSave) self.onSave(name.length > 0 ? name : nil, icon);
+    if (self.onSave) self.onSave(name.length > 0 ? name : nil, icon.length > 0 ? icon : nil);
 }
 
 - (void)pxCancelTapped:(UIBarButtonItem *)sender {
