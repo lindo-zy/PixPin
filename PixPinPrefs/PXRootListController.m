@@ -1,6 +1,7 @@
 #import "PXRootListController.h"
 #import "../Sources/Common/PXConstants.h"
 #import "../Sources/Common/PXLog.h"
+#import "../Sources/Common/PXExternalRequest.h"
 #import "../Sources/Common/PXPanelAppearance.h"
 
 @interface PXRootListController () <UIColorPickerViewControllerDelegate>
@@ -150,7 +151,7 @@
 }
 
 // plist 加载器不会实例化自定义 cellClass（真机上条目缺动作且显示不全），
-// 复制入口改用与截图测试中心一致的 PSButtonCell + buttonAction，在代码中构建并插入分组之后。
+// 外部入口使用 PSButtonCell + buttonAction，在代码中构建并插入分组之后。
 - (NSMutableArray *)pxSpecifiersWithURLSchemeEntry {
     NSMutableArray *items = [_specifiers mutableCopy];
     NSUInteger insertIndex = items.count;
@@ -200,7 +201,7 @@
                                                                 detail:Nil
                                                                   cell:PSButtonCell
                                                                    edit:Nil];
-        specifier.buttonAction = @selector(pxCopyURLScheme:);
+        specifier.buttonAction = @selector(pxCopyAndRunURLScheme:);
         [specifier setProperty:url forKey:@"pxURL"];
         [specifier setProperty:title forKey:@"pxTitle"];
         [specifiers addObject:specifier];
@@ -208,50 +209,56 @@
     return specifiers;
 }
 
-- (void)pxCopyURLScheme:(PSSpecifier *)specifier {
+- (void)pxCopyAndRunURLScheme:(PSSpecifier *)specifier {
     NSString *url = [specifier propertyForKey:@"pxURL"];
     NSString *title = [specifier propertyForKey:@"pxTitle"];
     if (url.length == 0 || title.length == 0) {
         PXLogWarn(@"prefs url-scheme specifier missing url/title");
         return;
     }
+    NSString *notification = PXNotificationNameForExternalURL([NSURL URLWithString:url]);
+    if (!notification) {
+        PXLogWarn(@"prefs external entry rejected: invalid route");
+        return;
+    }
     UIPasteboard.generalPasteboard.string = url;
-    PXLogInfo(@"prefs url-scheme copied: %@", url);
-
+    // 与外部 URL 共用解析表，只发送一次请求；不同时 openURL 或追加超时重试。
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         (__bridge CFStringRef)notification, NULL, NULL, YES);
+    PXLogInfo(@"prefs external entry copied and requested: %@", notification);
     UISelectionFeedbackGenerator *haptic = [[UISelectionFeedbackGenerator alloc] init];
     [haptic selectionChanged];
 
-    // 行标题各自延迟恢复，不引入全局代际守卫，避免连续复制多行时前一行停留在反馈文案。
-    specifier.name = @"已复制 ✓";
+    // 同一行连续点击时，仅最新一轮反馈恢复标题；切走设置页后只恢复模型。
+    NSUInteger rowGeneration = [[specifier propertyForKey:@"pxFeedbackGeneration"] unsignedIntegerValue] + 1;
+    [specifier setProperty:@(rowGeneration) forKey:@"pxFeedbackGeneration"];
+    specifier.name = @"已复制，已发送请求 ✓";
     [self reloadSpecifier:specifier animated:NO];
+    __weak typeof(self) weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
+        if ([[specifier propertyForKey:@"pxFeedbackGeneration"] unsignedIntegerValue] != rowGeneration) return;
         specifier.name = title;
-        [self reloadSpecifier:specifier animated:NO];
+        __strong typeof(weakSelf) self = weakSelf;
+        if (self.isViewLoaded && self.view.window) [self reloadSpecifier:specifier animated:NO];
     });
 
-    // 按钮标题动态刷新未经真机验证，同时用测试中心已验证的分组 footerText 刷新做兜底反馈。
-    // footer 只保留最新一次反馈：原文在离开反馈态时捕获，仅最新点击的定时器执行恢复。
     self.copyFeedbackGeneration++;
     NSInteger generation = self.copyFeedbackGeneration;
     PSSpecifier *group = [self pxExternalEntryGroupIn:_specifiers];
     if (!group) return;
-    NSString *feedbackFooter = @"已复制到剪贴板 ✓";
-    NSString *currentFooter = [group propertyForKey:@"footerText"] ?: @"";
-    if (![currentFooter isEqualToString:feedbackFooter]) {
-        [group setProperty:currentFooter forKey:@"pxOriginalFooter"];
+    NSString *feedbackFooter = @"已复制 URL，并发送对应功能请求。";
+    if (![group propertyForKey:@"pxOriginalFooter"]) {
+        [group setProperty:([group propertyForKey:@"footerText"] ?: @"") forKey:@"pxOriginalFooter"];
     }
     [group setProperty:feedbackFooter forKey:@"footerText"];
     [self reloadSpecifier:group animated:NO];
-
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (generation != self.copyFeedbackGeneration) return;
-        NSString *original = [group propertyForKey:@"pxOriginalFooter"];
-        if (original.length > 0) {
-            [group setProperty:original forKey:@"footerText"];
-            [self reloadSpecifier:group animated:NO];
-        }
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || generation != self.copyFeedbackGeneration) return;
+        [group setProperty:([group propertyForKey:@"pxOriginalFooter"] ?: @"") forKey:@"footerText"];
+        if (self.isViewLoaded && self.view.window) [self reloadSpecifier:group animated:NO];
     });
 }
 

@@ -19,7 +19,7 @@ typedef NS_ENUM(NSInteger, PXCaptureError) {
 /// 回调永远在主线程。
 @interface PXCaptureProvider : NSObject
 
-/// 启动时解析结果（供运行状态上报）：private-uicreate / private-uigetscreen / fallback-snapshot。
+/// 启动时解析结果（供启动日志）：private-uicreate / private-uigetscreen / fallback-snapshot。
 + (NSString *)resolvedCaptureMethod;
 
 /// 最近一次抓屏实际使用的策略（主线程更新）。

@@ -80,8 +80,6 @@ FOUNDATION_EXPORT const CGFloat    PXDefaultEditorLineWidth;         // 4.0
 
 // MARK: - 路径（集中管理，按需创建）
 
-/// SpringBoard 与设置包共享的数据根目录：/var/mobile/Library/PixPin
-NSString *PXLibraryDataDirectory(void);
 /// 截图任务临时文件根目录：<tmp>/PixPinTasks
 NSString *PXTemporaryTasksRoot(void);
 

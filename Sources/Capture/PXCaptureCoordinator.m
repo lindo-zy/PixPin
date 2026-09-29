@@ -11,7 +11,6 @@
 #import "../Overlay/PXResultBubble.h"
 #import "../Overlay/PXFloatingSnap.h"
 #import "../Editor/PXEditorViewController.h"
-#import "../Common/PXRuntimeStatus.h"
 
 static const CGFloat PXFramesToWaitBeforeCapture = 2.0;
 /// 与 PXSelectionView 的选区下限一致；恢复上次选区时钳制用。
@@ -70,7 +69,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         [PXTemporaryFileStore sweepAllTaskDirectories];
     });
     [PXPreferences config];
-    [PXRuntimeStatus reportLoadedWithCaptureMethod:[PXCaptureProvider resolvedCaptureMethod]];
     PXLogInfo(@"coordinator started (capture method %@)", [PXCaptureProvider resolvedCaptureMethod]);
 }
 
@@ -123,22 +121,16 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     PXConfig *config = PXPreferences.config;
     if (![PXPreferences modeEnabled:mode config:config]) {
         PXLogInfo(@"mode %@ disabled, request ignored", PXStringFromCaptureMode(mode));
-        [PXRuntimeStatus reportRequest:PXStringFromCaptureMode(mode) outcome:@"rejected-disabled"];
         return;
     }
 
     PXCaptureTask *task = [self pxAcquireTaskForMode:mode config:config];
     if (!task) {
         PXLogWarn(@"request ignored: another task is busy (%@)", PXStringFromCaptureMode(mode));
-        [PXRuntimeStatus reportRequest:PXStringFromCaptureMode(mode) outcome:@"rejected-busy"];
         return;
     }
 
-    [PXRuntimeStatus reportRequest:PXStringFromCaptureMode(mode) outcome:@"accepted"];
-    [PXRuntimeStatus reportPhase:@"preparing"
-                            mode:PXStringFromCaptureMode(mode)
-                         message:@"请求已进入 SpringBoard 截图协调器"];
-
+    PXLogInfo(@"capture request accepted (mode %@, task %@)", PXStringFromCaptureMode(mode), task.taskID);
     [self pxRunCaptureForTask:task];
 }
 
@@ -171,9 +163,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     [task transitionToState:PXCaptureStateCancelled];
     [PXTemporaryFileStore removeTaskDirectory:task.taskID];
     [self pxClearSlotIfCurrent:task];
-    [PXRuntimeStatus reportPhase:@"cancelled"
-                            mode:PXStringFromCaptureMode(task.mode)
-                         message:@"任务已取消，覆盖窗口已释放"];
     PXLogInfo(@"task cancelled");
 }
 
@@ -184,9 +173,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         [self pxFailTask:task code:@"state" message:@"任务状态异常"];
         return;
     }
-    [PXRuntimeStatus reportPhase:@"capturing"
-                            mode:PXStringFromCaptureMode(task.mode)
-                         message:@"正在获取屏幕快照"];
 
     // 抓屏前隐藏自有覆盖层，并等待两帧，确保合成器不再包含 PixPin 窗口。
     [self pxHideOwnOverlays];
@@ -207,12 +193,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
                 PXLogWarn(@"capture fell back to partial snapshot path");
             }
             if (![task transitionToState:PXCaptureStateCaptured]) return;
-            [PXRuntimeStatus reportPhase:@"captured"
-                                    mode:PXStringFromCaptureMode(task.mode)
-                                 message:[NSString stringWithFormat:@"已获取 %.0f×%.0f 像素快照（%@）",
-                                          image.size.width * image.scale,
-                                          image.size.height * image.scale,
-                                          captureMethod ?: @"unknown"]];
 
             if (task.mode == PXCaptureModeMarkup) {
                 if (isPartial) {
@@ -252,10 +232,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     self.captureWindow = window;
     self.selectionView = view;
     [window showAnimated:(task.mode != PXCaptureModeInstant)];
-    [PXRuntimeStatus reportPhase:@"selection-visible"
-                            mode:PXStringFromCaptureMode(task.mode)
-                         message:[NSString stringWithFormat:@"冻结快照、选区和操作栏已提交显示；%@",
-                                  window.hostingDescription]];
     PXLogInfo(@"selection presented (mode %@, task %@)", PXStringFromCaptureMode(task.mode), task.taskID);
 }
 
@@ -424,9 +400,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         PXLogWarn(@"cannot output in state %@", PXStringFromCaptureState(task.state));
         return;
     }
-    [PXRuntimeStatus reportPhase:@"exporting"
-                            mode:PXStringFromCaptureMode(task.mode)
-                         message:PXStringFromOutputAction(action)];
+    PXLogInfo(@"output requested (action %@, task %@)", PXStringFromOutputAction(action), task.taskID);
     [self.pipeline performAction:action
                           forTask:task
                 presentingWindow:presentingWindow
@@ -441,8 +415,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 
 - (void)pxReportCompletion:(PXCaptureTask *)task ok:(BOOL)ok message:(NSString *)message {
     if (![self pxIsTaskCurrent:task]) return;
-
-    [PXRuntimeStatus reportResultOK:ok captureMethod:self.provider.lastCaptureMethod message:message];
+    PXLogInfo(@"output completed (ok=%d, task %@): %@", ok, task.taskID, message ?: @"");
 
     if (ok) {
         [task transitionToState:PXCaptureStateFinished];
@@ -452,9 +425,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         }
         // 输出成功不再需要重试，任务临时目录立即回收（失败路径保留供诊断）。
         [PXTemporaryFileStore removeTaskDirectory:task.taskID];
-        [PXRuntimeStatus reportPhase:@"finished"
-                                mode:PXStringFromCaptureMode(task.mode)
-                             message:(message ?: @"截图任务已完成")];
     } else {
         // 输出失败：保留临时文件供诊断，失败原因在气泡中显示（重新截图重试）。
         [task transitionToState:PXCaptureStateFailed];
@@ -462,9 +432,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         [task unclaimOutputAction:PXOutputActionCopy];
         [task unclaimOutputAction:PXOutputActionShare];
         PXLogWarn(@"output failed, temp files kept for retry (task %@)", task.taskID);
-        [PXRuntimeStatus reportPhase:@"failed"
-                                mode:PXStringFromCaptureMode(task.mode)
-                             message:(message ?: @"输出失败")];
     }
 
     if (task.configSnapshot.showResultBubble) {
@@ -515,13 +482,10 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     [PXTemporaryFileStore removeTaskDirectory:task.taskID];
     [self pxClearSlotIfCurrent:task];
     [self pxRestoreFloatingSnaps];
-    [PXRuntimeStatus reportResultOK:YES captureMethod:self.provider.lastCaptureMethod message:@"截图已悬浮展示"];
     if (task.configSnapshot.screenshotHaptic) {
         UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [haptic impactOccurred];
     }
-    [PXRuntimeStatus reportPhase:@"finished" mode:PXStringFromCaptureMode(task.mode)
-                         message:@"截图已悬浮展示（不执行输出动作）"];
     PXLogInfo(@"floating snap added (count %lu)", (unsigned long)self.floatingSnaps.count);
 }
 
@@ -718,11 +682,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     [self pxDestroyCaptureWindow];
     [task transitionToState:PXCaptureStateFailed];
     [PXTemporaryFileStore removeTaskDirectory:task.taskID];
-    [PXRuntimeStatus reportResultOK:NO captureMethod:self.provider.lastCaptureMethod
-                            message:[NSString stringWithFormat:@"[%@] %@", code, message]];
-    [PXRuntimeStatus reportPhase:@"failed"
-                            mode:PXStringFromCaptureMode(task.mode)
-                         message:[NSString stringWithFormat:@"[%@] %@", code, message]];
     PXLogError(@"task failed [%@]: %@", code, message);
     // 失败气泡不受 ShowResultBubble 控制：失败原因必须可见（诊断优先）。
     self.resultBubble = [PXResultBubble presentWithImage:nil

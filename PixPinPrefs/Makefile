@@ -8,14 +8,13 @@ include $(THEOS)/makefiles/common.mk
 BUNDLE_NAME = PixPinPrefs
 
 PixPinPrefs_FILES = PXRootListController.m \
-	PXTestCaptureController.m \
 	PXEditorOrderController.m \
 	PXEditorButtonEditController.m \
 	../Sources/Common/PXConstants.m \
 	../Sources/Common/PXPanelAppearance.m \
 	../Sources/Common/PXEditorOrder.m \
 	../Sources/Common/PXLog.m \
-	../Sources/Common/PXRuntimeStatus.m
+	../Sources/Common/PXExternalRequest.m
 
 PixPinPrefs_INSTALL_PATH = /Library/PreferenceBundles
 PixPinPrefs_FRAMEWORKS = UIKit CoreGraphics

@@ -71,21 +71,6 @@ static NSString *PXCreateDirectoryIfNeeded(NSString *path, NSError **error) {
     return path;
 }
 
-NSString *PXLibraryDataDirectory(void) {
-    static NSString *path = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        // Preferences 在 Settings 进程内，截图主逻辑在 SpringBoard 内。如果使用各进程的
-        // NSSearchPath，某些系统版本会落到不同容器，导致测试页永远读不到运行状态。
-        NSString *mobileHome = NSHomeDirectoryForUser(@"mobile");
-        if (mobileHome.length == 0) mobileHome = @"/var/mobile";
-        NSString *library = [mobileHome stringByAppendingPathComponent:@"Library"];
-        NSString *root = [library stringByAppendingPathComponent:@"PixPin"];
-        path = PXCreateDirectoryIfNeeded(root, nil) ?: [NSTemporaryDirectory() stringByAppendingPathComponent:@"PixPin"];
-    });
-    return path;
-}
-
 NSString *PXTemporaryTasksRoot(void) {
     static NSString *path = nil;
     static dispatch_once_t onceToken;

@@ -24,15 +24,15 @@
 
 1. 打开系统设置 → 找到 **PixPin**（蓝色取景框图标）。
 2. 确认「启用 PixPin」已开。
-3. 进入 **诊断与测试 → 截图测试中心**，点“测试全屏截图”。
-4. 预期：屏幕闪一下快门反馈 → 左下角弹出结果气泡（缩略图 + 编辑按钮）。测试中心会同步显示 SpringBoard 处理阶段。
+3. 找到 **外部入口**，点击“全屏截图”：先复制 `pixpin://capture/full`，同时发起截图。
+4. 预期：屏幕闪一下快门反馈 → 左下角弹出结果气泡（缩略图 + 编辑按钮）。处理情况可通过 `[PixPin]` syslog 查看。
    默认动作是「保存到相册」，可在设置里改为复制/保存并复制/仅气泡。
 
 ## 3. 触发方式
 
 | 入口 | 位置 | 说明 |
 |---|---|---|
-| 测试中心 | 设置 → PixPin → 诊断与测试 | 五种模式、实时阶段、手动取消 |
+| 设置快捷入口 | 设置 → PixPin → 外部入口 | 点击即复制 URL 并触发对应功能，含取消入口 |
 | 跨进程通知 | Darwin 通知 | `com.pixpin.screenshot/activate` 默认打开全屏标记，也支持指定模式 |
 | URL Scheme | 外部插件 / 打开 URL 动作 | `pixpin://` 默认打开全屏标记，也支持指定模式 |
 
@@ -52,7 +52,7 @@ PixPin 在 SpringBoard 内运行。安装后需注销并确保注入成功；“
 | 全屏标记 | `pixpin://capture/markup` | `com.pixpin.screenshot/capture/markup` |
 | 取消当前任务 | `pixpin://cancel` 或 `pixpin://capture/cancel` | `com.pixpin.screenshot/capture/cancel` |
 
-设备上可从 设置 → PixPin → 外部入口 点击按钮复制默认启动地址，无需手动输入。
+设备上可从 设置 → PixPin → 外部入口 点击任意条目，复制该行地址并立即触发对应功能，无需手动输入。反馈“已发送请求”不表示截图成功；模式开关和任务忙碌限制仍生效。
 
 其他插件优先使用 Darwin 通知（可从任意线程发送，无需链接 PixPin）：
 
@@ -82,7 +82,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 
 - Darwin 是无参数信号，不支持 `userInfo`，没有截图成功回执；不要为一次操作同时发送 URL 和通知。
 - URL 在 SpringBoard 内拦截，未向 LaunchServices 注册独立 App。因此 `canOpenURL:` 可能返回 NO，调用方应直接打开；提前要求已注册 Scheme 的宿主可能拒绝，插件应改用 Darwin。普通 App、快捷指令及其他 URL 插件共存的实际路径尚待真机验收。
-- URL 回调成功只表示指令格式有效且已交给协调器，不表示已截图或保存；关闭模式和任务忙碌仍会拒绝执行。请看测试中心处理状态或 syslog。
+- URL 回调成功只表示指令格式有效且已交给协调器，不表示已截图或保存；关闭模式和任务忙碌仍会拒绝执行。请看 syslog 和输出气泡。
 - 活动任务期间重复启动不替换当前任务、不叠加窗口；取消后可再次启动。Darwin 通知可能合并，不能把连续通知当作可靠队列；未注入时的通知不补发。
 - 未知模式、附加路径、query、fragment、用户名和端口均拒绝，不打开外部文件，也不会退回默认模式。其他 Scheme 原样交给系统。
 
@@ -97,7 +97,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 | `com.jontelang.snapper3.forcefreeze.open` | 冻结截图 |
 | `com.jontelang.snapper3.close.all` / `closecrop` | 取消当前任务 |
 
-`openlast`、`history` 在 PixPin 无对应功能，不响应。别名与自有通知走同一门禁：总开关/对应模式开关关闭时拒绝（`rejected-disabled`），任务忙碌时拒绝（`rejected-busy`）。
+`openlast`、`history` 在 PixPin 无对应功能，不响应。别名与自有通知走同一门禁：总开关/对应模式开关关闭时拒绝（日志提示 `disabled`），任务忙碌时拒绝（日志提示 `busy`）。
 
 注意：Darwin 通知是广播。若设备上同时装有 Snapper3 本体，一条通知会同时触发双方动作；请按需停用其中一方，避免一次触发出现两个截图/贴图流程。
 
@@ -112,7 +112,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 | `com.iosdump.screenshotshell.open.freeze` | 冻结截图 |
 | `com.iosdump.screenshotshell.close` | 取消当前任务 |
 
-`history`、`openlast` 在 PixPin 无对应功能，`ready` 是 SHELLX 自身就绪信号，均不响应。别名与自有通知走同一门禁：总开关/对应模式开关关闭时拒绝（`rejected-disabled`），任务忙碌时拒绝（`rejected-busy`）。
+`history`、`openlast` 在 PixPin 无对应功能，`ready` 是 SHELLX 自身就绪信号，均不响应。别名与自有通知走同一门禁：总开关/对应模式开关关闭时拒绝（日志提示 `disabled`），任务忙碌时拒绝（日志提示 `busy`）。
 
 注意：通知是广播。若设备上同时装有 SHELLX 本体，一条通知会同时触发双方动作；请按需停用其中一方，避免一次触发出现两个截图流程。
 
@@ -128,10 +128,10 @@ dispatch_async(dispatch_get_main_queue(), ^{
 ### 3.2 外部入口真机验收（待执行）
 
 1. iOS 16/17 各自在设备冷启动并恢复越狱注入后、热启动时，从桌面和 App 内分别调用默认 URL 与默认 Darwin 通知；预期直接进入全屏标记，底图为触发时屏幕。
-2. 逐项调用上表五种模式，确认与测试中心同模式一致；调用取消后窗口消失且可重新启动。
-3. 面板打开时连续触发 URL/Darwin，确认只有一个任务并出现 `rejected-busy`；关闭总开关/模式开关后触发，确认 `rejected-disabled`。
+2. 逐项调用上表五种模式，确认与设置“外部入口”同模式一致；调用取消后窗口消失且可重新启动。
+3. 面板打开时连续触发 URL/Darwin，确认只有一个任务并出现 `request ignored: another task is busy`；关闭总开关/模式开关后触发，确认 `mode ... disabled, request ignored`。
 4. 打开 `pixpin://capture/unknown` 和 `pixpin://activate?mode=full`，确认不截图；普通 HTTPS、其他 App Scheme 仍按原行为打开。与其他 URL 接管插件同时启用时再次测试。
-5. 收集 `[PixPin]` syslog：加载时应有 `external URL hook installed`（某个版本专属入口可能为 `unavailable`），请求时有 `external request source=url/darwin`；无效指令为 `external URL rejected`。再核对测试中心的 accepted / rejected / cancelled 及最终输出状态。
+5. 收集 `[PixPin]` syslog：加载时应有 `external URL hook installed`（某个版本专属入口可能为 `unavailable`），请求时有 `external request source=url/darwin`；无效指令为 `external URL rejected`。再核对 `capture request accepted`、`request ignored`、`task cancelled` 和 `output completed`。
 6. Snapper3 兼容别名：`notify_post` 逐条发送 3.1.1 表中五条通知，确认分别进入区域 / 即时区域 / 冻结截图与取消当前任务；开关关闭与任务忙碌时同样出现 `rejected-disabled` / `rejected-busy`。
 7. SHELLX 兼容别名：逐条发送 3.1.2 表中四条通知，Darwin 与 Distributed 两个中心各发一轮，确认进入对应模式或取消当前任务；开关关闭与任务忙碌时同样出现 `rejected-disabled` / `rejected-busy`；syslog 来源分别为 `source=darwin` / `source=distributed`。
 8. SHELLX 插件插入形式：与 SHELLX 本体同装并注销，打开 SHELLX 设置页确认插件列表出现 PixPin；在 SHELLX 截图操作菜单选择 PixPin，确认快照收起且 PixPin 编辑器悬浮展示；关闭 PixPin 总开关后重复，确认不弹编辑器；卸载 SHELLX 后重启 SpringBoard，确认 syslog 出现 `shellx plugin registration skipped` 且 PixPin 其余功能正常。
@@ -139,7 +139,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 ## 4. 模式说明
 
 - **全屏截图**：整屏捕获，完成后直接走默认结果动作 + 气泡。
-- **全屏标记**：先截取当前完整屏幕，直接进入标记编辑器，无需框选。在测试中心点击“全屏标记”，或发送 `com.pixpin.screenshot/capture/markup`；有独立开关。取消不保存。如果只能取得 SpringBoard 部分快照，会明确失败，不用不完整画面冒充全屏。
+- **全屏标记**：先截取当前完整屏幕，直接进入标记编辑器，无需框选。在设置“外部入口”点击“全屏标记”，或发送 `com.pixpin.screenshot/capture/markup`；有独立开关。取消不保存。如果只能取得 SpringBoard 部分快照，会明确失败，不用不完整画面冒充全屏。
 - **区域截图**：先抓屏，再打开选区覆盖层；拖动移动、拖角/边缩放、在暗区拖动新建选区；
   工具条按钮可在设置页排序/显隐（1.5.11 起，目录：取消 / 全屏 / 编辑 / 悬浮 / 保存 / 复制 / 完成，
   完成=默认动作，取消与完成不可隐藏）。「悬浮」把选区结果裁出后以可拖动悬浮窗常驻屏幕：
@@ -202,28 +202,26 @@ dispatch_async(dispatch_get_main_queue(), ^{
   - 显示结果气泡、完成时震动反馈。
 - **截图按钮**：「全屏截图按钮」管理全屏标记面板的操作与工具排序/开关；「区域截图按钮」管理区域/冻结选区工具栏排序/开关，即时模式仅保留取消/全屏/完成。两个入口独立保存及恢复默认。
 - **编辑器**：「编辑器按钮排序」管理普通图片编辑排序/开关及共用图标、名称、大小；「标记面板颜色与透明度」配置磨砂调色层，面板、线宽条和收起圆球下次打开时统一生效。
-- **截图测试中心**：集中触发五种截图，实时显示注入、抓取方式、请求、窗口与输出阶段；可以显式取消未结束任务。
+- **外部入口**：各行复制 URL 并触发对应功能；“取消截图”复制取消 URL，同时取消当前任务并关闭悬浮图。
 
 结果气泡：成功时只显示缩略图、「编辑」和「✕」；点缩略图或「编辑」进入编辑器重新编辑
 （编辑图保存为**新的**相册资源，原图不动），「✕」关闭。输出失败时气泡显示失败原因。
 
 ## 6. 无法截图时怎么办（诊断）
 
-**第一步：设置 → PixPin → 截图测试中心**
+先打开 **设置 → PixPin → 外部入口**，点击所需模式。确认剪贴板收到该行 URL；若默认输出动作包含“复制”，随后生成的截图会按该动作覆盖剪贴板。
 
-| 现象 | 含义 | 处理 |
+| 现象或 syslog | 含义 | 处理 |
 |---|---|---|
-| 提示“未找到运行状态文件” | tweak 没有加载进 SpringBoard | 确认已注销；确认注入器中 PixPin 已启用；重装 deb |
-| 抓取方式 = 不可用 | 三个抓取接口在本机都缺失 | 反馈机型+iOS 版本（说明里附日志） |
-| 最近请求 = 已拒绝（模式关闭） | 总开关或对应模式开关关着 | 打开对应开关 |
-| 最近请求 = 已拒绝（有任务进行中） | 上一个任务没结束 | 先点“取消当前截图任务”，再附日志反馈 |
-| 阶段停在 `captured` | 已有快照，但选区窗口未提交显示 | 收集 `[PixPin]` 日志与设备/iOS 版本 |
-| 阶段显示 `selection-visible` 但看不到 UI | 窗口已提交给某个 scene，需核对 scene 选择 | 保留阶段下方的 `scene=...` 信息并收集日志 |
-| 最近结果 = failed | 抓取/裁剪/输出失败 | 看“结果信息”里的具体错误，配合日志定位 |
+| 点击后无窗口且没有 `[PixPin]` 请求日志 | SpringBoard 可能未注入 | 确认已注销、注入器中已启用 PixPin |
+| `mode ... disabled, request ignored` | 总开关或模式开关关闭 | 打开对应开关 |
+| `request ignored: another task is busy` | 上一个任务未结束 | 点击外部入口的“取消截图”再试 |
+| `selection presented` 但没有选区 | 需要核对窗口展示 | 附 `capture window shown` 的 scene 信息和系统版本 |
+| `task failed` 或 `output completed (ok=0, ...)` | 抓取、裁剪或输出失败 | 查看错误气泡并收集对应日志 |
 
-运行状态文件位于设备的 `/var/mobile/Library/PixPin/status.json`，每次注入、请求、抓取、窗口展示和完成都会更新。
+诊断只使用 syslog，不再写入供设置页轮询的状态文件。
 
-**第二步：收集日志**
+收集日志：
 
 ```bash
 ./Scripts/collect-runtime-logs.sh     # 有 USB 连接时用 idevicesyslog 过滤 [PixPin]
@@ -231,13 +229,15 @@ dispatch_async(dispatch_get_main_queue(), ^{
 或 SSH 到设备后：`grep -E '\[PixPin\]' /var/log/syslog`（或 `oslog` 工具）。
 所有日志以 `[PixPin][I/W/E]` 为前缀，不会输出图片内容。
 
+设置入口验收（1.6.4，待真机执行）：iOS 16/17 冷启动设置、返回重进后，确认诊断分组已移除。依次点击七个外部入口，每次先退出前一个截图任务，核对所复制 URL 和实际模式；“启动”与“全屏标记”均进入标记面板，“取消截图”关闭当前任务与全部悬浮图。快速重复点击不叠加任务；同一行和多行连续点击后反馈可恢复。关闭模式开关后仍复制 URL，但不启动截图。syslog 每次点击应只发送一次对应功能请求。
+
 ## 7. 已知限制
 
 - 既有配置映射问题（本次仅记录）：设置中的“仅显示预览气泡”值为 5，但 `PXPreferences` 将默认动作钳制为 0～4，因此选择此项仍可能进入保存流程；本次未改动该映射。
 
 - 抓取路径优先级：`_UICreateScreenUIImage` → `UIGetScreenImage` → SpringBoard 可见窗口合成回退。
   前两者可用时截的是整个合成屏幕；若都不可用，回退路径只能捕到桌面自身窗口
-  （状态里显示 `fallback-snapshot`，气泡会标注）。
+  （启动日志里显示 `fallback-snapshot`，气泡会标注）。
 - 控制中心模块、系统截图按钮联动未实现。
 - 相册保存依赖 SpringBoard 进程的相册权限；首次保存若系统不弹授权且保存失败，
   临时副本会保留，失败原因显示在结果气泡中（重新截图即可重试）。

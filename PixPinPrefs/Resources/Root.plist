@@ -10,7 +10,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>使用说明：进入下方“截图测试中心”触发对应模式。全屏截图完成后按“默认结果动作”输出并弹出气泡；区域/冻结/即时会先打开冻结选区，拖动调整后点“完成”。完整说明见仓库 USAGE.md。</string>
+			<string>使用说明：点击下方“外部入口”中的条目，复制 URL 的同时触发对应模式。全屏截图完成后按“默认结果动作”输出并弹出气泡；区域/冻结/即时会先打开冻结选区，拖动调整后点“完成”。完整说明见仓库 USAGE.md。</string>
 		</dict>
 
 		<dict>
@@ -228,25 +228,9 @@
 			<key>label</key>
 			<string>外部入口</string>
 			<key>footerText</key>
-			<string>点击任意一行直接复制对应 URL 指令，粘贴到快捷指令或其他插件的“打开 URL”中即可触发。“启动（全屏标记）”与“全屏标记”行为相同；pixpin://activate 可省略为 pixpin://，取消截图也可用 pixpin://capture/cancel。</string>
+			<string>点击任意一行会复制对应 URL 并立即发送该功能请求；“取消截图”会取消当前任务并关闭悬浮图。复制的 URL 也可供快捷指令或其他插件调用。“启动（全屏标记）”与“全屏标记”行为相同；pixpin://activate 可省略为 pixpin://，取消截图也可用 pixpin://capture/cancel。</string>
 		</dict>
 
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>诊断与测试</string>
-			<key>footerText</key>
-			<string>独立测试中心会实时显示请求、抓取、窗口展示和输出阶段，并可取消卡住的任务。</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSLinkCell</string>
-			<key>label</key>
-			<string>截图测试中心</string>
-			<key>detail</key>
-			<string>PXTestCaptureController</string>
-		</dict>
 	</array>
 </dict>
 </plist>

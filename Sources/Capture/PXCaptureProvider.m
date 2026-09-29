@@ -1,6 +1,5 @@
 #import "PXCaptureProvider.h"
 #import "../Common/PXLog.h"
-#import "../Common/PXRuntimeStatus.h"
 #import <dlfcn.h>
 #import <QuartzCore/QuartzCore.h>
 
