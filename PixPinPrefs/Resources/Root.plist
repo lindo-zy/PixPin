@@ -9,13 +9,6 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
-			<key>footerText</key>
-			<string>使用说明：点击下方“外部入口”中的条目，复制 URL 的同时触发对应模式。全屏截图完成后按“默认结果动作”输出并弹出气泡；区域/冻结/即时会先打开冻结选区，拖动调整后点“完成”。完整说明见仓库 USAGE.md。</string>
-		</dict>
-
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>基本</string>
 		</dict>
