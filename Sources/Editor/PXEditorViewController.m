@@ -75,10 +75,10 @@ static NSDictionary<NSString *, PXEditorTool *> *PXEditorToolCatalog(void) {
 }
 
 /// 按设置页排序组装编辑器工具列表；被隐藏的工具不出现，全部隐藏时回退为完整列表。
-static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
+static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
     NSDictionary<NSString *, PXEditorTool *> *catalog = PXEditorToolCatalog();
-    NSArray<NSString *> *order = [PXEditorOrder visibleOrderForOrder:[PXEditorOrder currentToolOrder]
-                                                              hidden:[PXEditorOrder currentToolHidden]];
+    NSArray<NSString *> *order = [PXEditorOrder visibleOrderForOrder:[PXEditorOrder currentToolOrderForFullscreenMarkup:fullscreen]
+                                                              hidden:[PXEditorOrder currentToolHiddenForFullscreenMarkup:fullscreen]];
     NSMutableArray<PXEditorTool *> *tools = [NSMutableArray arrayWithCapacity:order.count];
     for (NSString *identifier in order) {
         PXEditorTool *tool = catalog[identifier];
@@ -192,7 +192,7 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
     [self pxBuildScrollContainer];
     [self pxBuildCanvas];
     // 工具按钮在 pxBuildBottomPanel 内按 self.tools 顺序创建，必须先解析排序偏好。
-    self.tools = PXEditorToolsInPreferredOrder();
+    self.tools = PXEditorToolsInPreferredOrder(self.fullscreenMarkup);
     [self pxBuildTopBar];
     [self pxBuildBottomPanel];
     [self pxConfigureWidthSlider];
@@ -282,8 +282,8 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
 /// 按设置页排序与显隐组装操作按钮；面板停靠/收起仅全屏标记显示。
 /// 关闭/完成是编辑器唯一出口，设置页开关禁用，这里再兜底强制补回。
 - (void)pxAssembleActionButtons {
-    NSArray<NSString *> *order = [PXEditorOrder visibleActionOrderForOrder:[PXEditorOrder currentActionOrder]
-                                                                  hidden:[PXEditorOrder currentActionHidden]
+    NSArray<NSString *> *order = [PXEditorOrder visibleActionOrderForOrder:[PXEditorOrder currentActionOrderForFullscreenMarkup:self.fullscreenMarkup]
+                                                                  hidden:[PXEditorOrder currentActionHiddenForFullscreenMarkup:self.fullscreenMarkup]
                                                         fullscreenMarkup:self.fullscreenMarkup];
     NSDictionary<NSString *, UIButton *> *table = [self pxActionButtonTable];
     NSMutableArray<UIButton *> *buttons = [NSMutableArray arrayWithCapacity:order.count];

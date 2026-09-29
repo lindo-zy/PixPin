@@ -195,7 +195,23 @@
 			<key>label</key>
 			<string>编辑器</string>
 			<key>footerText</key>
-			<string>调整编辑操作与标记工具图标的顺序、显隐、名称和大小，以及区域选区工具栏按钮的排序与显隐，顶部实时预览排列效果。标记面板颜色与透明度同时用于全屏标记面板、线宽条和收起圆球，下次打开标记生效。</string>
+			<string>全屏截图按钮用于全屏标记面板，区域截图按钮用于框选工具栏，两页分别设置排序和显示开关。编辑器按钮排序用于普通图片编辑，图标名称与大小为共用外观。标记面板颜色与透明度同时用于全屏标记面板、线宽条和收起圆球，下次打开标记生效。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>label</key>
+			<string>全屏截图按钮</string>
+			<key>detail</key>
+			<string>PXFullscreenButtonController</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>label</key>
+			<string>区域截图按钮</string>
+			<key>detail</key>
+			<string>PXRegionButtonController</string>
 		</dict>
 		<dict>
 			<key>cell</key>

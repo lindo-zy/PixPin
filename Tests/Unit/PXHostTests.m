@@ -416,6 +416,67 @@ static void testSelectionOrder(void) {
             [safe.lastObject isEqualToString:@"confirm"], "instant exits always visible");
 }
 
+static void testIndependentButtonPreferences(void) {
+    printf("[independent button preferences]\n");
+    NSArray *keys = @[@"MarkupActionOrder", @"MarkupToolOrder", @"MarkupActionHidden", @"MarkupToolHidden",
+                      PXKeyEditorActionOrder, PXKeyEditorToolOrder, PXKeyEditorActionHidden, PXKeyEditorToolHidden,
+                      PXKeySelectionButtonOrder, PXKeySelectionButtonHidden];
+    CFStringRef domain = (__bridge CFStringRef)PXPreferencesDomain;
+    NSMutableDictionary *backup = [NSMutableDictionary dictionary];
+    for (NSString *key in keys) {
+        backup[key] = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, domain)) ?: NSNull.null;
+        CFPreferencesSetAppValue((__bridge CFStringRef)key, NULL, domain);
+    }
+    CFPreferencesAppSynchronize(domain);
+    [PXEditorOrder saveActionOrderString:@"save,close,undo"];
+    [PXEditorOrder saveToolOrderString:@"arrow,brush"];
+    [PXEditorOrder saveActionHiddenString:@"copy"];
+    [PXEditorOrder saveToolHiddenString:@"pan"];
+    [PXEditorOrder saveSelectionOrderString:@"float,copy,cancel"];
+    [PXEditorOrder saveSelectionHiddenString:@"save"];
+    PXCheck([[[PXEditorOrder currentActionOrderForFullscreenMarkup:YES] firstObject] isEqual:@"save"], "markup inherits legacy action order once");
+    PXCheck([[[PXEditorOrder currentToolOrderForFullscreenMarkup:YES] firstObject] isEqual:@"arrow"], "markup inherits legacy tool order once");
+    PXCheck([[PXEditorOrder currentActionHiddenForFullscreenMarkup:YES] containsObject:@"copy"], "markup inherits action switches");
+    PXCheck([[PXEditorOrder currentToolHiddenForFullscreenMarkup:YES] containsObject:@"pan"], "markup inherits tool switches");
+
+    [PXEditorOrder saveActionOrderString:@"undo,save" fullscreenMarkup:NO];
+    [PXEditorOrder saveToolHiddenString:@"arrow" fullscreenMarkup:NO];
+    PXCheck([[[PXEditorOrder currentActionOrderForFullscreenMarkup:YES] firstObject] isEqual:@"save"], "later editor changes do not alter markup order");
+    PXCheck([[PXEditorOrder currentToolHiddenForFullscreenMarkup:YES] containsObject:@"pan"], "later editor changes do not alter markup switches");
+
+    [PXEditorOrder saveActionOrderString:@"copy,save" fullscreenMarkup:YES];
+    [PXEditorOrder saveToolOrderString:@"mosaic,brush" fullscreenMarkup:YES];
+    [PXEditorOrder saveActionHiddenString:@"save,close,done" fullscreenMarkup:YES];
+    [PXEditorOrder saveToolHiddenString:@"brush" fullscreenMarkup:YES];
+    PXCheck([[[PXEditorOrder currentActionOrder] firstObject] isEqual:@"undo"], "markup save leaves image editor order alone");
+    PXCheck([[[PXEditorOrder currentToolOrder] firstObject] isEqual:@"arrow"], "markup tool save leaves image editor alone");
+    PXCheck([[[PXEditorOrder currentSelectionOrder] firstObject] isEqual:@"float"], "markup save leaves region order alone");
+    PXCheck([[PXEditorOrder currentSelectionHidden] containsObject:@"save"], "markup save leaves region switches alone");
+    NSArray *visible = [PXEditorOrder visibleActionOrderForOrder:[PXEditorOrder currentActionOrderForFullscreenMarkup:YES]
+        hidden:[PXEditorOrder currentActionHiddenForFullscreenMarkup:YES] fullscreenMarkup:YES];
+    PXCheck([visible containsObject:@"close"] && [visible containsObject:@"done"] && ![visible containsObject:@"save"], "markup keeps exits while honoring other switches");
+
+    [PXEditorOrder saveSelectionOrderString:nil];
+    [PXEditorOrder saveSelectionHiddenString:nil];
+    PXCheck([[[PXEditorOrder currentActionOrderForFullscreenMarkup:YES] firstObject] isEqual:@"copy"], "region reset leaves markup order alone");
+    PXCheck([[PXEditorOrder currentToolHiddenForFullscreenMarkup:YES] containsObject:@"brush"], "region reset leaves markup tool switches alone");
+    [PXEditorOrder saveActionOrderString:nil fullscreenMarkup:YES];
+    [PXEditorOrder saveToolOrderString:nil fullscreenMarkup:YES];
+    [PXEditorOrder saveActionHiddenString:nil fullscreenMarkup:YES];
+    [PXEditorOrder saveToolHiddenString:nil fullscreenMarkup:YES];
+    PXCheck([[PXEditorOrder currentActionOrderForFullscreenMarkup:YES] isEqual:[PXEditorOrder defaultActionIdentifiers]], "markup reset does not re-inherit legacy order");
+    PXCheck([[PXEditorOrder currentToolOrderForFullscreenMarkup:YES] isEqual:[PXEditorOrder defaultToolIdentifiers]], "markup tools reset independently");
+    PXCheck([PXEditorOrder currentActionHiddenForFullscreenMarkup:YES].count == 0 &&
+            [PXEditorOrder currentToolHiddenForFullscreenMarkup:YES].count == 0, "markup reset clears switches without re-inheriting");
+    PXCheck([[[PXEditorOrder currentActionOrder] firstObject] isEqual:@"undo"] &&
+            [[PXEditorOrder currentToolHidden] containsObject:@"arrow"], "markup reset preserves ordinary editor preferences");
+    for (NSString *key in keys) {
+        id value = backup[key];
+        CFPreferencesSetAppValue((__bridge CFStringRef)key, value == NSNull.null ? NULL : (__bridge CFPropertyListRef)value, domain);
+    }
+    CFPreferencesAppSynchronize(domain);
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
@@ -429,6 +490,7 @@ int main(int argc, const char **argv) {
         testEditorOrder();
         testSelectionOrder();
         testEditorOverrides();
+        testIndependentButtonPreferences();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }

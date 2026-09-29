@@ -82,6 +82,16 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (NSString *)stringForOrder:(NSArray<NSString *> *)order;
 
+// 全屏标记独立配置；首次读取复制旧编辑器配置，此后不再跟随普通编辑器变化。
++ (NSArray<NSString *> *)currentActionOrderForFullscreenMarkup:(BOOL)fullscreen;
++ (NSArray<NSString *> *)currentToolOrderForFullscreenMarkup:(BOOL)fullscreen;
++ (NSArray<NSString *> *)currentActionHiddenForFullscreenMarkup:(BOOL)fullscreen;
++ (NSArray<NSString *> *)currentToolHiddenForFullscreenMarkup:(BOOL)fullscreen;
++ (void)saveActionOrderString:(nullable NSString *)csv fullscreenMarkup:(BOOL)fullscreen;
++ (void)saveToolOrderString:(nullable NSString *)csv fullscreenMarkup:(BOOL)fullscreen;
++ (void)saveActionHiddenString:(nullable NSString *)csv fullscreenMarkup:(BOOL)fullscreen;
++ (void)saveToolHiddenString:(nullable NSString *)csv fullscreenMarkup:(BOOL)fullscreen;
+
 // MARK: 偏好读写（CFPreferences，域 com.pixpin.screenshot）
 
 /// 当前生效顺序：读偏好并解析；未设置时返回默认。

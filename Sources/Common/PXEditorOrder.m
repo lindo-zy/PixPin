@@ -421,6 +421,93 @@
     return nil;
 }
 
+// 空字符串是有效的独立默认值，不能当作未迁移而反复继承旧设置。
++ (void)pxPrepareFullscreenPreferences {
+    CFStringRef domain = (__bridge CFStringRef)PXPreferencesDomain;
+    CFPreferencesAppSynchronize(domain);
+    NSDictionary *keys = @{@"MarkupActionOrder": PXKeyEditorActionOrder,
+                           @"MarkupToolOrder": PXKeyEditorToolOrder,
+                           @"MarkupActionHidden": PXKeyEditorActionHidden,
+                           @"MarkupToolHidden": PXKeyEditorToolHidden};
+    BOOL changed = NO;
+    for (NSString *key in keys) {
+        id existing = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, domain));
+        if ([existing isKindOfClass:NSString.class]) continue;
+        NSString *legacy = [self preferenceForKey:keys[key]] ?: @"";
+        CFPreferencesSetAppValue((__bridge CFStringRef)key, (__bridge CFStringRef)legacy, domain);
+        changed = YES;
+    }
+    if (changed) CFPreferencesAppSynchronize(domain);
+}
+
++ (NSArray<NSString *> *)currentActionOrderForFullscreenMarkup:(BOOL)fullscreen {
+    [self pxPrepareFullscreenPreferences];
+    if (!fullscreen) return [self currentActionOrder];
+    return [self resolvedActionOrderFromString:[self preferenceForKey:@"MarkupActionOrder"]];
+}
+
++ (void)saveActionOrderString:(NSString *)csv fullscreenMarkup:(BOOL)fullscreen {
+    [self pxPrepareFullscreenPreferences];
+    if (!fullscreen) {
+        [self saveActionOrderString:csv];
+        return;
+    }
+    CFPreferencesSetAppValue(CFSTR("MarkupActionOrder"), (__bridge CFStringRef)(csv ?: @""),
+                            (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
++ (NSArray<NSString *> *)currentActionHiddenForFullscreenMarkup:(BOOL)fullscreen {
+    [self pxPrepareFullscreenPreferences];
+    if (!fullscreen) return [self currentActionHidden];
+    return [self normalizedHiddenFromString:[self preferenceForKey:@"MarkupActionHidden"] defaults:[self defaultActionIdentifiers]];
+}
+
++ (void)saveActionHiddenString:(NSString *)csv fullscreenMarkup:(BOOL)fullscreen {
+    [self pxPrepareFullscreenPreferences];
+    if (!fullscreen) {
+        [self saveActionHiddenString:csv];
+        return;
+    }
+    CFPreferencesSetAppValue(CFSTR("MarkupActionHidden"), (__bridge CFStringRef)(csv ?: @""),
+                            (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
++ (NSArray<NSString *> *)currentToolOrderForFullscreenMarkup:(BOOL)fullscreen {
+    [self pxPrepareFullscreenPreferences];
+    if (!fullscreen) return [self currentToolOrder];
+    return [self resolvedToolOrderFromString:[self preferenceForKey:@"MarkupToolOrder"]];
+}
+
++ (void)saveToolOrderString:(NSString *)csv fullscreenMarkup:(BOOL)fullscreen {
+    [self pxPrepareFullscreenPreferences];
+    if (!fullscreen) {
+        [self saveToolOrderString:csv];
+        return;
+    }
+    CFPreferencesSetAppValue(CFSTR("MarkupToolOrder"), (__bridge CFStringRef)(csv ?: @""),
+                            (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
++ (NSArray<NSString *> *)currentToolHiddenForFullscreenMarkup:(BOOL)fullscreen {
+    [self pxPrepareFullscreenPreferences];
+    if (!fullscreen) return [self currentToolHidden];
+    return [self normalizedHiddenFromString:[self preferenceForKey:@"MarkupToolHidden"] defaults:[self defaultToolIdentifiers]];
+}
+
++ (void)saveToolHiddenString:(NSString *)csv fullscreenMarkup:(BOOL)fullscreen {
+    [self pxPrepareFullscreenPreferences];
+    if (!fullscreen) {
+        [self saveToolHiddenString:csv];
+        return;
+    }
+    CFPreferencesSetAppValue(CFSTR("MarkupToolHidden"), (__bridge CFStringRef)(csv ?: @""),
+                            (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
 + (NSArray<NSString *> *)currentActionOrder {
     return [self resolvedActionOrderFromString:[self preferenceForKey:PXKeyEditorActionOrder]];
 }
