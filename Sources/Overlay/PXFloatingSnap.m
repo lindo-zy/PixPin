@@ -3,18 +3,33 @@
 #import "../Common/PXLog.h"
 
 static const CGFloat PXFloatSnapInset = 14.0;
-static const CGFloat PXFloatSnapBarHeight = 40.0;
+static const CGFloat PXFloatSnapBarHeight = 44.0;
 
-@interface PXFloatingSnap ()
+@interface PXFloatingSnap () <UIGestureRecognizerDelegate>
 @property (nonatomic, strong, readwrite) UIImage *image;
 @property (nonatomic, assign, readwrite) PXCaptureMode captureMode;
 @property (nonatomic, strong) UIImageView *imageView;
-@property (nonatomic, strong) PXCaptureWindow *window;
+@property (nonatomic, strong) PXCaptureWindow *overlayWindow;
 @property (nonatomic, strong) UIVisualEffectView *actionBar;
 @property (nonatomic, strong) NSArray<UIButton *> *actionButtons;
 @property (nonatomic, assign) BOOL actionBarVisible;
 @property (nonatomic, assign) BOOL alive;
 @property (nonatomic, assign) CGRect dragStartFrame;
+@end
+
+@interface PXFloatingSnap (HostLayout)
+- (void)constrainToHostBounds;
+@end
+
+@interface PXFloatingSnapHostView : UIView
+@property (nonatomic, weak) PXFloatingSnap *snap;
+@end
+
+@implementation PXFloatingSnapHostView
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    [self.snap constrainToHostBounds];
+}
 @end
 
 @implementation PXFloatingSnap
@@ -26,26 +41,31 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
 
 + (instancetype)presentWithImage:(UIImage *)image
                             mode:(PXCaptureMode)mode
-                        delegate:(id<PXFloatingSnapDelegate>)delegate {
+                        delegate:(id<PXFloatingSnapDelegate>)delegate
+                           index:(NSUInteger)index {
     if (![NSThread isMainThread]) {
         // 调用契约是主线程。降级路径只记日志不弹出：异步弹出会返回 nil，调用方将永远无法 dismiss，
         // 悬浮窗会沦为无人能关的孤儿窗口。
         PXLogWarn(@"floating snap present called off main thread, dropped");
         return nil;
     }
-    return [self pxPresentWithImage:image mode:mode delegate:delegate];
+    return [self pxPresentWithImage:image mode:mode delegate:delegate index:index];
 }
 
 + (instancetype)pxPresentWithImage:(UIImage *)image
                               mode:(PXCaptureMode)mode
-                          delegate:(id<PXFloatingSnapDelegate>)delegate {
+                          delegate:(id<PXFloatingSnapDelegate>)delegate
+                             index:(NSUInteger)index {
     if (!image || image.size.width <= 0 || image.size.height <= 0) return nil;
 
-    CGRect screenBounds = [UIScreen mainScreen].bounds;
+    PXCaptureWindow *window = [PXCaptureWindow pxCaptureWindow];
+    CGRect screenBounds = window.bounds;
     CGSize size = [self pxDisplaySizeForImageSize:image.size screenBounds:screenBounds];
-    // 默认停靠右上（避开左下角结果气泡），后续位置完全跟随用户拖动。
-    CGRect frame = CGRectMake(screenBounds.size.width - size.width - PXFloatSnapInset,
-                              MAX(PXFloatSnapInset, screenBounds.size.height * 0.18),
+    // 新图错开摆放；每张图有独立窗口与生命周期。
+    CGFloat offset = (index % 6) * 28.0;
+    CGRect frame = CGRectMake(MAX(PXFloatSnapInset, screenBounds.size.width - size.width - PXFloatSnapInset - offset),
+                              MIN(screenBounds.size.height - size.height - PXFloatSnapInset,
+                                  MAX(PXFloatSnapInset, screenBounds.size.height * 0.18) + offset),
                               size.width, size.height);
 
     PXFloatingSnap *snap = [[PXFloatingSnap alloc] initWithFrame:frame];
@@ -54,12 +74,12 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
     snap.delegate = delegate;
     snap.alive = YES;
 
-    PXCaptureWindow *window = [PXCaptureWindow pxCaptureWindow];
     window.windowLevel = 999000.0;   // 低于选区/编辑器（1000000）与结果气泡（1000001）
     window.frame = screenBounds;
     window.passesTouchesOutsideHostedContent = YES;
-    snap.window = window;
-    UIView *host = [[UIView alloc] initWithFrame:window.bounds];
+    snap.overlayWindow = window;
+    PXFloatingSnapHostView *host = [[PXFloatingSnapHostView alloc] initWithFrame:window.bounds];
+    host.snap = snap;
     host.backgroundColor = [UIColor clearColor];
     [host addSubview:snap];
     snap.frame = frame;
@@ -68,28 +88,38 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
 
     snap.transform = CGAffineTransformMakeScale(0.6, 0.6);
     snap.alpha = 0.0;
-    [UIView animateWithDuration:0.22 animations:^{ snap.transform = CGAffineTransformIdentity; }];
+    [UIView animateWithDuration:0.22 animations:^{
+        snap.transform = CGAffineTransformIdentity;
+        snap.alpha = 1.0;
+    }];
     PXLogInfo(@"floating snap presented (mode %ld, image %.0fx%.0f px)",
               (long)mode, image.size.width * image.scale, image.size.height * image.scale);
     return snap;
 }
 
-/// 悬浮展示尺寸：等比放进 46% 宽 × 38% 高的屏幕区域内，下限 88pt 保证可点可拖。
+/// 极窄/极长选区使用留白展示，容器始终受屏幕约束，四个按钮均保留触控宽度。
 + (CGSize)pxDisplaySizeForImageSize:(CGSize)imageSize screenBounds:(CGRect)screenBounds {
-    CGFloat maxWidth = screenBounds.size.width * 0.46;
-    CGFloat maxHeight = screenBounds.size.height * 0.38;
+    CGFloat maxWidth = MIN(MAX(176.0, screenBounds.size.width * 0.46), screenBounds.size.width - 28.0);
+    CGFloat maxHeight = MIN(MAX(88.0, screenBounds.size.height * 0.38), screenBounds.size.height - 28.0);
     CGFloat scale = MIN(maxWidth / imageSize.width, maxHeight / imageSize.height);
-    CGSize size = CGSizeMake(floor(imageSize.width * scale), floor(imageSize.height * scale));
-    CGFloat aspect = imageSize.width / imageSize.height;
-    if (size.width < 88.0) {
-        size.width = 88.0;
-        size.height = floor(size.width / aspect);
-    }
-    if (size.height < 88.0) {
-        size.height = 88.0;
-        size.width = floor(size.height * aspect);
-    }
-    return size;
+    return CGSizeMake(MIN(maxWidth, MAX(176.0, floor(imageSize.width * scale))),
+                      MIN(maxHeight, MAX(88.0, floor(imageSize.height * scale))));
+}
+
+- (void)constrainToHostBounds {
+    if (!self.alive || !self.superview || !CGAffineTransformIsIdentity(self.transform)) return;
+    CGRect bounds = UIEdgeInsetsInsetRect(self.superview.bounds, self.superview.safeAreaInsets);
+    CGRect frame = self.frame;
+    frame.size = [PXFloatingSnap pxDisplaySizeForImageSize:self.image.size screenBounds:bounds];
+    frame.origin.x = MAX(CGRectGetMinX(bounds), MIN(frame.origin.x, CGRectGetMaxX(bounds) - frame.size.width));
+    frame.origin.y = MAX(CGRectGetMinY(bounds), MIN(frame.origin.y, CGRectGetMaxY(bounds) - frame.size.height));
+    self.frame = frame;
+}
+
+- (void)updateImage:(UIImage *)image {
+    if (!self.alive || !image || image.size.width <= 0 || image.size.height <= 0) return;
+    self.image = image;
+    [self constrainToHostBounds];
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -115,12 +145,12 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
                                       frame.size.width, PXFloatSnapBarHeight);
         _actionBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
         [self addSubview:_actionBar];
-        // 顺序固定 编辑/保存/复制/关闭；语义走 tag 分支，文案可改不破逻辑。
+        // 长按展开动作；取消只关闭当前图片。
         NSArray<NSArray *> *items = @[
-            @[@"编辑", @0, NSStringFromSelector(@selector(pxEditTapped:))],
             @[@"保存", @1, NSStringFromSelector(@selector(pxOutputTapped:))],
             @[@"复制", @2, NSStringFromSelector(@selector(pxOutputTapped:))],
-            @[@"关闭", @3, NSStringFromSelector(@selector(pxCloseTapped:))],
+            @[@"取消", @3, NSStringFromSelector(@selector(pxCloseTapped:))],
+            @[@"编辑", @0, NSStringFromSelector(@selector(pxEditTapped:))],
         ];
         NSMutableArray<UIButton *> *buttons = [[NSMutableArray alloc] init];
         for (NSArray *item in items) {
@@ -139,10 +169,20 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
 
         UITapGestureRecognizer *tap =
             [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(pxTapGesture:)];
+        tap.numberOfTapsRequired = 2;
+        tap.delegate = self;
         [self addGestureRecognizer:tap];
+        UILongPressGestureRecognizer *press = [[UILongPressGestureRecognizer alloc]
+            initWithTarget:self action:@selector(pxLongPressGesture:)];
+        press.minimumPressDuration = 0.45;
+        press.delegate = self;
+        [self addGestureRecognizer:press];
         UIPanGestureRecognizer *pan =
             [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pxPanGesture:)];
+        pan.delegate = self;
         [self addGestureRecognizer:pan];
+        self.accessibilityLabel = @"悬浮截图";
+        self.accessibilityHint = @"双击关闭，长按显示保存、复制、取消和编辑";
     }
     return self;
 }
@@ -161,7 +201,19 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
 
 #pragma mark - 手势
 
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
+    for (UIView *view = touch.view; view && view != self; view = view.superview) {
+        if ([view isKindOfClass:UIControl.class]) return NO;
+    }
+    return self.alive;
+}
+
 - (void)pxTapGesture:(UITapGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateRecognized) [self dismissWithCompletion:nil];
+}
+
+- (void)pxLongPressGesture:(UILongPressGestureRecognizer *)gesture {
+    if (!self.alive || gesture.state != UIGestureRecognizerStateBegan) return;
     self.actionBarVisible = !self.actionBarVisible;
     [UIView animateWithDuration:0.18 animations:^{
         self.actionBar.alpha = self.actionBarVisible ? 1.0 : 0.0;
@@ -169,6 +221,7 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
 }
 
 - (void)pxPanGesture:(UIPanGestureRecognizer *)gesture {
+    if (!self.alive) return;
     switch (gesture.state) {
         case UIGestureRecognizerStateBegan:
             self.dragStartFrame = self.frame;
@@ -178,10 +231,8 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
             CGRect frame = self.dragStartFrame;
             frame.origin.x += translation.x;
             frame.origin.y += translation.y;
-            CGRect bounds = self.window.bounds;
-            frame.origin.x = MAX(-frame.size.width * 0.4, MIN(frame.origin.x, bounds.size.width - frame.size.width * 0.6));
-            frame.origin.y = MAX(0, MIN(frame.origin.y, bounds.size.height - PXFloatSnapBarHeight));
             self.frame = frame;
+            [self constrainToHostBounds];
             break;
         }
         default:
@@ -192,13 +243,13 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
 #pragma mark - 动作
 
 - (void)pxNotifyEdit {
-    if (self.delegate && [self.delegate respondsToSelector:@selector(floatingSnapDidRequestEdit:)]) {
+    if (self.alive && self.delegate && [self.delegate respondsToSelector:@selector(floatingSnapDidRequestEdit:)]) {
         [self.delegate floatingSnapDidRequestEdit:self];
     }
 }
 
 - (void)pxNotifyOutput:(PXOutputAction)action {
-    if (self.delegate && [self.delegate respondsToSelector:@selector(floatingSnapDidRequestOutput:action:)]) {
+    if (self.alive && self.delegate && [self.delegate respondsToSelector:@selector(floatingSnapDidRequestOutput:action:)]) {
         [self.delegate floatingSnapDidRequestOutput:self action:action];
     }
 }
@@ -209,6 +260,8 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
 
 - (void)pxOutputTapped:(UIButton *)sender {
     PXOutputAction action = (sender.tag == 1) ? PXOutputActionSave : PXOutputActionCopy;
+    self.actionBarVisible = NO;
+    self.actionBar.alpha = 0;
     [self pxNotifyOutput:action];
 }
 
@@ -219,13 +272,14 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
 #pragma mark - 生命周期
 
 - (void)hideForCapture {
-    if (!self.alive || !self.window) return;
-    self.window.hidden = YES;
+    if (!self.alive || !self.overlayWindow) return;
+    self.overlayWindow.hidden = YES;
 }
 
 - (void)restoreAfterCapture {
-    if (!self.alive || !self.window) return;
-    self.window.hidden = NO;
+    if (!self.alive || !self.overlayWindow) return;
+    self.overlayWindow.hidden = NO;
+    [self constrainToHostBounds];
 }
 
 - (void)dismissWithCompletion:(void (^)(void))completion {
@@ -238,15 +292,17 @@ static const CGFloat PXFloatSnapBarHeight = 40.0;
         return;
     }
     self.alive = NO;
-    // tap/pan 手势的 target 是 self：不移除会形成 self→手势→self 强引用环，
-    // 窗口销毁后 snap（含全分辨率裁剪图）永不释放（同 PXSelectionView.prepareForDismissal 的处理）。
+    self.userInteractionEnabled = NO;
+    [self.layer removeAllAnimations];
+    // 关闭后停止接收手势；即使窗口已因抓屏隐藏，也必须拆掉窗口与内容的持有关系。
     for (UIGestureRecognizer *gesture in self.gestureRecognizers) {
         [self removeGestureRecognizer:gesture];
     }
-    PXCaptureWindow *window = self.window;
+    PXCaptureWindow *window = self.overlayWindow;
     id<PXFloatingSnapDelegate> delegate = self.delegate;
-    self.window = nil;
+    self.overlayWindow = nil;
     self.delegate = nil;
+    [self removeFromSuperview];
 
     PXLogInfo(@"floating snap dismissed");
     void (^finish)(void) = ^{

@@ -1,8 +1,9 @@
 #import "PXRootListController.h"
 #import "../Sources/Common/PXConstants.h"
 #import "../Sources/Common/PXLog.h"
+#import "../Sources/Common/PXPanelAppearance.h"
 
-@interface PXRootListController ()
+@interface PXRootListController () <UIColorPickerViewControllerDelegate>
 @property (nonatomic, assign) NSInteger copyFeedbackGeneration;
 @property (nonatomic, strong) UIView *brandingHeader;
 @end
@@ -112,8 +113,40 @@
     if (!_specifiers) {
         _specifiers = [self loadSpecifiersFromPlistName:@"Root" target:self];
         _specifiers = [self pxSpecifiersWithURLSchemeEntry];
+        NSMutableArray *items = [_specifiers mutableCopy];
+        NSUInteger index = items.count;
+        for (PSSpecifier *item in items) {
+            if ([item.name isEqualToString:@"编辑器按钮排序"]) {
+                index = [items indexOfObject:item] + 1;
+                break;
+            }
+        }
+        PSSpecifier *color = [PSSpecifier preferenceSpecifierNamed:@"标记面板颜色与透明度"
+            target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
+        color.buttonAction = @selector(pxChoosePanelColor:);
+        [items insertObject:color atIndex:index];
+        _specifiers = items;
     }
     return _specifiers;
+}
+
+- (void)pxChoosePanelColor:(PSSpecifier *)specifier {
+    if (self.presentedViewController) return;
+    UIColorPickerViewController *picker = [[UIColorPickerViewController alloc] init];
+    picker.title = @"标记面板颜色";
+    picker.supportsAlpha = YES;
+    picker.selectedColor = [PXPanelAppearance tintColor];
+    picker.delegate = self;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)colorPickerViewController:(UIColorPickerViewController *)viewController
+                  didSelectColor:(UIColor *)color continuously:(BOOL)continuously {
+    [PXPanelAppearance setTintColor:color];
+}
+
+- (void)colorPickerViewControllerDidFinish:(UIColorPickerViewController *)viewController {
+    [PXPanelAppearance setTintColor:viewController.selectedColor];
 }
 
 // plist 加载器不会实例化自定义 cellClass（真机上条目缺动作且显示不全），

@@ -6,6 +6,7 @@
 #import "../Common/PXLog.h"
 #import "../Common/PXConstants.h"
 #import "../Common/PXEditorOrder.h"
+#import "../Common/PXPanelAppearance.h"
 #import "../Output/PXClipboardWriter.h"
 #import "../Output/PXSharePresenter.h"
 
@@ -16,8 +17,8 @@ static const CGFloat PXEditorPanelPadBottom = 12.0;
 static const CGFloat PXEditorPanelRowGap = 8.0;
 static const CGFloat PXEditorCropRowHeight = 48.0;
 static const CGFloat PXEditorPanelGripHeight = 24.0;
-static const CGFloat PXEditorCollapsedHandleWidth = 64.0;
-static const CGFloat PXEditorCollapsedHandleHeight = 36.0;
+static const CGFloat PXEditorCollapsedHandleWidth = 48.0;
+static const CGFloat PXEditorCollapsedHandleHeight = 48.0;
 
 static UIColor *PXEditorAccentColor(void) {
     return [UIColor colorWithRed:1.0 green:0.78 blue:0.08 alpha:1.0];
@@ -341,9 +342,9 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
 
 - (void)pxBuildBottomPanel {
     _bottomPanel = [[UIView alloc] init];
-    // 全屏标记面板磨砂化（参考图）：低透明度青色作调色垫，磨砂材质由 pxApplyFrostedBackground 垫入。
+    // 全屏标记使用可配置的磨砂调色层；普通图片编辑器保留原样。
     _bottomPanel.backgroundColor = self.fullscreenMarkup
-        ? [UIColor colorWithRed:0.02 green:0.23 blue:0.22 alpha:0.35]
+        ? [UIColor clearColor]
         : [UIColor colorWithWhite:0.13 alpha:1.0];
     _bottomPanel.layer.cornerRadius = self.fullscreenMarkup ? 24.0 : 0.0;
     _bottomPanel.clipsToBounds = YES;
@@ -377,7 +378,9 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
         _collapsedHandle.tintColor = [UIColor whiteColor];
         _collapsedHandle.layer.cornerRadius = PXEditorCollapsedHandleHeight / 2.0;
         _collapsedHandle.accessibilityLabel = @"展开工具面板";
-        UIImage *handleIcon = [UIImage systemImageNamed:@"line.3.horizontal"];
+        _collapsedHandle.layer.borderWidth = 0.5;
+        _collapsedHandle.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.35].CGColor;
+        UIImage *handleIcon = [UIImage systemImageNamed:@"pencil.tip.crop.circle"];
         if (handleIcon) {
             [_collapsedHandle setImage:handleIcon forState:UIControlStateNormal];
         } else {
@@ -516,22 +519,12 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
     [self pxApplyFrostedBackgrounds];
 }
 
-/// 全屏标记面板磨砂底（参考图观感）：暗色材质垫底 + 低透明度青色调色垫；普通编辑器保持实色卡片。
+/// 背景单独使用透明磨砂，按钮、图标和滑杆保持不透明。
 - (void)pxApplyFrostedBackgrounds {
     if (!self.fullscreenMarkup) return;
-    [self pxFrostedBlurInto:_bottomPanel];
-    [self pxFrostedBlurInto:_widthRow];
-    [self pxFrostedBlurInto:_collapsedHandle];
-}
-
-- (void)pxFrostedBlurInto:(UIView *)container {
-    UIVisualEffectView *blur = [[UIVisualEffectView alloc] initWithEffect:
-        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterialDark]];
-    // 构建期 frame 为零：autoresizing 保证随容器布局同步铺满。
-    blur.frame = container.bounds;
-    blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    blur.userInteractionEnabled = NO;
-    [container insertSubview:blur atIndex:0];
+    [PXPanelAppearance installBackgroundInView:_bottomPanel];
+    [PXPanelAppearance installBackgroundInView:_widthRow];
+    [PXPanelAppearance installBackgroundInView:_collapsedHandle];
 }
 
 - (void)pxConfigureWidthSlider {
@@ -1104,7 +1097,10 @@ typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
     // 面板上的按钮/滑杆保持自己的点击节奏，双击只吃背景区域。
-    return ![touch.view isKindOfClass:[UIControl class]];
+    for (UIView *view = touch.view; view && view != gestureRecognizer.view; view = view.superview) {
+        if ([view isKindOfClass:UIControl.class]) return NO;
+    }
+    return YES;
 }
 
 - (void)pxExpandPanelTapped:(UIButton *)sender {

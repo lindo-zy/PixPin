@@ -12,6 +12,7 @@ PixPinPrefs_FILES = PXRootListController.m \
 	PXEditorOrderController.m \
 	PXEditorButtonEditController.m \
 	../Sources/Common/PXConstants.m \
+	../Sources/Common/PXPanelAppearance.m \
 	../Sources/Common/PXEditorOrder.m \
 	../Sources/Common/PXLog.m \
 	../Sources/Common/PXRuntimeStatus.m

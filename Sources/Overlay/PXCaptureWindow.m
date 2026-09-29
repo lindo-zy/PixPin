@@ -161,15 +161,16 @@ static UIWindowScene *PXResolveForegroundWindowScene(void) {
 
 - (void)hideAndDestroyWithCompletion:(void (^)(void))completion {
     void (^finish)(void) = ^{
-        if (!self.hidden) {
-            // 立即从合成器移除：任何后续抓屏（连续截图场景）都不会再带上本窗口。
-            self.hidden = YES;
-            if (self.requestedKeyWindow && self.previousKeyWindow && !self.previousKeyWindow.hidden) {
-                [self.previousKeyWindow makeKeyWindow];
-            }
-            self.hostedContentView = nil;
-            self.rootViewController = nil;
+        // 抓屏期间可能已隐藏，销毁仍须清理内容和控制器。
+        BOOL wasKey = self.isKeyWindow;
+        self.hidden = YES;
+        if (wasKey && self.requestedKeyWindow && self.previousKeyWindow && !self.previousKeyWindow.hidden) {
+            [self.previousKeyWindow makeKeyWindow];
         }
+        self.previousKeyWindow = nil;
+        self.requestedKeyWindow = NO;
+        self.hostedContentView = nil;
+        self.rootViewController = nil;
         if (completion) completion();
         // 持有者随后释放引用，窗口随 ARC 释放。
     };

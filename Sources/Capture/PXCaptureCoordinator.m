@@ -28,7 +28,8 @@ static const CGFloat PXSelectionMinimumSize = 44.0;
 @property (nonatomic, strong, nullable) PXCaptureWindow *captureWindow;
 @property (nonatomic, strong, nullable) PXSelectionView *selectionView;
 @property (nonatomic, strong, nullable) PXResultBubble *resultBubble;
-@property (nonatomic, strong, nullable) PXFloatingSnap *floatingSnap;   // 独立于任务槽，常驻悬浮窗
+@property (nonatomic, strong) NSMutableArray<PXFloatingSnap *> *floatingSnaps; // 主线程，多图独立保留
+@property (nonatomic, strong, nullable) PXFloatingSnap *editingFloatingSnap;
 @property (nonatomic, strong, nullable) PXCaptureWindow *editorWindow;
 @property (nonatomic, strong, nullable) PXEditorViewController *editorController;
 @property (nonatomic, strong, nullable) UIImage *preEditImage;   // 进入编辑器前的结果图（取消编辑时恢复）
@@ -51,6 +52,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         _taskLock = [[NSLock alloc] init];
         _provider = [[PXCaptureProvider alloc] init];
         _pipeline = [[PXOutputPipeline alloc] init];
+        _floatingSnaps = [[NSMutableArray alloc] init];
 
         // 选区期间设备旋转会使基础快照与屏幕几何错位；直接取消任务保证正确性。
         [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
@@ -146,15 +148,16 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         return;
     }
 
+    [self pxCancelCurrentTaskClosingFloatingSnaps:YES];
+}
+
+- (void)pxCancelCurrentTaskClosingFloatingSnaps:(BOOL)closeFloating {
     PXCaptureTask *task = [self pxCurrentTask];
-    if (!task) {
-        // 无活动任务时的取消指令用于收屏：常驻悬浮窗一并关闭（close.all 语义）。
-        if (self.floatingSnap) {
-            [self.floatingSnap dismissWithCompletion:nil];
-            self.floatingSnap = nil;
-        }
-        return;
+    if (closeFloating) {
+        for (PXFloatingSnap *snap in [self.floatingSnaps copy]) [snap dismissWithCompletion:nil];
+        self.editingFloatingSnap = nil;
     }
+    if (!task) return;
 
     if (![task transitionToState:PXCaptureStateCancelling]) {
         PXLogWarn(@"cancel ignored for state %@", PXStringFromCaptureState(task.state));
@@ -162,10 +165,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }
     [self pxDestroyCaptureWindow];
     [self pxDestroyEditorWindow];
-    if (self.floatingSnap) {
-        [self.floatingSnap dismissWithCompletion:nil];
-        self.floatingSnap = nil;
-    }
+    self.editingFloatingSnap = nil;
+    [self pxRestoreFloatingSnaps];
     self.preEditImage = nil;   // 取消后不再持有整图引用（最长可驻留到下次编辑会话）
     [task transitionToState:PXCaptureStateCancelled];
     [PXTemporaryFileStore removeTaskDirectory:task.taskID];
@@ -275,7 +276,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     if (task) {
         [self pxPersistSelectionRect:view.selectionRect config:task.configSnapshot];
     }
-    [self cancelActiveTask];
+    [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
 }
 
 - (void)selectionViewDidRequestEditor:(PXSelectionView *)view displayRect:(CGRect)displayRect {
@@ -296,10 +297,11 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 
 - (void)selectionViewDidRequestFloat:(PXSelectionView *)view displayRect:(CGRect)displayRect {
     PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
-    if (!task) return;
+    if (!task || view != self.selectionView || !view.userInteractionEnabled) return;
+    view.userInteractionEnabled = NO;
     [self pxPersistSelectionRect:displayRect config:task.configSnapshot];
     [self pxCropInBackground:task displayRect:displayRect completion:^(UIImage *cropped) {
-        if (![self pxIsTaskCurrent:task]) return;
+        if (![self pxIsTaskCurrent:task] || task.state != PXCaptureStatePresenting) return;
         if (!cropped) {
             [self pxFailTask:task code:@"crop" message:@"选区裁剪失败"];
             return;
@@ -489,38 +491,45 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     [[NSNotificationCenter defaultCenter] postNotificationName:PXNotificationResultUpdated object:nil];
     [self pxClearSlotIfCurrent:task];
     // 悬浮窗随任务结束恢复展示（抓屏前被 pxHideOwnOverlays 暂时隐藏）。
-    [self.floatingSnap restoreAfterCapture];
+    self.editingFloatingSnap = nil;
+    [self pxRestoreFloatingSnaps];
 }
 
 #pragma mark - 悬浮窗
 
-/// 悬浮不产生输出动作：Exporting→Finished 两步合法转换后清理任务槽，结果交悬浮窗常驻展示。
+- (void)pxRestoreFloatingSnaps {
+    for (PXFloatingSnap *snap in self.floatingSnaps) [snap restoreAfterCapture];
+}
+
+/// 窗口成功创建后才报告成功，保留其他悬浮图并释放当前任务槽。
 - (void)pxPresentFloatingSnapForTask:(PXCaptureTask *)task {
-    if (![task transitionToState:PXCaptureStateExporting] ||
-        ![task transitionToState:PXCaptureStateFinished]) {
-        [self pxFailTask:task code:@"state" message:@"任务状态异常"];
+    if (![self pxIsTaskCurrent:task] || ![task transitionToState:PXCaptureStateExporting]) return;
+    PXFloatingSnap *snap = [PXFloatingSnap presentWithImage:task.resultImage mode:task.mode
+                                                 delegate:self index:self.floatingSnaps.count];
+    if (!snap) {
+        [self pxFailTask:task code:@"floating-window" message:@"悬浮图片显示失败"];
         return;
     }
-    UIImage *image = task.resultImage;
+    [self.floatingSnaps addObject:snap];
+    [task transitionToState:PXCaptureStateFinished];
+    [PXTemporaryFileStore removeTaskDirectory:task.taskID];
     [self pxClearSlotIfCurrent:task];
-    // 悬浮路径不走输出管线：结果状态与震动反馈在此补齐，保持与 pxReportCompletion 口径一致。
+    [self pxRestoreFloatingSnaps];
     [PXRuntimeStatus reportResultOK:YES captureMethod:self.provider.lastCaptureMethod message:@"截图已悬浮展示"];
     if (task.configSnapshot.screenshotHaptic) {
         UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [haptic impactOccurred];
     }
-    [PXRuntimeStatus reportPhase:@"finished"
-                            mode:PXStringFromCaptureMode(task.mode)
+    [PXRuntimeStatus reportPhase:@"finished" mode:PXStringFromCaptureMode(task.mode)
                          message:@"截图已悬浮展示（不执行输出动作）"];
-    // 同屏只保留一个悬浮窗：新悬浮直接替换旧悬浮。
-    [self.floatingSnap dismissWithCompletion:nil];
-    self.floatingSnap = [PXFloatingSnap presentWithImage:image mode:task.mode delegate:self];
+    PXLogInfo(@"floating snap added (count %lu)", (unsigned long)self.floatingSnaps.count);
 }
 
 - (void)floatingSnapDidRequestEdit:(PXFloatingSnap *)snap {
+    if (![self.floatingSnaps containsObject:snap]) return;
     UIImage *image = snap.image;
     PXCaptureMode mode = snap.captureMode;
-    // 先占任务槽再关悬浮：busy 时悬浮保持原样并提示，避免“悬浮消失但编辑器没开”。
+    // 先占任务槽再隐藏当前图；取消编辑时原图恢复，其他悬浮不受影响。
     PXCaptureTask *task = [self pxAcquireTaskForMode:mode config:PXPreferences.config];
     if (!task) {
         PXLogWarn(@"float re-edit ignored: another task is busy");
@@ -532,11 +541,13 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         return;
     }
     task.isReedit = YES;
-    [snap dismissWithCompletion:nil];
+    self.editingFloatingSnap = snap;
+    [snap hideForCapture];
     [self pxBeginEditorForAcquiredTask:task image:image];
 }
 
 - (void)floatingSnapDidRequestOutput:(PXFloatingSnap *)snap action:(PXOutputAction)action {
+    if (![self.floatingSnaps containsObject:snap]) return;
     UIImage *image = snap.image;
     PXCaptureMode mode = snap.captureMode;
     PXConfig *config = PXPreferences.config;
@@ -558,10 +569,9 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 }
 
 - (void)floatingSnapDidClose:(PXFloatingSnap *)snap {
-    // 只清理仍指向该悬浮窗的引用，避免误清新悬浮（替换窗口期极短但存在）。
-    if (self.floatingSnap == snap) {
-        self.floatingSnap = nil;
-    }
+    [self.floatingSnaps removeObjectIdenticalTo:snap];
+    if (self.editingFloatingSnap == snap) self.editingFloatingSnap = nil;
+    PXLogInfo(@"floating snap removed (count %lu)", (unsigned long)self.floatingSnaps.count);
 }
 
 #pragma mark - 编辑器
@@ -630,6 +640,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     if (!task) return;
 
     task.resultImage = image;
+    [self.editingFloatingSnap updateImage:image];
     if (![task transitionToState:PXCaptureStatePresenting]) return;
     PXOutputAction output = (action == PXOutputActionPreviewOnly) ? task.configSnapshot.defaultResultAction : action;
     [self pxExecuteOutput:output forTask:task presentingWindow:nil];
@@ -649,7 +660,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     if (![task transitionToState:PXCaptureStatePresenting]) return;
 
     if (task.isReedit || task.mode == PXCaptureModeMarkup) {
-        [self cancelActiveTask];
+        [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
     } else {
         [self pxExecuteOutput:task.configSnapshot.defaultResultAction forTask:task presentingWindow:nil];
     }
@@ -695,7 +706,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
         if (task && task.mode != PXCaptureModeFull) {
             PXLogWarn(@"orientation changed during selection, cancelling task");
-            [self cancelActiveTask];
+            [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
         }
         return;
     }
@@ -720,7 +731,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
                                                succeeded:NO
                                                 delegate:self];
     [self pxClearSlotIfCurrent:task];
-    [self.floatingSnap restoreAfterCapture];
+    self.editingFloatingSnap = nil;
+    [self pxRestoreFloatingSnaps];
 }
 
 - (void)pxHideOwnOverlays {
@@ -728,7 +740,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         [self.resultBubble dismissWithCompletion:nil];
     }
     // 悬浮窗是新任务的抓屏对象之一：抓屏前隐藏，任务收尾再恢复。
-    [self.floatingSnap hideForCapture];
+    for (PXFloatingSnap *snap in self.floatingSnaps) [snap hideForCapture];
 }
 
 - (void)pxDestroyCaptureWindow {
