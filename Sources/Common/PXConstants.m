@@ -52,6 +52,9 @@ NSString * const PXKeyEditorToolIcons = @"EditorToolIcons";
 NSString * const PXKeyEditorButtonIconSize = @"EditorButtonIconSize";
 NSString * const PXKeySelectionButtonOrder = @"SelectionButtonOrder";
 NSString * const PXKeySelectionButtonHidden = @"SelectionButtonHidden";
+NSString * const PXKeySelectionButtonNames = @"SelectionButtonNames";
+NSString * const PXKeySelectionButtonIcons = @"SelectionButtonIcons";
+NSString * const PXKeySelectionButtonIconStyle = @"SelectionButtonIconStyle";
 NSString * const PXKeyAreaRememberLastRect = @"AreaRememberLastRect";
 // 选区矩形以 NSStringFromCGRect 存储；与开关独立，关开关时清除。
 NSString * const PXKeyAreaLastSelectionRect = @"AreaLastSelectionRect";

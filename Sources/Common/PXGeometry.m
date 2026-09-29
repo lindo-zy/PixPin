@@ -1,4 +1,5 @@
 #import "PXGeometry.h"
+#import <math.h>
 
 BOOL PXCaptureStateCanTransition(PXCaptureState from, PXCaptureState to) {
     switch (from) {
@@ -78,6 +79,19 @@ CGRect PXClampSelectionRect(CGRect rect, CGSize containerSize, CGFloat minimumSi
     CGFloat x = fmin(fmax(rect.origin.x, 0.0), containerSize.width - rect.size.width);
     CGFloat y = fmin(fmax(rect.origin.y, 0.0), containerSize.height - rect.size.height);
     return CGRectMake(x, y, rect.size.width, rect.size.height);
+}
+
+CGRect PXConstrainFloatingRect(CGRect frame, CGRect bounds) {
+    if (CGRectIsEmpty(frame) || CGRectIsEmpty(bounds) || CGRectIsNull(frame) || CGRectIsNull(bounds) ||
+        !isfinite(frame.origin.x) || !isfinite(frame.origin.y) ||
+        !isfinite(frame.size.width) || !isfinite(frame.size.height) ||
+        !isfinite(bounds.origin.x) || !isfinite(bounds.origin.y) ||
+        !isfinite(bounds.size.width) || !isfinite(bounds.size.height)) return CGRectZero;
+    CGFloat otherX = CGRectGetMaxX(bounds) - frame.size.width;
+    CGFloat otherY = CGRectGetMaxY(bounds) - frame.size.height;
+    frame.origin.x = MAX(MIN(CGRectGetMinX(bounds), otherX), MIN(frame.origin.x, MAX(CGRectGetMinX(bounds), otherX)));
+    frame.origin.y = MAX(MIN(CGRectGetMinY(bounds), otherY), MIN(frame.origin.y, MAX(CGRectGetMinY(bounds), otherY)));
+    return frame;
 }
 
 NSString *PXStringFromCaptureMode(PXCaptureMode mode) {

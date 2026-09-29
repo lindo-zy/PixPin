@@ -11,6 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)floatingSnapDidClose:(PXFloatingSnap *)snap;
 @end
 
+/// screenRect 使用 UIScreen.coordinateSpace，初始按选区原位置、原显示尺寸展示。
 /// 区域截图悬浮窗：把选区裁剪结果常驻屏幕展示，可拖动，双击关闭、长按展开 保存/复制/取消/编辑 动作条。
 /// 独立于截图任务生命周期：任务结束不销毁；仅用户关闭或收到全局关闭指令时释放，多图独立保留。
 /// 窗口层级低于选区/编辑器/结果气泡，触摸落在悬浮图之外时透传给系统（不挡宿主操作）。
@@ -23,7 +24,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable instancetype)presentWithImage:(UIImage *)image
                             mode:(PXCaptureMode)mode
                         delegate:(id<PXFloatingSnapDelegate>)delegate
-                           index:(NSUInteger)index;
+                      screenRect:(CGRect)screenRect;
 
 /// 新截图任务抓屏前隐藏（悬浮图不得被截入新截图）；任务结束后恢复展示。
 - (void)updateImage:(UIImage *)image;

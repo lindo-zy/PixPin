@@ -20,10 +20,11 @@
 @implementation PXEditorOrderController
 
 // 三个入口共用行交互，sectionKinds 只列出当前页面实际拥有的分组。
+// kind：0=编辑操作 1=标记工具 2=截图按钮 3=外观滑杆 4=截图按钮显示样式。
 - (BOOL)pxFullscreen { return NO; }
 - (BOOL)pxRegion { return NO; }
 - (NSArray<NSNumber *> *)pxSectionKinds {
-    if ([self pxRegion]) return @[@2];
+    if ([self pxRegion]) return @[@2, @4];
     return [self pxFullscreen] ? @[@0, @1] : @[@0, @1, @3];
 }
 - (NSInteger)pxKindForSection:(NSInteger)section {
@@ -102,9 +103,11 @@
     NSInteger columns = MAX(1, MIN(7, (NSInteger)floor((contentWidth - 2 * padding + gap) / (44.0 + gap))));
     CGFloat side = floor((contentWidth - 2 * padding - (columns - 1) * gap) / columns);
     CGFloat iconSize = [PXEditorOrder buttonIconPointSize];
+    // 样式偏好整表读一次：预览重建由拖动/开关高频触发，避免每个按钮一次 CFPreferences 读取。
+    BOOL selectionShowsIcon = [PXEditorOrder selectionShowsIcon];
     for (NSNumber *kind in [self pxSectionKinds]) {
         NSInteger section = kind.integerValue;
-        if (section == 3) continue;
+        if (section == 3 || section == 4) continue;
         UILabel *caption = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 22)];
         caption.text = section == 0 ? @"编辑操作预览" : (section == 1 ? @"标记工具预览" : @"截图按钮预览");
         caption.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
@@ -133,7 +136,9 @@
             button.userInteractionEnabled = NO;
             button.accessibilityLabel = name;
             button.accessibilityTraits = UIAccessibilityTraitImage;
-            UIImage *icon = symbol.length ? [UIImage systemImageNamed:symbol] : nil;
+            // 截图按钮预览跟随"以图标显示"开关，文字模式下直接渲染名称。
+            BOOL showIcon = section != 2 || selectionShowsIcon;
+            UIImage *icon = showIcon && symbol.length ? [UIImage systemImageNamed:symbol] : nil;
             if (icon) {
                 [button setImage:[icon imageWithConfiguration:
                     [UIImageSymbolConfiguration configurationWithPointSize:iconSize weight:UIImageSymbolWeightMedium]]
@@ -149,7 +154,7 @@
     }
     UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 0)];
     note.text = [self pxRegion]
-        ? @"拖动手柄排序，开关控制区域选区按钮显隐。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示取消、全屏、完成。"
+        ? @"拖动手柄排序，开关控制区域选区按钮显隐，点击行修改名称与图标，“显示样式”切换 图标/文字。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏、完成。"
         : ([self pxFullscreen] ? @"仅设置全屏标记面板的按钮顺序与显隐，与区域截图和普通图片编辑相互独立。修改即时保存，下次打开生效。"
                               : @"设置普通图片编辑的按钮顺序与显隐；名称、图标和大小仍与全屏标记共用。修改即时保存，下次打开生效。");
     note.font = [UIFont systemFontOfSize:12];
@@ -179,6 +184,7 @@
     if (section == 0) return @"编辑操作图标";
     if (section == 1) return @"标记工具图标";
     if (section == 2) return @"区域截图按钮";
+    if (section == 4) return @"显示样式";
     return @"外观";
 }
 
@@ -191,7 +197,10 @@
         return @"工具排序与显隐仅影响当前页面对应的编辑模式。全部工具关闭时回退显示全部工具，打开编辑器默认选中排序后的第一个工具。";
     }
     if (section == 2) {
-        return @"区域/冻结截图选区工具栏的按钮排序与显隐；“取消”和“完成”始终显示，“悬浮”把选区结果以可拖动悬浮窗常驻屏幕。即时模式仅显示 取消/全屏/完成。";
+        return @"区域/冻结截图选区工具栏的按钮排序与显隐；“取消”和“完成”始终显示，“悬浮”把选区结果以可拖动悬浮窗常驻屏幕。即时模式仅显示 取消/全屏/完成。点击行可修改名称与图标。";
+    }
+    if (section == 4) {
+        return @"开启后选区工具栏显示图标，关闭显示文字，下次打开截图生效；名称与图标修改对两种样式都有效。";
     }
     return @"调整编辑器按钮图标的显示大小。";
 }
@@ -200,6 +209,9 @@
     NSInteger kind = [self pxKindForSection:indexPath.section];
     if (kind == 3) {
         return [self pxSliderCellForTableView:tableView];
+    }
+    if (kind == 4) {
+        return [self pxIconStyleCellForTableView:tableView];
     }
 
     NSString *reuse = @"PXEditorOrderCell";
@@ -212,8 +224,7 @@
     NSString *identifier = [self identifierAtIndexPath:indexPath];
     NSString *displayName = [self displayNameForIdentifier:identifier section:indexPath.section];
     cell.textLabel.text = displayName;
-    // 截图按钮不支持自定义名称/图标：工具栏本体显示文字，点击行不进编辑页。
-    cell.detailTextLabel.text = (kind == 2 || [self pxFullscreen]) ? @"拖动右侧排序" : @"拖动右侧排序 · 点击修改图标";
+    cell.detailTextLabel.text = [self pxFullscreen] ? @"拖动右侧排序" : @"拖动右侧排序 · 点击修改图标";
     NSString *iconName = kind == 0
         ? [PXEditorOrder iconNameForActionIdentifier:identifier]
         : (kind == 1
@@ -261,6 +272,28 @@
     return cell;
 }
 
+// 截图按钮显示样式行：开关即保存，预览即时跟随。
+- (UITableViewCell *)pxIconStyleCellForTableView:(UITableView *)tableView {
+    NSString *reuse = @"PXEditorIconStyleCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:reuse];
+        cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+        UISwitch *toggle = [[UISwitch alloc] init];
+        [toggle addTarget:self action:@selector(pxIconStyleChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = toggle;
+    }
+    UISwitch *toggle = (UISwitch *)cell.accessoryView;
+    cell.editingAccessoryView = toggle;
+    cell.textLabel.text = @"以图标显示";
+    BOOL showIcon = [PXEditorOrder selectionShowsIcon];
+    if (toggle.on != showIcon) toggle.on = showIcon;
+    toggle.accessibilityLabel = @"以图标显示截图按钮";
+    cell.detailTextLabel.text = showIcon ? @"图标" : @"文字";
+    cell.showsReorderControl = NO;
+    return cell;
+}
+
 - (NSString *)identifierAtIndexPath:(NSIndexPath *)indexPath {
     NSInteger kind = [self pxKindForSection:indexPath.section];
     if (kind == 0) return self.actionOrder[indexPath.row];
@@ -302,20 +335,30 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:NO];
-    if ([self pxKindForSection:indexPath.section] >= 2 || [self pxFullscreen]) return;   // 外观行与截图按钮（无自定义图标/名称）不进编辑页
+    NSInteger kind = [self pxKindForSection:indexPath.section];
+    // 外观/样式行与全屏标记页（名称图标共用普通编辑配置）不进编辑页。
+    if (kind >= 3 || [self pxFullscreen]) return;
     [self.view endEditing:YES];
 
     NSString *identifier = [self identifierAtIndexPath:indexPath];
-    BOOL isAction = indexPath.section == 0;
+    // 按目录 kind 分流，不能按 indexPath.section：区域页首个 section 就是截图按钮。
+    BOOL isAction = kind == 0;
+    BOOL isSelection = kind == 2;
     NSString *defaultIcon = isAction
         ? [PXEditorOrder defaultIconNameForActionIdentifier:identifier]
-        : [PXEditorOrder defaultIconNameForToolIdentifier:identifier];
+        : (isSelection
+            ? [PXEditorOrder defaultIconNameForSelectionIdentifier:identifier]
+            : [PXEditorOrder defaultIconNameForToolIdentifier:identifier]);
     NSString *customIcon = isAction
         ? [PXEditorOrder customIconNameForActionIdentifier:identifier]
-        : [PXEditorOrder customIconNameForToolIdentifier:identifier];
+        : (isSelection
+            ? [PXEditorOrder customIconNameForSelectionIdentifier:identifier]
+            : [PXEditorOrder customIconNameForToolIdentifier:identifier]);
     NSString *customName = isAction
         ? [PXEditorOrder customNameForActionIdentifier:identifier]
-        : [PXEditorOrder customNameForToolIdentifier:identifier];
+        : (isSelection
+            ? [PXEditorOrder customNameForSelectionIdentifier:identifier]
+            : [PXEditorOrder customNameForToolIdentifier:identifier]);
 
     __weak typeof(self) weakSelf = self;
     PXEditorButtonEditController *editor =
@@ -331,6 +374,9 @@
             if (isAction) {
                 [PXEditorOrder saveActionName:name forIdentifier:identifier];
                 [PXEditorOrder saveActionIconName:iconName forIdentifier:identifier];
+            } else if (isSelection) {
+                [PXEditorOrder saveSelectionName:name forIdentifier:identifier];
+                [PXEditorOrder saveSelectionIconName:iconName forIdentifier:identifier];
             } else {
                 [PXEditorOrder saveToolName:name forIdentifier:identifier];
                 [PXEditorOrder saveToolIconName:iconName forIdentifier:identifier];
@@ -371,6 +417,20 @@
     [PXEditorOrder saveButtonIconPointSize:size];
     self.sizeValueLabel.text = [NSString stringWithFormat:@"%.0fpt", size];
     [self pxRefreshPreview];
+}
+
+// 截图按钮 图标/文字 显示切换：即时保存并刷新预览，工具栏下次打开生效。
+- (void)pxIconStyleChanged:(UISwitch *)sender {
+    [PXEditorOrder saveSelectionShowsIcon:sender.on];
+    CGPoint point = [sender convertPoint:CGPointMake(CGRectGetMidX(sender.bounds), CGRectGetMidY(sender.bounds))
+                                  toView:self.tableView];
+    NSIndexPath *indexPath = [self.tableView indexPathForRowAtPoint:point];
+    if (indexPath) {
+        UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:indexPath];
+        cell.detailTextLabel.text = sender.on ? @"图标" : @"文字";
+    }
+    [self pxRefreshPreview];
+    PXLogInfo(@"prefs selection icon style saved: %@", sender.on ? @"icon" : @"text");
 }
 
 #pragma mark - 拖动排序
@@ -429,7 +489,9 @@
 
 - (void)pxResetTapped:(UIBarButtonItem *)sender {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"恢复默认"
-                                                                   message:([self pxRegion] || [self pxFullscreen]) ? @"仅恢复当前页面的按钮顺序与开关，不影响其他模式。" : @"恢复图片编辑按钮顺序与开关，以及共用的名称、图标和大小；全屏标记和区域选区的顺序与开关不变。"
+                                                                   message:([self pxRegion]
+        ? @"恢复区域截图按钮顺序与开关，清除自定义名称与图标，显示样式复位为图标；不影响其他模式。"
+        : ([self pxFullscreen] ? @"仅恢复当前页面的按钮顺序与开关，不影响其他模式。" : @"恢复图片编辑按钮顺序与开关，以及共用的名称、图标和大小；全屏标记和区域选区的顺序与开关不变。"))
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"恢复" style:UIAlertActionStyleDestructive
@@ -437,6 +499,11 @@
         if ([self pxRegion]) {
             [PXEditorOrder saveSelectionOrderString:nil];
             [PXEditorOrder saveSelectionHiddenString:nil];
+            for (NSString *identifier in [PXEditorOrder defaultSelectionIdentifiers]) {
+                [PXEditorOrder saveSelectionName:nil forIdentifier:identifier];
+                [PXEditorOrder saveSelectionIconName:nil forIdentifier:identifier];
+            }
+            [PXEditorOrder saveSelectionShowsIcon:YES];
         } else {
             [PXEditorOrder saveActionOrderString:nil fullscreenMarkup:[self pxFullscreen]];
             [PXEditorOrder saveToolOrderString:nil fullscreenMarkup:[self pxFullscreen]];

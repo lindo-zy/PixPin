@@ -25,25 +25,36 @@ NS_ASSUME_NONNULL_BEGIN
 /// 均为"自定义覆盖优先，缺省回目录默认"；自定义符号失效时由调用方回退显示名称。
 + (NSString *)iconNameForActionIdentifier:(NSString *)identifier;
 + (NSString *)iconNameForToolIdentifier:(NSString *)identifier;
-/// 选区工具栏本体显示文字，无图标；此处符号仅供设置页条目展示，不支持自定义覆盖。
+/// 选区按钮符号：目录默认 + 自定义覆盖合并；仅在"图标显示"样式下渲染到工具栏，设置页条目始终展示。
 + (NSString *)iconNameForSelectionIdentifier:(NSString *)identifier;
 
 /// 目录默认符号（不含覆盖），供编辑页展示"默认"项。
 + (NSString *)defaultIconNameForActionIdentifier:(NSString *)identifier;
 + (NSString *)defaultIconNameForToolIdentifier:(NSString *)identifier;
++ (NSString *)defaultIconNameForSelectionIdentifier:(NSString *)identifier;
 
 // MARK: 自定义名称/图标覆盖（设置页"点击行修改"，存 id=值 CSV；nil 值即清除覆盖）
 
 + (nullable NSString *)customNameForActionIdentifier:(NSString *)identifier;
 + (nullable NSString *)customNameForToolIdentifier:(NSString *)identifier;
++ (nullable NSString *)customNameForSelectionIdentifier:(NSString *)identifier;
 + (nullable NSString *)customIconNameForActionIdentifier:(NSString *)identifier;
 + (nullable NSString *)customIconNameForToolIdentifier:(NSString *)identifier;
++ (nullable NSString *)customIconNameForSelectionIdentifier:(NSString *)identifier;
 
 /// 写入前必须清洗：名称去除逗号/等号并截断到 12 字符；符号传空串清除覆盖。
 + (void)saveActionName:(nullable NSString *)name forIdentifier:(NSString *)identifier;
 + (void)saveToolName:(nullable NSString *)name forIdentifier:(NSString *)identifier;
++ (void)saveSelectionName:(nullable NSString *)name forIdentifier:(NSString *)identifier;
 + (void)saveActionIconName:(nullable NSString *)symbolName forIdentifier:(NSString *)identifier;
 + (void)saveToolIconName:(nullable NSString *)symbolName forIdentifier:(NSString *)identifier;
++ (void)saveSelectionIconName:(nullable NSString *)symbolName forIdentifier:(NSString *)identifier;
+
+// MARK: 截图按钮外观
+
+/// 选区工具栏按钮显示样式：YES=图标（默认，与设置页预览一致），NO=文字。
++ (BOOL)selectionShowsIcon;
++ (void)saveSelectionShowsIcon:(BOOL)showIcon;
 
 // MARK: 外观
 

@@ -70,6 +70,9 @@ FOUNDATION_EXPORT NSString * const PXKeyEditorToolIcons;
 FOUNDATION_EXPORT NSString * const PXKeyEditorButtonIconSize;
 FOUNDATION_EXPORT NSString * const PXKeySelectionButtonOrder;
 FOUNDATION_EXPORT NSString * const PXKeySelectionButtonHidden;
+FOUNDATION_EXPORT NSString * const PXKeySelectionButtonNames;
+FOUNDATION_EXPORT NSString * const PXKeySelectionButtonIcons;
+FOUNDATION_EXPORT NSString * const PXKeySelectionButtonIconStyle;
 FOUNDATION_EXPORT NSString * const PXKeyAreaRememberLastRect;
 FOUNDATION_EXPORT NSString * const PXKeyAreaLastSelectionRect;
 

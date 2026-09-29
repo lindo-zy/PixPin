@@ -2,7 +2,6 @@
 #import "PXCaptureWindow.h"
 #import "../Common/PXLog.h"
 
-static const CGFloat PXFloatSnapInset = 14.0;
 static const CGFloat PXFloatSnapBarHeight = 44.0;
 
 @interface PXFloatingSnap () <UIGestureRecognizerDelegate>
@@ -42,31 +41,27 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
 + (instancetype)presentWithImage:(UIImage *)image
                             mode:(PXCaptureMode)mode
                         delegate:(id<PXFloatingSnapDelegate>)delegate
-                           index:(NSUInteger)index {
+                      screenRect:(CGRect)screenRect {
     if (![NSThread isMainThread]) {
         // 调用契约是主线程。降级路径只记日志不弹出：异步弹出会返回 nil，调用方将永远无法 dismiss，
         // 悬浮窗会沦为无人能关的孤儿窗口。
         PXLogWarn(@"floating snap present called off main thread, dropped");
         return nil;
     }
-    return [self pxPresentWithImage:image mode:mode delegate:delegate index:index];
+    return [self pxPresentWithImage:image mode:mode delegate:delegate screenRect:screenRect];
 }
 
 + (instancetype)pxPresentWithImage:(UIImage *)image
                               mode:(PXCaptureMode)mode
                           delegate:(id<PXFloatingSnapDelegate>)delegate
-                             index:(NSUInteger)index {
+                        screenRect:(CGRect)screenRect {
     if (!image || image.size.width <= 0 || image.size.height <= 0) return nil;
 
     PXCaptureWindow *window = [PXCaptureWindow pxCaptureWindow];
     CGRect screenBounds = window.bounds;
-    CGSize size = [self pxDisplaySizeForImageSize:image.size screenBounds:screenBounds];
-    // 新图错开摆放；每张图有独立窗口与生命周期。
-    CGFloat offset = (index % 6) * 28.0;
-    CGRect frame = CGRectMake(MAX(PXFloatSnapInset, screenBounds.size.width - size.width - PXFloatSnapInset - offset),
-                              MIN(screenBounds.size.height - size.height - PXFloatSnapInset,
-                                  MAX(PXFloatSnapInset, screenBounds.size.height * 0.18) + offset),
-                              size.width, size.height);
+    CGRect frame = [window convertRect:screenRect fromCoordinateSpace:window.screen.coordinateSpace];
+    frame = PXConstrainFloatingRect(frame, screenBounds);
+    if (CGRectIsEmpty(frame)) return nil;
 
     PXFloatingSnap *snap = [[PXFloatingSnap alloc] initWithFrame:frame];
     snap.image = image;
@@ -82,43 +77,37 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
     host.snap = snap;
     host.backgroundColor = [UIColor clearColor];
     [host addSubview:snap];
+    [host addSubview:snap.actionBar];
     snap.frame = frame;
     [window hostContentView:host];
     [window showAnimated:NO becomeKey:NO];
 
-    snap.transform = CGAffineTransformMakeScale(0.6, 0.6);
     snap.alpha = 0.0;
     [UIView animateWithDuration:0.22 animations:^{
-        snap.transform = CGAffineTransformIdentity;
         snap.alpha = 1.0;
     }];
-    PXLogInfo(@"floating snap presented (mode %ld, image %.0fx%.0f px)",
-              (long)mode, image.size.width * image.scale, image.size.height * image.scale);
+    PXLogInfo(@"floating snap presented (mode %ld, image %.0fx%.0f px, frame %@)",
+              (long)mode, image.size.width * image.scale, image.size.height * image.scale, NSStringFromCGRect(snap.frame));
     return snap;
 }
 
-/// 极窄/极长选区使用留白展示，容器始终受屏幕约束，四个按钮均保留触控宽度。
-+ (CGSize)pxDisplaySizeForImageSize:(CGSize)imageSize screenBounds:(CGRect)screenBounds {
-    CGFloat maxWidth = MIN(MAX(176.0, screenBounds.size.width * 0.46), screenBounds.size.width - 28.0);
-    CGFloat maxHeight = MIN(MAX(88.0, screenBounds.size.height * 0.38), screenBounds.size.height - 28.0);
-    CGFloat scale = MIN(maxWidth / imageSize.width, maxHeight / imageSize.height);
-    return CGSizeMake(MIN(maxWidth, MAX(176.0, floor(imageSize.width * scale))),
-                      MIN(maxHeight, MAX(88.0, floor(imageSize.height * scale))));
-}
-
 - (void)constrainToHostBounds {
-    if (!self.alive || !self.superview || !CGAffineTransformIsIdentity(self.transform)) return;
-    CGRect bounds = UIEdgeInsetsInsetRect(self.superview.bounds, self.superview.safeAreaInsets);
-    CGRect frame = self.frame;
-    frame.size = [PXFloatingSnap pxDisplaySizeForImageSize:self.image.size screenBounds:bounds];
-    frame.origin.x = MAX(CGRectGetMinX(bounds), MIN(frame.origin.x, CGRectGetMaxX(bounds) - frame.size.width));
-    frame.origin.y = MAX(CGRectGetMinY(bounds), MIN(frame.origin.y, CGRectGetMaxY(bounds) - frame.size.height));
-    self.frame = frame;
+    if (!self.alive || !self.superview) return;
+    // 使用整个屏幕，不能用安全区把靠近屏幕边缘的原选区挤走。
+    CGRect frame = PXConstrainFloatingRect(self.frame, self.superview.bounds);
+    if (!CGRectIsEmpty(frame)) self.frame = frame;
+    [self pxLayoutActionBar];
 }
 
 - (void)updateImage:(UIImage *)image {
     if (!self.alive || !image || image.size.width <= 0 || image.size.height <= 0) return;
+    // 编辑裁剪或旋转后保留每个源像素的显示比例。
+    CGFloat pointsPerPixel = self.bounds.size.width / (self.image.size.width * self.image.scale);
+    CGRect frame = self.frame;
+    frame.size = CGSizeMake(image.size.width * image.scale * pointsPerPixel,
+                            image.size.height * image.scale * pointsPerPixel);
     self.image = image;
+    self.frame = frame;
     [self constrainToHostBounds];
 }
 
@@ -138,13 +127,11 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
         [self addSubview:imageView];
         self.imageView = imageView;
 
-        // 动作条悬浮在图片底部：默认收起（alpha<0.01 时不参与命中测试）。
+        // 菜单由同一窗口独立托管，不扩大或裁剪小选区图片。
         _actionBar = [[UIVisualEffectView alloc] initWithEffect:
                       [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterialDark]];
-        _actionBar.frame = CGRectMake(0, frame.size.height - PXFloatSnapBarHeight,
-                                      frame.size.width, PXFloatSnapBarHeight);
-        _actionBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
-        [self addSubview:_actionBar];
+        _actionBar.layer.cornerRadius = 12.0;
+        _actionBar.clipsToBounds = YES;
         // 长按展开动作；取消只关闭当前图片。
         NSArray<NSArray *> *items = @[
             @[@"保存", @1, NSStringFromSelector(@selector(pxOutputTapped:))],
@@ -189,13 +176,21 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    CGFloat width = self.bounds.size.width;
-    CGFloat height = self.bounds.size.height;
-    CGFloat barTop = height - PXFloatSnapBarHeight;
-    _actionBar.frame = CGRectMake(0, barTop, width, PXFloatSnapBarHeight);
-    CGFloat buttonWidth = width / _actionButtons.count;
-    for (NSUInteger i = 0; i < _actionButtons.count; i++) {
-        _actionButtons[i].frame = CGRectMake(i * buttonWidth, 0, buttonWidth, PXFloatSnapBarHeight);
+    [self pxLayoutActionBar];
+}
+
+- (void)pxLayoutActionBar {
+    if (!self.superview || !self.actionButtons.count) return;
+    CGRect allowed = UIEdgeInsetsInsetRect(self.superview.bounds, self.superview.safeAreaInsets);
+    CGFloat width = MIN(allowed.size.width, MAX(176.0, MIN(self.bounds.size.width, 320.0)));
+    CGFloat x = MAX(CGRectGetMinX(allowed), MIN(CGRectGetMidX(self.frame) - width / 2.0, CGRectGetMaxX(allowed) - width));
+    CGFloat y = CGRectGetMaxY(self.frame) + 8.0;
+    if (y + PXFloatSnapBarHeight > CGRectGetMaxY(allowed)) y = CGRectGetMinY(self.frame) - 8.0 - PXFloatSnapBarHeight;
+    y = MAX(CGRectGetMinY(allowed), MIN(y, CGRectGetMaxY(allowed) - PXFloatSnapBarHeight));
+    self.actionBar.frame = CGRectMake(x, y, width, PXFloatSnapBarHeight);
+    CGFloat buttonWidth = width / self.actionButtons.count;
+    for (NSUInteger i = 0; i < self.actionButtons.count; i++) {
+        self.actionButtons[i].frame = CGRectMake(i * buttonWidth, 0, buttonWidth, PXFloatSnapBarHeight);
     }
 }
 
@@ -214,6 +209,7 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
 
 - (void)pxLongPressGesture:(UILongPressGestureRecognizer *)gesture {
     if (!self.alive || gesture.state != UIGestureRecognizerStateBegan) return;
+    [self pxLayoutActionBar];
     self.actionBarVisible = !self.actionBarVisible;
     [UIView animateWithDuration:0.18 animations:^{
         self.actionBar.alpha = self.actionBarVisible ? 1.0 : 0.0;
@@ -302,6 +298,7 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
     id<PXFloatingSnapDelegate> delegate = self.delegate;
     self.overlayWindow = nil;
     self.delegate = nil;
+    [self.actionBar removeFromSuperview];
     [self removeFromSuperview];
 
     PXLogInfo(@"floating snap dismissed");

@@ -61,6 +61,9 @@ CGRect PXConvertDisplayRectToPixel(CGRect displayRect, CGSize displayBounds, CGS
 /// 将选区钳制在容器内，并强制不小于 minimumSize（点单位）。无法满足时返回零矩形。
 CGRect PXClampSelectionRect(CGRect rect, CGSize containerSize, CGFloat minimumSize);
 
+/// 保持悬浮图尺寸，只限制位置。大于屏幕时允许拖动查看两端，不缩图。
+CGRect PXConstrainFloatingRect(CGRect frame, CGRect bounds);
+
 // MARK: - 展示辅助
 
 NSString *PXStringFromCaptureMode(PXCaptureMode mode);

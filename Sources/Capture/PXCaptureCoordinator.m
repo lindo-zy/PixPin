@@ -274,6 +274,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 - (void)selectionViewDidRequestFloat:(PXSelectionView *)view displayRect:(CGRect)displayRect {
     PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
     if (!task || view != self.selectionView || !view.userInteractionEnabled) return;
+    if (!view.window) return;
+    CGRect screenRect = [view convertRect:displayRect toCoordinateSpace:view.window.screen.coordinateSpace];
     view.userInteractionEnabled = NO;
     [self pxPersistSelectionRect:displayRect config:task.configSnapshot];
     [self pxCropInBackground:task displayRect:displayRect completion:^(UIImage *cropped) {
@@ -284,7 +286,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         }
         task.resultImage = cropped;
         [self pxDestroyCaptureWindow];
-        [self pxPresentFloatingSnapForTask:task];
+        [self pxPresentFloatingSnapForTask:task screenRect:screenRect];
     }];
 }
 
@@ -469,10 +471,10 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 }
 
 /// 窗口成功创建后才报告成功，保留其他悬浮图并释放当前任务槽。
-- (void)pxPresentFloatingSnapForTask:(PXCaptureTask *)task {
+- (void)pxPresentFloatingSnapForTask:(PXCaptureTask *)task screenRect:(CGRect)screenRect {
     if (![self pxIsTaskCurrent:task] || ![task transitionToState:PXCaptureStateExporting]) return;
     PXFloatingSnap *snap = [PXFloatingSnap presentWithImage:task.resultImage mode:task.mode
-                                                 delegate:self index:self.floatingSnaps.count];
+                                                 delegate:self screenRect:screenRect];
     if (!snap) {
         [self pxFailTask:task code:@"floating-window" message:@"悬浮图片显示失败"];
         return;

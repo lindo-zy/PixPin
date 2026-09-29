@@ -110,7 +110,8 @@
 }
 
 + (NSString *)displayNameForSelectionIdentifier:(NSString *)identifier {
-    return [self selectionDisplayNames][identifier] ?: identifier;
+    NSString *custom = [self customNameForSelectionIdentifier:identifier];
+    return custom.length > 0 ? custom : ([self selectionDisplayNames][identifier] ?: identifier);
 }
 
 + (NSDictionary<NSString *, NSString *> *)actionIconNames {
@@ -168,7 +169,7 @@
     return custom.length > 0 ? custom : [self toolIconNames][identifier];
 }
 
-+ (NSString *)iconNameForSelectionIdentifier:(NSString *)identifier {
++ (NSDictionary<NSString *, NSString *> *)selectionIconNames {
     static NSDictionary<NSString *, NSString *> *icons;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -180,7 +181,13 @@
                   @"copy": @"doc.on.doc",
                   @"confirm": @"checkmark.circle"};
     });
-    return icons[identifier];
+    return icons;
+}
+
++ (NSString *)iconNameForSelectionIdentifier:(NSString *)identifier {
+    NSString *custom = [self customIconNameForSelectionIdentifier:identifier];
+    if (custom.length > 0) return custom;
+    return [self selectionIconNames][identifier];
 }
 
 // MARK: 自定义名称/图标覆盖（id=值 CSV 字典）
@@ -240,12 +247,20 @@
     return [self overridesDictionaryForKey:PXKeyEditorToolNames][identifier];
 }
 
++ (NSString *)customNameForSelectionIdentifier:(NSString *)identifier {
+    return [self overridesDictionaryForKey:PXKeySelectionButtonNames][identifier];
+}
+
 + (NSString *)customIconNameForActionIdentifier:(NSString *)identifier {
     return [self overridesDictionaryForKey:PXKeyEditorActionIcons][identifier];
 }
 
 + (NSString *)customIconNameForToolIdentifier:(NSString *)identifier {
     return [self overridesDictionaryForKey:PXKeyEditorToolIcons][identifier];
+}
+
++ (NSString *)customIconNameForSelectionIdentifier:(NSString *)identifier {
+    return [self overridesDictionaryForKey:PXKeySelectionButtonIcons][identifier];
 }
 
 + (void)writeOverrideValue:(NSString *)value
@@ -288,6 +303,19 @@
                    identifier:identifier];
 }
 
++ (void)saveSelectionName:(NSString *)name forIdentifier:(NSString *)identifier {
+    [self writeOverrideValue:[self sanitizedOverrideName:name]
+                      dictKey:PXKeySelectionButtonNames
+                   identifier:identifier];
+}
+
++ (void)saveSelectionIconName:(NSString *)symbolName forIdentifier:(NSString *)identifier {
+    [self writeOverrideValue:[symbolName stringByTrimmingCharactersInSet:
+        [NSCharacterSet whitespaceAndNewlineCharacterSet]]
+                      dictKey:PXKeySelectionButtonIcons
+                   identifier:identifier];
+}
+
 // MARK: 外观
 
 + (CGFloat)buttonIconPointSize {
@@ -313,6 +341,26 @@
 
 + (NSString *)defaultIconNameForToolIdentifier:(NSString *)identifier {
     return [self toolIconNames][identifier];
+}
+
++ (NSString *)defaultIconNameForSelectionIdentifier:(NSString *)identifier {
+    return [self selectionIconNames][identifier];
+}
+
+// MARK: 截图按钮外观
+
++ (BOOL)selectionShowsIcon {
+    id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)PXKeySelectionButtonIconStyle,
+                                                           (__bridge CFStringRef)PXPreferencesDomain));
+    if ([value isKindOfClass:[NSNumber class]]) return [(NSNumber *)value boolValue];
+    return YES;   // 默认图标：与设置页预览一致；存过非数字值同样按默认处理。
+}
+
++ (void)saveSelectionShowsIcon:(BOOL)showIcon {
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeySelectionButtonIconStyle,
+                             (__bridge CFTypeRef)@(showIcon),
+                             (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
 }
 
 + (NSArray<NSString *> *)resolvedActionOrderFromString:(NSString *)csv {

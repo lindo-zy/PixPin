@@ -122,13 +122,31 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     NSArray<NSString *> *order = [PXEditorOrder visibleSelectionOrderForOrder:[PXEditorOrder currentSelectionOrder]
                                                                       hidden:[PXEditorOrder currentSelectionHidden]
                                                                      instant:_isInstantMode];
+    // 显示样式跟随设置页：图标加载失败自动回退文字，名称与图标均吃自定义覆盖。
+    BOOL showIcon = [PXEditorOrder selectionShowsIcon];
+    CGFloat iconPointSize = [PXEditorOrder buttonIconPointSize];
     NSMutableArray<UIView *> *stackViews = [[NSMutableArray alloc] init];
     for (NSString *identifier in order) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
         button.tintColor = [UIColor whiteColor];
-        [button setTitle:[PXEditorOrder displayNameForSelectionIdentifier:identifier]
-                forState:UIControlStateNormal];
-        button.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+        NSString *name = [PXEditorOrder displayNameForSelectionIdentifier:identifier];
+        button.accessibilityLabel = name;
+        UIImage *icon = nil;
+        if (showIcon) {
+            NSString *symbol = [PXEditorOrder iconNameForSelectionIdentifier:identifier];
+            icon = symbol.length ? [UIImage systemImageNamed:symbol] : nil;
+            if (icon) {
+                icon = [icon imageWithConfiguration:
+                    [UIImageSymbolConfiguration configurationWithPointSize:iconPointSize
+                                                                    weight:UIImageSymbolWeightMedium]];
+            }
+        }
+        if (icon) {
+            [button setImage:icon forState:UIControlStateNormal];
+        } else {
+            [button setTitle:name forState:UIControlStateNormal];
+            button.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+        }
         [button addTarget:self action:@selector(pxButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
         button.accessibilityIdentifier = identifier;
         [_buttons addObject:button];

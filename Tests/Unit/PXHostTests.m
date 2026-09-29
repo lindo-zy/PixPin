@@ -416,6 +416,53 @@ static void testSelectionOrder(void) {
             [safe.lastObject isEqualToString:@"confirm"], "instant exits always visible");
 }
 
+static void testSelectionOverrides(void) {
+    printf("[selection overrides]\n");
+    // 新键先备份再清空，测试后恢复，避免污染宿主 CFPreferences。
+    NSArray *keys = @[PXKeySelectionButtonNames, PXKeySelectionButtonIcons, PXKeySelectionButtonIconStyle];
+    CFStringRef domain = (__bridge CFStringRef)PXPreferencesDomain;
+    NSMutableDictionary *backup = [NSMutableDictionary dictionary];
+    for (NSString *key in keys) {
+        backup[key] = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, domain)) ?: NSNull.null;
+        CFPreferencesSetAppValue((__bridge CFStringRef)key, NULL, domain);
+    }
+    CFPreferencesAppSynchronize(domain);
+
+    NSString *identifier = @"editor";
+    PXCheck([PXEditorOrder customNameForSelectionIdentifier:identifier] == nil, "no selection name override by default");
+    PXCheck([[PXEditorOrder displayNameForSelectionIdentifier:identifier] isEqualToString:@"编辑"], "selection default name");
+    PXCheck([[PXEditorOrder iconNameForSelectionIdentifier:identifier] isEqualToString:@"pencil.and.outline"], "selection default icon");
+    PXCheck([[PXEditorOrder defaultIconNameForSelectionIdentifier:identifier] isEqualToString:@"pencil.and.outline"], "selection default icon accessor");
+
+    // 名称覆盖：清洗破坏 CSV 的字符后生效，显示名合并覆盖。
+    [PXEditorOrder saveSelectionName:@"改图,=x" forIdentifier:identifier];
+    PXCheck([[PXEditorOrder customNameForSelectionIdentifier:identifier] isEqualToString:@"改图 x"], "selection name sanitized");
+    PXCheck([[PXEditorOrder displayNameForSelectionIdentifier:identifier] isEqualToString:@"改图 x"], "selection custom name wins");
+
+    // 图标覆盖：优先于目录默认；清空恢复默认。
+    [PXEditorOrder saveSelectionIconName:@"star" forIdentifier:identifier];
+    PXCheck([[PXEditorOrder iconNameForSelectionIdentifier:identifier] isEqualToString:@"star"], "selection custom icon wins");
+    [PXEditorOrder saveSelectionIconName:nil forIdentifier:identifier];
+    [PXEditorOrder saveSelectionName:nil forIdentifier:identifier];
+    PXCheck([[PXEditorOrder displayNameForSelectionIdentifier:identifier] isEqualToString:@"编辑"], "selection name override cleared");
+    PXCheck([[PXEditorOrder iconNameForSelectionIdentifier:identifier] isEqualToString:@"pencil.and.outline"], "selection icon override cleared");
+
+    // 显示样式：默认图标（与设置页预览一致），可切文字再切回。
+    PXCheck([PXEditorOrder selectionShowsIcon], "selection icon style defaults to icon");
+    [PXEditorOrder saveSelectionShowsIcon:NO];
+    PXCheck(![PXEditorOrder selectionShowsIcon], "selection icon style switched to text");
+    [PXEditorOrder saveSelectionShowsIcon:YES];
+    PXCheck([PXEditorOrder selectionShowsIcon], "selection icon style switched back");
+
+    for (NSString *key in keys) {
+        id value = backup[key];
+        CFPreferencesSetAppValue((__bridge CFStringRef)key,
+                                 (value == NSNull.null || value == nil) ? NULL : (__bridge CFTypeRef)value,
+                                 domain);
+    }
+    CFPreferencesAppSynchronize(domain);
+}
+
 static void testIndependentButtonPreferences(void) {
     printf("[independent button preferences]\n");
     NSArray *keys = @[@"MarkupActionOrder", @"MarkupToolOrder", @"MarkupActionHidden", @"MarkupToolHidden",
@@ -477,6 +524,27 @@ static void testIndependentButtonPreferences(void) {
     CFPreferencesAppSynchronize(domain);
 }
 
+static void testFloatingOriginalRect(void) {
+    printf("[floating original rect]\n");
+    CGRect portrait = CGRectMake(0, 0, 390, 844);
+    CGRect selection = CGRectMake(24, 190, 300, 430);
+    PXCheck(CGRectEqualToRect(PXConstrainFloatingRect(selection, portrait), selection), "float keeps selected position and size");
+    CGRect small = CGRectMake(0, 0, 44, 44);
+    PXCheck(CGRectEqualToRect(PXConstrainFloatingRect(small, portrait), small), "small edge selection is neither expanded nor moved into safe area");
+    PXCheck(CGRectEqualToRect(PXConstrainFloatingRect(portrait, portrait), portrait), "full-screen selection remains full size");
+    CGRect bottom = CGRectMake(300, 750, 90, 94);
+    PXCheck(CGRectEqualToRect(PXConstrainFloatingRect(bottom, portrait), bottom), "bottom-right selection stays at exact source position");
+    CGRect moved = PXConstrainFloatingRect(CGRectMake(-30, 900, 300, 430), portrait);
+    PXCheck(CGRectEqualToRect(moved, CGRectMake(0, 414, 300, 430)), "drag clamps origin without changing dimensions");
+    CGRect landscape = CGRectMake(0, 0, 844, 390);
+    CGRect rotated = PXConstrainFloatingRect(selection, landscape);
+    PXCheck(CGSizeEqualToSize(rotated.size, selection.size) && rotated.origin.y == 0, "rotation keeps oversized image unscaled");
+    CGRect otherEnd = PXConstrainFloatingRect(CGRectMake(24, -200, 300, 430), landscape);
+    PXCheck(otherEnd.origin.y == -40 && otherEnd.size.height == 430, "oversized image can pan to its far edge");
+    PXCheck(CGRectEqualToRect(PXConstrainFloatingRect(CGRectNull, portrait), CGRectZero), "invalid float geometry is rejected");
+    PXCheck(CGRectEqualToRect(PXConstrainFloatingRect(selection, CGRectZero), CGRectZero), "empty host geometry is rejected");
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
@@ -489,8 +557,10 @@ int main(int argc, const char **argv) {
         testShellXAliases();
         testEditorOrder();
         testSelectionOrder();
+        testSelectionOverrides();
         testEditorOverrides();
         testIndependentButtonPreferences();
+        testFloatingOriginalRect();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }
