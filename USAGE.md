@@ -116,6 +116,15 @@ dispatch_async(dispatch_get_main_queue(), ^{
 
 注意：通知是广播。若设备上同时装有 SHELLX 本体，一条通知会同时触发双方动作；请按需停用其中一方，避免一次触发出现两个截图流程。
 
+### 3.1.3 SHELLX 插件插入形式（1.5.10+）
+
+除通知别名外，PixPin 还以 SHELLX 的插件形式注册：注入 SpringBoard 后按 Snapper3 插件协议实现插件对象（标识 `com.pixpin.screenshot`），在 ctor 阶段探测 SHELLX 的 `SHELLXPluginManager` 并调用 `registerPlugin:` 自注册。注册成功后：
+
+- SHELLX 设置页插件列表显示 PixPin（名称、图标、描述、开发者）。
+- SHELLX 截图操作菜单选择 PixPin 时，`processImage:` 收到成品截图并打开 PixPin 编辑器悬浮展示；SHELLX 侧快照随 `removeSnapAfterProcessing=YES` 收起。
+
+注册遵守运行时探测：`SHELLXPluginManager` 类不存在（未装 SHELLX，或新版改名）时最多重试 6 秒后放弃，仅留一条 info 日志，无其他副作用。转发回调遵守 PixPin 总开关，关闭时忽略；任务忙碌时丢弃并记录日志（重新触发即可）。
+
 ### 3.2 外部入口真机验收（待执行）
 
 1. iOS 16/17 各自在设备冷启动并恢复越狱注入后、热启动时，从桌面和 App 内分别调用默认 URL 与默认 Darwin 通知；预期直接进入全屏标记，底图为触发时屏幕。
@@ -125,6 +134,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 5. 收集 `[PixPin]` syslog：加载时应有 `external URL hook installed`（某个版本专属入口可能为 `unavailable`），请求时有 `external request source=url/darwin`；无效指令为 `external URL rejected`。再核对测试中心的 accepted / rejected / cancelled 及最终输出状态。
 6. Snapper3 兼容别名：`notify_post` 逐条发送 3.1.1 表中五条通知，确认分别进入区域 / 即时区域 / 冻结截图与取消当前任务；开关关闭与任务忙碌时同样出现 `rejected-disabled` / `rejected-busy`。
 7. SHELLX 兼容别名：逐条发送 3.1.2 表中四条通知，Darwin 与 Distributed 两个中心各发一轮，确认进入对应模式或取消当前任务；开关关闭与任务忙碌时同样出现 `rejected-disabled` / `rejected-busy`；syslog 来源分别为 `source=darwin` / `source=distributed`。
+8. SHELLX 插件插入形式：与 SHELLX 本体同装并注销，打开 SHELLX 设置页确认插件列表出现 PixPin；在 SHELLX 截图操作菜单选择 PixPin，确认快照收起且 PixPin 编辑器悬浮展示；关闭 PixPin 总开关后重复，确认不弹编辑器；卸载 SHELLX 后重启 SpringBoard，确认 syslog 出现 `shellx plugin registration skipped` 且 PixPin 其余功能正常。
 
 ## 4. 模式说明
 

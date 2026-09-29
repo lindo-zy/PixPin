@@ -4,7 +4,7 @@
 
 - 运行环境：RootHide 越狱，iOS 16.x / 17.x，arm64 / arm64e
 - 技术栈：Theos · Logos · Objective-C · SpringBoard 注入
-- 当前版本：1.4.8（包名 `com.pixpin.screenshot`）
+- 当前版本：1.5.10（包名 `com.pixpin.screenshot`）
 
 ## 功能特性
 
@@ -43,6 +43,8 @@
 兼容 Snapper3 调用形式（1.5.5+）：`com.jontelang.snapper3.force.open` / `forceinstant.open` / `forcefreeze.open` 分别触发区域 / 即时区域 / 冻结截图，`close.all`、`closecrop` 取消当前任务；`openlast`、`history` 无对应功能。
 
 兼容 SHELLX 调用形式（1.5.8+）：`com.iosdump.screenshotshell.open` / `open.instant` / `open.freeze` 分别触发区域 / 即时区域 / 冻结截图，`close` 取消当前任务；Darwin 与 Distributed 两个中心都监听；`history`、`openlast`、`ready` 无对应功能。
+
+兼容 SHELLX 插件插入形式（1.5.10+）：注入 SpringBoard 后自动以 Snapper3 协议插件自注册进 SHELLX 的 `SHELLXPluginManager`，SHELLX 设置页插件列表显示 PixPin；在 SHELLX 截图操作菜单选择 PixPin 即把该截图交给 PixPin 悬浮展示（遵守 PixPin 总开关）。未装 SHELLX 时自动跳过，无副作用。
 
 其他插件优先使用 Darwin 通知（无需链接 PixPin，任意线程可发）：
 

@@ -25,6 +25,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// 取消当前任务（任意线程；内部跳主线程执行）。
 - (void)cancelActiveTask;
 
+/// 外部图片直接进编辑器（结果气泡重编、SHELLX 插件转发共用入口；主线程调用；
+/// 忙时静默丢弃并记录日志，isReedit 路径取消即结束）。
+- (void)openEditorWithImage:(UIImage *)image mode:(PXCaptureMode)mode;
+
 @end
 
 NS_ASSUME_NONNULL_END

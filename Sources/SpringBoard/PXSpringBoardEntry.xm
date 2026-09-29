@@ -8,6 +8,7 @@
 #import "../Common/PXExternalRequest.h"
 #import "../Common/PXLog.h"
 #import "../Capture/PXCaptureCoordinator.h"
+#import "PXShellXPlugin.h"
 
 // 跨进程请求入口：Darwin 通知只携带名称，不携带数据（DEVELOPMENT.md 2.2）。
 // 回调线程不确定，统一跳主线程后交给协调器分发。
@@ -118,6 +119,10 @@ static void PXInstallURLHook(Class cls, NSString *selectorName, IMP replacement,
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             [[PXCaptureCoordinator sharedCoordinator] start];
+
+            // SHELLX 插件插入形式：以 Snapper3 协议注册进 SHELLXPluginManager，
+            // 未装 SHELLX 时探测链自动放弃（PXShellXPlugin.xm）。
+            PXShellXPluginInstall();
 
             CFNotificationCenterRef center = CFNotificationCenterGetDarwinNotifyCenter();
             CFStringRef names[] = {
