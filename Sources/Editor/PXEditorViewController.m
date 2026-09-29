@@ -741,10 +741,22 @@ static UIImage *PXEditorSliderThumbImage(void) {
 
 #pragma mark - 缩放容器
 
+/// 画布重排的初始缩放模式：适宽 = 打开/重排默认（竖长图铺满视口宽度，方便画笔编辑）；
+/// 适屏 = 「适屏」按钮（整图完整可见，1.3.5 保底语义）。
+typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
+    PXZoomInitialFitWidth = 0,
+    PXZoomInitialFitWhole = 1,
+};
+
 /// 画布/容器尺寸随文档底图变化（进入、裁剪、旋转后调用）。
-/// 编辑基准为适屏：打开编辑器整图完整可见，细节靠捏合放大（下限即适屏基准，不放得比整图更小）。
-/// 每次视口或图片几何变化后重新适屏居中；旧滚动偏移会把缩小后的图片移出视口。
+/// 编辑基准为适屏：缩放下限恒为适屏（整图完整可见，不放得比整图更小）；
+/// 初始缩放默认适宽（见 PXZoomInitialMode）。
+/// 每次视口或图片几何变化后重新适配居中；旧滚动偏移会把缩小后的图片移出视口。
 - (void)pxRelayoutZoomContainer {
+    [self pxRelayoutZoomContainerInMode:PXZoomInitialFitWidth];
+}
+
+- (void)pxRelayoutZoomContainerInMode:(PXZoomInitialMode)mode {
     CGSize imageSize = self.document.sourceImage.size;
     if (imageSize.width <= 0 || imageSize.height <= 0) return;
 
@@ -762,8 +774,15 @@ static UIImage *PXEditorSliderThumbImage(void) {
     self.canvas.frame = _zoomContainer.bounds;
 
     _scrollView.minimumZoomScale = baseScale;
-    _scrollView.maximumZoomScale = baseScale * PXEditorMaxZoomFactor;
-    _scrollView.zoomScale = baseScale;
+    CGFloat maximumScale = baseScale * PXEditorMaxZoomFactor;
+    _scrollView.maximumZoomScale = maximumScale;
+    // 初始缩放：适宽模式取视口宽度比（竖长图按适屏显示时宽度只有视口一半、两侧大片黑边，
+    // 打开即铺满宽度；下限仍是适屏，捏合缩小即可回到整图——1.3.0 被推翻的是“铺满当下限”）。
+    CGFloat widthScale = _scrollView.bounds.size.width / imageSize.width;
+    CGFloat initialScale = (mode == PXZoomInitialFitWidth)
+        ? MIN(MAX(widthScale, baseScale), maximumScale)
+        : baseScale;
+    _scrollView.zoomScale = initialScale;
     [self pxCenterContent];
     _scrollView.contentOffset = CGPointMake(-_scrollView.contentInset.left,
                                             -_scrollView.contentInset.top);
@@ -1058,7 +1077,8 @@ static UIImage *PXEditorSliderThumbImage(void) {
         [self.view setNeedsLayout];
         [self.view layoutIfNeeded];
     }
-    [self pxRelayoutZoomContainer];
+    // 「适屏」按钮的承诺是整图完整可见：固定走适屏重置，不跟随适宽默认（否则按钮名不副实）。
+    [self pxRelayoutZoomContainerInMode:PXZoomInitialFitWhole];
 }
 
 - (void)pxDockTapped:(UIButton *)sender {
