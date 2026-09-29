@@ -404,11 +404,15 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
         [_bottomPanel addSubview:_widthRow];
     }
     _minWidthIcon = [[UIImageView alloc] initWithImage:[self pxWidthHintIconNamed:@"circle.inset.filled"]];
+    _minWidthIcon.tintColor = UIColor.whiteColor;
     [_widthRow addSubview:_minWidthIcon];
     _maxWidthIcon = [[UIImageView alloc] initWithImage:[self pxWidthHintIconNamed:@"circle.fill"]];
+    _maxWidthIcon.tintColor = UIColor.whiteColor;
     [_widthRow addSubview:_maxWidthIcon];
     _widthSlider = [[UISlider alloc] init];
-    _widthSlider.minimumTrackTintColor = PXEditorAccentColor();
+    _widthSlider.tintColor = UIColor.whiteColor;
+    _widthSlider.minimumTrackTintColor = UIColor.whiteColor;
+    _widthSlider.thumbTintColor = UIColor.whiteColor;
     _widthSlider.maximumTrackTintColor = [UIColor colorWithWhite:0.35 alpha:1.0];
     [_widthSlider setThumbImage:PXEditorSliderThumbImage() forState:UIControlStateNormal];
     _widthSlider.accessibilityLabel = @"画笔粗细";

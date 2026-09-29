@@ -373,12 +373,12 @@ static void testEditorOverrides(void) {
     PXCheck([PXEditorOrder customNameForToolIdentifier:identifier] == nil, "name override cleared");
     PXCheck([[PXEditorOrder displayNameForToolIdentifier:identifier] isEqualToString:@"画笔"], "name back to default");
 
-    // 图标点大小：默认 17，夹取 12–28。
+    // 图标点大小：默认 17，夹取 6–24。
     PXCheckInt((NSInteger)[PXEditorOrder buttonIconPointSize], 17, "icon size default");
     [PXEditorOrder saveButtonIconPointSize:99.0];
-    PXCheckInt((NSInteger)[PXEditorOrder buttonIconPointSize], 28, "icon size clamped high");
+    PXCheckInt((NSInteger)[PXEditorOrder buttonIconPointSize], 24, "icon size clamped high");
     [PXEditorOrder saveButtonIconPointSize:5.0];
-    PXCheckInt((NSInteger)[PXEditorOrder buttonIconPointSize], 12, "icon size clamped low");
+    PXCheckInt((NSInteger)[PXEditorOrder buttonIconPointSize], 6, "icon size clamped low");
     [PXEditorOrder saveButtonIconPointSize:17.0];
 }
 

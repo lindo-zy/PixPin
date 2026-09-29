@@ -6,7 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class PXResultBubble;
 
 @protocol PXResultBubbleDelegate <NSObject>
-/// 点击气泡主体或「编辑」按钮（进入编辑器重新编辑）。
+/// 点击缩略图或「编辑」按钮（进入编辑器重新编辑）。
 - (void)resultBubbleDidTap:(PXResultBubble *)bubble;
 /// 气泡完全关闭（含自动消失），持有者应释放引用。
 - (void)resultBubbleDidDismiss:(PXResultBubble *)bubble;

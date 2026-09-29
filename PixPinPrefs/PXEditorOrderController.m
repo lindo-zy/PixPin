@@ -255,8 +255,8 @@
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:reuse];
         cell.textLabel.text = @"按钮图标大小";
         UISlider *slider = [[UISlider alloc] initWithFrame:CGRectMake(0, 0, 150, 31)];
-        slider.minimumValue = 12.0;
-        slider.maximumValue = 28.0;
+        slider.minimumValue = 6.0;
+        slider.maximumValue = 24.0;
         [slider addTarget:self action:@selector(pxIconSizeChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = slider;
         self.sizeValueLabel = cell.detailTextLabel;
@@ -413,7 +413,7 @@
 #pragma mark - 图标大小
 
 - (void)pxIconSizeChanged:(UISlider *)sender {
-    CGFloat size = MAX(12.0, MIN(28.0, sender.value));
+    CGFloat size = MAX(6.0, MIN(24.0, sender.value));
     [PXEditorOrder saveButtonIconPointSize:size];
     self.sizeValueLabel.text = [NSString stringWithFormat:@"%.0fpt", size];
     [self pxRefreshPreview];

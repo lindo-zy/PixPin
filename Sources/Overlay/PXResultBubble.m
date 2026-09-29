@@ -37,14 +37,11 @@
                               task:(PXCaptureTask *)task
                          succeeded:(BOOL)succeeded
                           delegate:(id<PXResultBubbleDelegate>)delegate {
-    CGRect screenBounds = [UIScreen mainScreen].bounds;
     // 成功态：缩略图 + 编辑 + 关闭；失败态：错误文字 + 关闭（诊断优先）。
     BOOL failureStyle = !succeeded || (task == nil);
-    CGFloat bubbleWidth = failureStyle ? 240.0 : 136.0;
-    CGFloat bubbleHeight = 54.0;
-    CGRect frame = CGRectMake(14.0,
-                              screenBounds.size.height - bubbleHeight - 34.0,
-                              bubbleWidth, bubbleHeight);
+    CGFloat bubbleWidth = failureStyle ? 240.0 : 164.0;
+    CGFloat bubbleHeight = 60.0;
+    CGRect frame = CGRectMake(0, 0, bubbleWidth, bubbleHeight);
 
     PXResultBubble *bubble = [[PXResultBubble alloc] initWithFrame:frame];
     bubble.task = task;
@@ -52,21 +49,27 @@
     bubble.thumbView.image = thumbnail;
     bubble.messageLabel.text = message ?: (failureStyle ? @"截图失败" : @"截图完成");
     bubble.editButton.hidden = failureStyle;
+    bubble.thumbView.hidden = failureStyle;
     bubble.messageLabel.hidden = !failureStyle;
 
     PXCaptureWindow *window = [PXCaptureWindow pxCaptureWindow];
     window.windowLevel = 1000001.0;   // 高于选区窗口，低于系统紧急层级
-    window.frame = [UIScreen mainScreen].bounds;
     window.passesTouchesOutsideHostedContent = YES;
     bubble.window = window;
     UIView *bubbleHost = [[UIView alloc] initWithFrame:window.bounds];
     bubbleHost.backgroundColor = [UIColor clearColor];
     [bubbleHost addSubview:bubble];
     [window hostContentView:bubbleHost];
-    bubble.frame = frame;
+    bubble.translatesAutoresizingMaskIntoConstraints = NO;
+    [NSLayoutConstraint activateConstraints:@[
+        [bubble.trailingAnchor constraintEqualToAnchor:bubbleHost.safeAreaLayoutGuide.trailingAnchor constant:-14.0],
+        [bubble.bottomAnchor constraintEqualToAnchor:bubbleHost.safeAreaLayoutGuide.bottomAnchor constant:-14.0],
+        [bubble.widthAnchor constraintEqualToConstant:bubbleWidth],
+        [bubble.heightAnchor constraintEqualToConstant:bubbleHeight],
+    ]];
     [window showAnimated:NO becomeKey:NO];
 
-    bubble.transform = CGAffineTransformMakeTranslation(-bubbleWidth - 20, 0);
+    bubble.transform = CGAffineTransformMakeTranslation(bubbleWidth + 20, 0);
     [UIView animateWithDuration:0.25 animations:^{ bubble.transform = CGAffineTransformIdentity; }];
 
     // 4 秒自动消失；generation 令牌防止与手动关闭竞态。
@@ -82,44 +85,72 @@
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if (self = [super initWithFrame:frame]) {
-        self.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.92];
-        self.layer.cornerRadius = 12.0;
+        self.backgroundColor = UIColor.clearColor;
+        self.layer.cornerRadius = 18.0;
+        self.layer.borderWidth = 0.5;
+        self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.18].CGColor;
         self.clipsToBounds = YES;
 
-        _thumbView = [[UIImageView alloc] initWithFrame:CGRectMake(6, 5, 44, 44)];
+        UIVisualEffectView *blur = [[UIVisualEffectView alloc] initWithEffect:
+            [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
+        blur.frame = self.bounds;
+        blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        blur.contentView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.04];
+        blur.userInteractionEnabled = NO;
+        [self addSubview:blur];
+
+        _thumbView = [[UIImageView alloc] init];
         _thumbView.contentMode = UIViewContentModeScaleAspectFill;
         _thumbView.clipsToBounds = YES;
-        _thumbView.layer.cornerRadius = 8.0;
-        _thumbView.backgroundColor = [UIColor colorWithWhite:0.2 alpha:1.0];
+        _thumbView.layer.cornerRadius = 12.0;
+        _thumbView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+        _thumbView.userInteractionEnabled = YES;
+        _thumbView.isAccessibilityElement = YES;
+        _thumbView.accessibilityLabel = @"编辑截图";
+        _thumbView.accessibilityTraits = UIAccessibilityTraitButton;
         [self addSubview:_thumbView];
 
-        CGFloat width = frame.size.width;
-        _messageLabel = [[UILabel alloc] initWithFrame:CGRectMake(58, 0, width - 58 - 38, frame.size.height)];
+        _messageLabel = [[UILabel alloc] init];
         _messageLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
         _messageLabel.textColor = [UIColor whiteColor];
         _messageLabel.adjustsFontSizeToFitWidth = YES;
         _messageLabel.text = @"截图完成";
         [self addSubview:_messageLabel];
 
-        _editButton = [self pxMakeButtonWithTitle:@"编辑" action:@selector(pxEditTapped:)];
-        _closeButton = [self pxMakeButtonWithTitle:@"✕" action:@selector(pxCloseTapped:)];
-        _closeButton.frame = CGRectMake(width - 34, 0, 34, frame.size.height);
-        _editButton.frame = CGRectMake(width - 82, 0, 44, frame.size.height);   // 与 ✕ 留 4pt 间隙
+        _editButton = [self pxMakeButtonWithTitle:@"编辑" symbol:@"pencil" action:@selector(pxEditTapped:)];
+        _closeButton = [self pxMakeButtonWithTitle:@"关闭" symbol:@"xmark" action:@selector(pxCloseTapped:)];
         _editButton.hidden = YES;   // 失败气泡（无任务）没有可编辑结果
 
         UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(pxTapGesture:)];
-        [self addGestureRecognizer:tap];
+        [_thumbView addGestureRecognizer:tap];
     }
     return self;
 }
 
-- (UIButton *)pxMakeButtonWithTitle:(NSString *)title action:(SEL)action {
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat side = 44.0;
+    CGFloat padding = 8.0;
+    CGFloat y = (CGRectGetHeight(self.bounds) - side) / 2.0;
+    _thumbView.frame = CGRectMake(padding, y, side, side);
+    _editButton.frame = CGRectMake(padding + side + padding, y, side, side);
+    _closeButton.frame = CGRectMake(CGRectGetWidth(self.bounds) - padding - side, y, side, side);
+    _messageLabel.frame = CGRectMake(12.0, 0, CGRectGetMinX(_closeButton.frame) - 20.0,
+                                    CGRectGetHeight(self.bounds));
+}
+
+- (UIButton *)pxMakeButtonWithTitle:(NSString *)title symbol:(NSString *)symbol action:(SEL)action {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     button.tintColor = [UIColor whiteColor];
     button.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
-    button.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
-    button.layer.cornerRadius = 10.0;
-    [button setTitle:title forState:UIControlStateNormal];
+    button.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+    button.layer.cornerRadius = 12.0;
+    button.clipsToBounds = YES;
+    button.accessibilityLabel = title;
+    UIImage *image = [UIImage systemImageNamed:symbol withConfiguration:
+        [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightMedium]];
+    if (image) [button setImage:image forState:UIControlStateNormal];
+    else [button setTitle:title forState:UIControlStateNormal];
     [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:button];
     return button;

@@ -201,12 +201,23 @@
                                                                 detail:Nil
                                                                   cell:PSButtonCell
                                                                    edit:Nil];
-        specifier.buttonAction = @selector(pxCopyAndRunURLScheme:);
+        // URL 行由 didSelectRowAtIndexPath 直接分发，避免系统按钮转发丢失动作，
+        // 同时不注册第二条 buttonAction 路径，保证一次点击只发送一次请求。
         [specifier setProperty:url forKey:@"pxURL"];
         [specifier setProperty:title forKey:@"pxTitle"];
         [specifiers addObject:specifier];
     }
     return specifiers;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
+    if ([[specifier propertyForKey:@"pxURL"] isKindOfClass:NSString.class]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        [self pxCopyAndRunURLScheme:specifier];
+        return;
+    }
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
 }
 
 - (void)pxCopyAndRunURLScheme:(PSSpecifier *)specifier {
