@@ -24,6 +24,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithImage:(UIImage *)sourceImage
                      delegate:(id<PXEditorViewControllerDelegate>)delegate;
 
+/// 销毁前由协调器调用：断开 view→手势→控制器的引用环并清理画布（可重复调用）。
+- (void)prepareForDismissal;
+
 @end
 
 NS_ASSUME_NONNULL_END

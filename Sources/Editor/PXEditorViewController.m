@@ -90,6 +90,7 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
     PXEditorCanvasDelegate,
     UIColorPickerViewControllerDelegate,
     UIAdaptivePresentationControllerDelegate,
+    UIGestureRecognizerDelegate,
     UIScrollViewDelegate>
 @property (nonatomic, strong) UIImage *sourceImage;
 @property (nonatomic, weak) id<PXEditorViewControllerDelegate> delegate;
@@ -198,13 +199,28 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
     self.dockButton.hidden = !self.fullscreenMarkup;
     self.fitButton.accessibilityLabel = @"整图适屏";
 
-    [self pxSelectToolIndex:self.fullscreenMarkup ? 0 : [self pxDefaultToolIndex]];
+    // 默认选中排序后的第一个工具按钮（平移等其余工具仍在网格中可点选）。
+    [self pxSelectToolIndex:0];
     [self pxApplyCurrentColor];
     [self pxRefreshButtons];
     // 马赛克底图不在此预热：布局前画布尺寸为零会导致块尺寸取错，drawRect 首帧会按正确尺寸懒加载。
 }
 
 - (void)dealloc {
+    [self.canvas prepareForDismissal];
+}
+
+/// 编辑器销毁前由协调器调用：断开 view→手势→self 的强引用环
+/// （UIGestureRecognizer 对 target 持强引用，不移除则整棵视图树+文档成孤岛永不释放）。
+- (void)prepareForDismissal {
+    // arrayWithObjects 以 nil 终止：非全屏标记没有拖条/把手，nil 项自动跳过（字面量数组遇 nil 会崩）。
+    NSMutableArray<UIView *> *containers = [NSMutableArray arrayWithObjects:
+        self.bottomPanel, self.widthRow, self.panelDragGrip, self.collapsedHandle, nil];
+    for (UIView *container in containers) {
+        for (UIGestureRecognizer *gesture in container.gestureRecognizers) {
+            [container removeGestureRecognizer:gesture];
+        }
+    }
     [self.canvas prepareForDismissal];
 }
 
@@ -325,8 +341,9 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
 
 - (void)pxBuildBottomPanel {
     _bottomPanel = [[UIView alloc] init];
+    // 全屏标记面板磨砂化（参考图）：低透明度青色作调色垫，磨砂材质由 pxApplyFrostedBackground 垫入。
     _bottomPanel.backgroundColor = self.fullscreenMarkup
-        ? [UIColor colorWithRed:0.02 green:0.23 blue:0.22 alpha:0.94]
+        ? [UIColor colorWithRed:0.02 green:0.23 blue:0.22 alpha:0.35]
         : [UIColor colorWithWhite:0.13 alpha:1.0];
     _bottomPanel.layer.cornerRadius = self.fullscreenMarkup ? 24.0 : 0.0;
     _bottomPanel.clipsToBounds = YES;
@@ -346,6 +363,14 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
         [_panelDragGrip addSubview:gripLine];
         UIPanGestureRecognizer *drag = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pxPanelPan:)];
         [_panelDragGrip addGestureRecognizer:drag];
+
+        // 双击面板空白处收起面板；当前工具与画布状态保留（画笔仍可直接涂抹），
+        // 收起把手点按或双击恢复。手势 delegate 排除控件，按钮/滑杆节奏不受影响。
+        UITapGestureRecognizer *panelDoubleTap =
+            [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(pxPanelDoubleTapped:)];
+        panelDoubleTap.numberOfTapsRequired = 2;
+        panelDoubleTap.delegate = self;
+        [_bottomPanel addGestureRecognizer:panelDoubleTap];
 
         _collapsedHandle = [UIButton buttonWithType:UIButtonTypeSystem];
         _collapsedHandle.backgroundColor = _bottomPanel.backgroundColor;
@@ -386,6 +411,14 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
     _widthSlider.accessibilityLabel = @"画笔粗细";
     [_widthSlider addTarget:self action:@selector(pxWidthChanged:) forControlEvents:UIControlEventValueChanged];
     [_widthRow addSubview:_widthSlider];
+    if (self.fullscreenMarkup) {
+        // 线宽行在此处才创建（全屏标记下悬浮于面板上方），补挂双击收起。
+        UITapGestureRecognizer *widthDoubleTap =
+            [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(pxPanelDoubleTapped:)];
+        widthDoubleTap.numberOfTapsRequired = 2;
+        widthDoubleTap.delegate = self;
+        [_widthRow addGestureRecognizer:widthDoubleTap];
+    }
 
     // 多排工具网格，列数按最小触控宽度自动计算；顺序来自设置页排序。
     _toolGrid = [[UIView alloc] init];
@@ -479,6 +512,26 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(void) {
     _cropApplyButton.layer.cornerRadius = 10.0;
     [_cropApplyButton addTarget:self action:@selector(pxCropApplyTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_cropRow addSubview:_cropApplyButton];
+
+    [self pxApplyFrostedBackgrounds];
+}
+
+/// 全屏标记面板磨砂底（参考图观感）：暗色材质垫底 + 低透明度青色调色垫；普通编辑器保持实色卡片。
+- (void)pxApplyFrostedBackgrounds {
+    if (!self.fullscreenMarkup) return;
+    [self pxFrostedBlurInto:_bottomPanel];
+    [self pxFrostedBlurInto:_widthRow];
+    [self pxFrostedBlurInto:_collapsedHandle];
+}
+
+- (void)pxFrostedBlurInto:(UIView *)container {
+    UIVisualEffectView *blur = [[UIVisualEffectView alloc] initWithEffect:
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterialDark]];
+    // 构建期 frame 为零：autoresizing 保证随容器布局同步铺满。
+    blur.frame = container.bounds;
+    blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    blur.userInteractionEnabled = NO;
+    [container insertSubview:blur atIndex:0];
 }
 
 - (void)pxConfigureWidthSlider {
@@ -744,14 +797,6 @@ static UIImage *PXEditorSliderThumbImage(void) {
 }
 
 #pragma mark - 工具与颜色选择
-
-/// 打开编辑器的默认工具：平移（随排序动态定位，避免硬编码索引漂移）。
-- (NSUInteger)pxDefaultToolIndex {
-    for (NSUInteger i = 0; i < self.tools.count; i++) {
-        if (self.tools[i].type == PXAnnotationTypePan) return i;
-    }
-    return 0;
-}
 
 - (void)pxSelectToolIndex:(NSUInteger)index {
     if (index >= self.tools.count || self.isExporting) return;
@@ -1030,6 +1075,16 @@ static UIImage *PXEditorSliderThumbImage(void) {
         CGRectGetMinY(self.bottomPanel.frame));
     self.panelCollapsed = YES;
     [self.view setNeedsLayout];
+}
+
+/// 双击面板/线宽行空白处 = 收起；仅隐藏面板，画布工具态不变（画笔等可直接继续涂抹）。
+- (void)pxPanelDoubleTapped:(UITapGestureRecognizer *)gesture {
+    [self pxCollapsePanelTapped:nil];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    // 面板上的按钮/滑杆保持自己的点击节奏，双击只吃背景区域。
+    return ![touch.view isKindOfClass:[UIControl class]];
 }
 
 - (void)pxExpandPanelTapped:(UIButton *)sender {

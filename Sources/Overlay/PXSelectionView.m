@@ -1,4 +1,5 @@
 #import "PXSelectionView.h"
+#import "../Common/PXEditorOrder.h"
 
 static const CGFloat PXSelectionMinimumSize = 44.0;   // 点；过小选区会产出无意义的细条裁剪
 static const CGFloat PXHandleHitRadius = 36.0;
@@ -117,17 +118,19 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     [self addSubview:_toolbar];
 
     _buttons = [[NSMutableArray alloc] init];
-    NSArray<NSArray<NSString *> *> *items = _isInstantMode
-        ? @[ @[@"取消", @"cancel"], @[@"全屏", @"select-all"], @[@"完成", @"confirm"] ]
-        : @[ @[@"取消", @"cancel"], @[@"全屏", @"select-all"], @[@"编辑", @"editor"], @[@"保存", @"save"], @[@"复制", @"copy"], @[@"完成", @"confirm"] ];
+    // 按钮目录化：顺序与显隐来自设置页（PXEditorOrder），即时模式过滤为快速三键。
+    NSArray<NSString *> *order = [PXEditorOrder visibleSelectionOrderForOrder:[PXEditorOrder currentSelectionOrder]
+                                                                      hidden:[PXEditorOrder currentSelectionHidden]
+                                                                     instant:_isInstantMode];
     NSMutableArray<UIView *> *stackViews = [[NSMutableArray alloc] init];
-    for (NSArray *item in items) {
+    for (NSString *identifier in order) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
         button.tintColor = [UIColor whiteColor];
-        [button setTitle:item[0] forState:UIControlStateNormal];
+        [button setTitle:[PXEditorOrder displayNameForSelectionIdentifier:identifier]
+                forState:UIControlStateNormal];
         button.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
         [button addTarget:self action:@selector(pxButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
-        button.accessibilityIdentifier = item[1];
+        button.accessibilityIdentifier = identifier;
         [_buttons addObject:button];
         [stackViews addObject:button];
     }
@@ -363,7 +366,17 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         }
         return;
     }
-    if ([identifier isEqualToString:@"select-all"]) {
+    if ([identifier isEqualToString:@"float"]) {
+        // 悬浮与确认同样要求合法选区：细条/零矩形没有悬浮价值。
+        if (CGRectIsEmpty(PXClampSelectionRect(self.selectionRect, self.bounds.size, PXSelectionMinimumSize))) {
+            return;
+        }
+        if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestFloat:displayRect:)]) {
+            [self.delegate selectionViewDidRequestFloat:self displayRect:self.selectionRect];
+        }
+        return;
+    }
+    if ([identifier isEqualToString:@"selectall"]) {
         [self pxSetSelectionRect:self.bounds];
         return;
     }

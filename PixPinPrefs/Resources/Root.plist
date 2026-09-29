@@ -74,6 +74,20 @@
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.pixpin.screenshot</string>
+			<key>key</key>
+			<string>AreaRememberLastRect</string>
+			<key>label</key>
+			<string>记住上次区域选区</string>
+			<key>PostNotification</key>
+			<string>com.pixpin.screenshot/preferences/reload</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
 			<true/>
 			<key>defaults</key>
 			<string>com.pixpin.screenshot</string>
@@ -181,7 +195,7 @@
 			<key>label</key>
 			<string>编辑器</string>
 			<key>footerText</key>
-			<string>调整编辑操作与标记工具图标的顺序、显隐、名称和大小，顶部实时预览排列效果。</string>
+			<string>调整编辑操作与标记工具图标的顺序、显隐、名称和大小，以及区域选区工具栏按钮的排序与显隐，顶部实时预览排列效果。</string>
 		</dict>
 		<dict>
 			<key>cell</key>

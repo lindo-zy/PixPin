@@ -14,14 +14,19 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSArray<NSString *> *)defaultActionIdentifiers;
 /// 全部工具按钮 id：画笔/平移/方框/椭圆/箭头/放大镜/直线/马赛克/文字/实心方/实心圆/聚光/荧光/贴纸/序号图章。
 + (NSArray<NSString *> *)defaultToolIdentifiers;
+/// 区域选区工具栏按钮 id：取消/全屏/编辑/悬浮/保存/复制/完成。
++ (NSArray<NSString *> *)defaultSelectionIdentifiers;
 
 + (NSString *)displayNameForActionIdentifier:(NSString *)identifier;
 + (NSString *)displayNameForToolIdentifier:(NSString *)identifier;
++ (NSString *)displayNameForSelectionIdentifier:(NSString *)identifier;
 
 /// SF Symbol 名（编辑器按钮与设置页排序条目共用）；无对应符号返回 nil。
 /// 均为"自定义覆盖优先，缺省回目录默认"；自定义符号失效时由调用方回退显示名称。
 + (NSString *)iconNameForActionIdentifier:(NSString *)identifier;
 + (NSString *)iconNameForToolIdentifier:(NSString *)identifier;
+/// 选区工具栏本体显示文字，无图标；此处符号仅供设置页条目展示，不支持自定义覆盖。
++ (NSString *)iconNameForSelectionIdentifier:(NSString *)identifier;
 
 /// 目录默认符号（不含覆盖），供编辑页展示"默认"项。
 + (NSString *)defaultIconNameForActionIdentifier:(NSString *)identifier;
@@ -51,6 +56,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// 把任意偏好字符串解析为覆盖全部 id 的合法顺序；入参为空返回默认顺序。
 + (NSArray<NSString *> *)resolvedActionOrderFromString:(nullable NSString *)csv;
 + (NSArray<NSString *> *)resolvedToolOrderFromString:(nullable NSString *)csv;
++ (NSArray<NSString *> *)resolvedSelectionOrderFromString:(nullable NSString *)csv;
 
 /// 过滤掉不属于全量目录的项并去重，缺失项按默认顺序补尾；不改变已有相对顺序。
 + (NSArray<NSString *> *)resolvedOrderFromString:(nullable NSString *)csv
@@ -69,6 +75,11 @@ NS_ASSUME_NONNULL_BEGIN
                                              hidden:(NSArray<NSString *> *)hidden
                                    fullscreenMarkup:(BOOL)fullscreenMarkup;
 
+/// 选区工具栏可见顺序：兜底保留取消、完成两个出口；即时模式只保留取消/全屏/完成。
++ (NSArray<NSString *> *)visibleSelectionOrderForOrder:(NSArray<NSString *> *)order
+                                                hidden:(NSArray<NSString *> *)hidden
+                                               instant:(BOOL)instant;
+
 + (NSString *)stringForOrder:(NSArray<NSString *> *)order;
 
 // MARK: 偏好读写（CFPreferences，域 com.pixpin.screenshot）
@@ -76,18 +87,22 @@ NS_ASSUME_NONNULL_BEGIN
 /// 当前生效顺序：读偏好并解析；未设置时返回默认。
 + (NSArray<NSString *> *)currentActionOrder;
 + (NSArray<NSString *> *)currentToolOrder;
++ (NSArray<NSString *> *)currentSelectionOrder;
 
 /// 当前隐藏集（目录内 id）；未设置时为空集。
 + (NSArray<NSString *> *)currentActionHidden;
 + (NSArray<NSString *> *)currentToolHidden;
++ (NSArray<NSString *> *)currentSelectionHidden;
 
 /// 写入原始 CSV（不做合法化，读取侧统一解析）；供设置页保存完整顺序。
 + (void)saveActionOrderString:(nullable NSString *)csv;
 + (void)saveToolOrderString:(nullable NSString *)csv;
++ (void)saveSelectionOrderString:(nullable NSString *)csv;
 
 /// 写入隐藏集 CSV；传 nil/空串即清空（全部显示）。
 + (void)saveActionHiddenString:(nullable NSString *)csv;
 + (void)saveToolHiddenString:(nullable NSString *)csv;
++ (void)saveSelectionHiddenString:(nullable NSString *)csv;
 
 @end
 

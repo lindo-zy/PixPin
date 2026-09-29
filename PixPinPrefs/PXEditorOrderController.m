@@ -11,8 +11,10 @@
 // 必须 strong：copy 语义会把 NSMutableArray 存成不可变 NSArray，拖动时 removeObjectAtIndex 直接崩溃。
 @property (nonatomic, strong) NSMutableArray<NSString *> *actionOrder;
 @property (nonatomic, strong) NSMutableArray<NSString *> *toolOrder;
+@property (nonatomic, strong) NSMutableArray<NSString *> *selectionOrder;
 @property (nonatomic, strong) NSMutableSet<NSString *> *actionHidden;
 @property (nonatomic, strong) NSMutableSet<NSString *> *toolHidden;
+@property (nonatomic, strong) NSMutableSet<NSString *> *selectionHidden;
 @property (nonatomic, weak) UILabel *sizeValueLabel;
 @end
 
@@ -25,7 +27,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"编辑与标记图标排序";
+    self.title = @"编辑器与截图按钮排序";
     self.navigationItem.rightBarButtonItem =
         [[UIBarButtonItem alloc] initWithTitle:@"恢复默认" style:UIBarButtonItemStylePlain
                                       target:self action:@selector(pxResetTapped:)];
@@ -52,10 +54,15 @@
 - (void)pxReloadFromPreferences {
     self.actionOrder = [[PXEditorOrder currentActionOrder] mutableCopy];
     self.toolOrder = [[PXEditorOrder currentToolOrder] mutableCopy];
+    self.selectionOrder = [[PXEditorOrder currentSelectionOrder] mutableCopy];
     self.actionHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentActionHidden]];
     [self.actionHidden removeObject:@"close"];
     [self.actionHidden removeObject:@"done"];
     self.toolHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentToolHidden]];
+    // 出口按钮在设置页始终呈现为开启（与 close/done 同口径）。
+    self.selectionHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentSelectionHidden]];
+    [self.selectionHidden removeObject:@"cancel"];
+    [self.selectionHidden removeObject:@"confirm"];
 }
 
 #pragma mark - 数据源
@@ -81,16 +88,19 @@
                                                                     hidden:self.actionHidden.allObjects
                                                           fullscreenMarkup:self.previewMode.selectedSegmentIndex == 1];
     NSArray<NSString *> *tools = [PXEditorOrder visibleOrderForOrder:self.toolOrder hidden:self.toolHidden.allObjects];
-    NSArray<NSArray<NSString *> *> *groups = @[actions, tools];
+    NSArray<NSString *> *selection = [PXEditorOrder visibleSelectionOrderForOrder:self.selectionOrder
+                                                                          hidden:self.selectionHidden.allObjects
+                                                                         instant:NO];
+    NSArray<NSArray<NSString *> *> *groups = @[actions, tools, selection];
     CGFloat y = 58.0;
     CGFloat gap = 6.0;
     CGFloat padding = 12.0;
     NSInteger columns = MAX(1, MIN(7, (NSInteger)floor((contentWidth - 2 * padding + gap) / (44.0 + gap))));
     CGFloat side = floor((contentWidth - 2 * padding - (columns - 1) * gap) / columns);
     CGFloat iconSize = [PXEditorOrder buttonIconPointSize];
-    for (NSInteger section = 0; section < 2; section++) {
+    for (NSInteger section = 0; section < 3; section++) {
         UILabel *caption = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 22)];
-        caption.text = section == 0 ? @"编辑操作预览" : @"标记工具预览";
+        caption.text = section == 0 ? @"编辑操作预览" : (section == 1 ? @"标记工具预览" : @"截图按钮预览");
         caption.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
         caption.textColor = UIColor.secondaryLabelColor;
         [header addSubview:caption];
@@ -106,7 +116,8 @@
             NSString *identifier = order[i];
             NSString *name = [self displayNameForIdentifier:identifier section:section];
             NSString *symbol = section == 0 ? [PXEditorOrder iconNameForActionIdentifier:identifier]
-                                            : [PXEditorOrder iconNameForToolIdentifier:identifier];
+                                            : (section == 1 ? [PXEditorOrder iconNameForToolIdentifier:identifier]
+                                                            : [PXEditorOrder iconNameForSelectionIdentifier:identifier]);
             UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
             button.frame = CGRectMake(padding + (i % columns) * (side + gap),
                                       padding + (i / columns) * (side + gap), side, side);
@@ -131,7 +142,7 @@
         y += cardHeight + 14;
     }
     UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 0)];
-    note.text = @"拖动下方手柄排序，预览实时更新。两种模式共用排序；实际面板按可用宽度换行。";
+    note.text = @"拖动下方手柄排序，预览实时更新。两种模式共用排序；实际面板按可用宽度换行。截图按钮出现在区域选区工具栏，即时模式只显示 取消/全屏/完成。";
     note.font = [UIFont systemFontOfSize:12];
     note.textColor = UIColor.secondaryLabelColor;
     note.numberOfLines = 0;
@@ -143,18 +154,20 @@
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 3;
+    return 4;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return self.actionOrder.count;
     if (section == 1) return self.toolOrder.count;
+    if (section == 2) return self.selectionOrder.count;
     return 1;   // 外观：图标大小
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     if (section == 0) return @"编辑操作图标";
     if (section == 1) return @"标记工具图标";
+    if (section == 2) return @"截图按钮";
     return @"外观";
 }
 
@@ -163,13 +176,16 @@
         return @"拖动手柄调整顺序，开关控制按钮是否在编辑器显示，点击行可修改图标与名称；修改即时保存，编辑器下次打开生效。“关闭”和“完成”是编辑器唯一出口，始终显示；区域/冻结/即时编辑不含“面板停靠”和“收起面板”。";
     }
     if (section == 1) {
-        return @"排序、显隐与自定义图标/名称同时应用于区域编辑和全屏标记的工具面板；全部工具关闭时编辑器会回退为显示全部工具。";
+        return @"排序、显隐与自定义图标/名称同时应用于区域编辑和全屏标记的工具面板；全部工具关闭时编辑器会回退为显示全部工具。打开编辑器时默认选中排序后的第一个工具。";
+    }
+    if (section == 2) {
+        return @"区域/冻结截图选区工具栏的按钮排序与显隐；“取消”和“完成”始终显示，“悬浮”把选区结果以可拖动悬浮窗常驻屏幕。即时模式固定为 取消/全屏/完成。";
     }
     return @"调整编辑器按钮图标的显示大小。";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == 2) {
+    if (indexPath.section == 3) {
         return [self pxSliderCellForTableView:tableView];
     }
 
@@ -183,10 +199,13 @@
     NSString *identifier = [self identifierAtIndexPath:indexPath];
     NSString *displayName = [self displayNameForIdentifier:identifier section:indexPath.section];
     cell.textLabel.text = displayName;
-    cell.detailTextLabel.text = @"拖动右侧排序 · 点击修改图标";
+    // 截图按钮不支持自定义名称/图标：工具栏本体显示文字，点击行不进编辑页。
+    cell.detailTextLabel.text = indexPath.section == 2 ? @"拖动右侧排序" : @"拖动右侧排序 · 点击修改图标";
     NSString *iconName = indexPath.section == 0
         ? [PXEditorOrder iconNameForActionIdentifier:identifier]
-        : [PXEditorOrder iconNameForToolIdentifier:identifier];
+        : (indexPath.section == 1
+            ? [PXEditorOrder iconNameForToolIdentifier:identifier]
+            : [PXEditorOrder iconNameForSelectionIdentifier:identifier]);
     cell.imageView.image = iconName.length ? [UIImage systemImageNamed:iconName] : nil;
 
     UISwitch *toggle = (UISwitch *)cell.accessoryView;
@@ -198,8 +217,7 @@
     cell.editingAccessoryView = toggle;
     // 复用会换行，开关的无障碍名称必须每次随行重设。
     toggle.accessibilityLabel = [NSString stringWithFormat:@"显示%@", displayName ?: @""];
-    BOOL alwaysVisible = (indexPath.section == 0 && ([identifier isEqualToString:@"close"] ||
-                                                     [identifier isEqualToString:@"done"]));
+    BOOL alwaysVisible = [self isAlwaysVisibleIdentifier:identifier section:indexPath.section];
     toggle.on = ![self isHiddenIdentifier:identifier section:indexPath.section];
     toggle.enabled = !alwaysVisible;
     cell.showsReorderControl = YES;
@@ -231,24 +249,40 @@
 }
 
 - (NSString *)identifierAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 0 ? self.actionOrder[indexPath.row] : self.toolOrder[indexPath.row];
+    if (indexPath.section == 0) return self.actionOrder[indexPath.row];
+    if (indexPath.section == 1) return self.toolOrder[indexPath.row];
+    if (indexPath.section == 2) return self.selectionOrder[indexPath.row];
+    return @"";
 }
 
 - (NSString *)displayNameForIdentifier:(NSString *)identifier section:(NSInteger)section {
-    return section == 0
-        ? [PXEditorOrder displayNameForActionIdentifier:identifier]
-        : [PXEditorOrder displayNameForToolIdentifier:identifier];
+    if (section == 0) return [PXEditorOrder displayNameForActionIdentifier:identifier];
+    if (section == 1) return [PXEditorOrder displayNameForToolIdentifier:identifier];
+    return [PXEditorOrder displayNameForSelectionIdentifier:identifier];
+}
+
+- (NSMutableSet<NSString *> *)hiddenSetForSection:(NSInteger)section {
+    if (section == 0) return self.actionHidden;
+    if (section == 1) return self.toolHidden;
+    return self.selectionHidden;
 }
 
 - (BOOL)isHiddenIdentifier:(NSString *)identifier section:(NSInteger)section {
-    return [section == 0 ? self.actionHidden : self.toolHidden containsObject:identifier];
+    return [[self hiddenSetForSection:section] containsObject:identifier];
+}
+
+/// 出口按钮（编辑器 关闭/完成、选区 取消/完成）不提供隐藏开关。
+- (BOOL)isAlwaysVisibleIdentifier:(NSString *)identifier section:(NSInteger)section {
+    if (section == 0) return ([identifier isEqualToString:@"close"] || [identifier isEqualToString:@"done"]);
+    if (section == 2) return ([identifier isEqualToString:@"cancel"] || [identifier isEqualToString:@"confirm"]);
+    return NO;
 }
 
 #pragma mark - 行点击：编辑图标与名称
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:NO];
-    if (indexPath.section >= 2) return;
+    if (indexPath.section >= 2) return;   // 外观行与截图按钮（无自定义图标/名称）不进编辑页
     [self.view endEditing:YES];
 
     NSString *identifier = [self identifierAtIndexPath:indexPath];
@@ -297,9 +331,9 @@
     CGPoint point = [sender convertPoint:CGPointMake(CGRectGetMidX(sender.bounds), CGRectGetMidY(sender.bounds))
                                   toView:self.tableView];
     NSIndexPath *indexPath = [self.tableView indexPathForRowAtPoint:point];
-    if (!indexPath || indexPath.section >= 2) return;
+    if (!indexPath || indexPath.section >= 3) return;
     NSString *identifier = [self identifierAtIndexPath:indexPath];
-    NSMutableSet<NSString *> *hidden = indexPath.section == 0 ? self.actionHidden : self.toolHidden;
+    NSMutableSet<NSString *> *hidden = [self hiddenSetForSection:indexPath.section];
     if (sender.on) {
         [hidden removeObject:identifier];
     } else {
@@ -322,7 +356,7 @@
 #pragma mark - 拖动排序
 
 - (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section < 2;
+    return indexPath.section < 3;
 }
 
 // 只允许同分组内移动，跨组拖动落点无效。
@@ -336,8 +370,11 @@
 - (void)tableView:(UITableView *)tableView
     moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath
            toIndexPath:(NSIndexPath *)destinationIndexPath {
-    if (sourceIndexPath.section >= 2 || sourceIndexPath.section != destinationIndexPath.section) return;
-    NSMutableArray<NSString *> *order = sourceIndexPath.section == 0 ? self.actionOrder : self.toolOrder;
+    if (sourceIndexPath.section >= 3 || sourceIndexPath.section != destinationIndexPath.section) return;
+    NSMutableArray<NSString *> *order = nil;
+    if (sourceIndexPath.section == 0) order = self.actionOrder;
+    else if (sourceIndexPath.section == 1) order = self.toolOrder;
+    else order = self.selectionOrder;
     if (sourceIndexPath.row >= order.count || destinationIndexPath.row >= order.count) return;
     NSString *identifier = order[sourceIndexPath.row];
     [order removeObjectAtIndex:sourceIndexPath.row];
@@ -359,13 +396,17 @@
 - (void)pxPersistAll {
     [PXEditorOrder saveActionOrderString:[PXEditorOrder stringForOrder:self.actionOrder]];
     [PXEditorOrder saveToolOrderString:[PXEditorOrder stringForOrder:self.toolOrder]];
+    [PXEditorOrder saveSelectionOrderString:[PXEditorOrder stringForOrder:self.selectionOrder]];
     [PXEditorOrder saveActionHiddenString:[PXEditorOrder stringForOrder:self.actionHidden.allObjects]];
     [PXEditorOrder saveToolHiddenString:[PXEditorOrder stringForOrder:self.toolHidden.allObjects]];
-    PXLogInfo(@"prefs editor buttons saved: actions=%@ hidden=%@ tools=%@ hidden=%@",
+    [PXEditorOrder saveSelectionHiddenString:[PXEditorOrder stringForOrder:self.selectionHidden.allObjects]];
+    PXLogInfo(@"prefs editor buttons saved: actions=%@ hidden=%@ tools=%@ hidden=%@ selection=%@ hidden=%@",
               [PXEditorOrder stringForOrder:self.actionOrder],
               [PXEditorOrder stringForOrder:self.actionHidden.allObjects],
               [PXEditorOrder stringForOrder:self.toolOrder],
-              [PXEditorOrder stringForOrder:self.toolHidden.allObjects]);
+              [PXEditorOrder stringForOrder:self.toolHidden.allObjects],
+              [PXEditorOrder stringForOrder:self.selectionOrder],
+              [PXEditorOrder stringForOrder:self.selectionHidden.allObjects]);
 }
 
 - (void)pxResetTapped:(UIBarButtonItem *)sender {
@@ -377,8 +418,10 @@
                                             handler:^(UIAlertAction *action) {
         [PXEditorOrder saveActionOrderString:nil];
         [PXEditorOrder saveToolOrderString:nil];
+        [PXEditorOrder saveSelectionOrderString:nil];
         [PXEditorOrder saveActionHiddenString:nil];
         [PXEditorOrder saveToolHiddenString:nil];
+        [PXEditorOrder saveSelectionHiddenString:nil];
         for (NSString *identifier in [PXEditorOrder defaultActionIdentifiers]) {
             [PXEditorOrder saveActionName:nil forIdentifier:identifier];
             [PXEditorOrder saveActionIconName:nil forIdentifier:identifier];

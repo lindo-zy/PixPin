@@ -29,6 +29,16 @@
     return identifiers;
 }
 
++ (NSArray<NSString *> *)defaultSelectionIdentifiers {
+    static NSArray<NSString *> *identifiers;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        identifiers = @[@"cancel", @"selectall", @"editor", @"float",
+                        @"save", @"copy", @"confirm"];
+    });
+    return identifiers;
+}
+
 + (NSDictionary<NSString *, NSString *> *)actionDisplayNames {
     static NSDictionary<NSString *, NSString *> *names;
     static dispatch_once_t onceToken;
@@ -74,6 +84,21 @@
     return names;
 }
 
++ (NSDictionary<NSString *, NSString *> *)selectionDisplayNames {
+    static NSDictionary<NSString *, NSString *> *names;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        names = @{@"cancel": @"取消",
+                  @"selectall": @"全屏",
+                  @"editor": @"编辑",
+                  @"float": @"悬浮",
+                  @"save": @"保存",
+                  @"copy": @"复制",
+                  @"confirm": @"完成"};
+    });
+    return names;
+}
+
 + (NSString *)displayNameForActionIdentifier:(NSString *)identifier {
     NSString *custom = [self customNameForActionIdentifier:identifier];
     return custom.length > 0 ? custom : ([self actionDisplayNames][identifier] ?: identifier);
@@ -82,6 +107,10 @@
 + (NSString *)displayNameForToolIdentifier:(NSString *)identifier {
     NSString *custom = [self customNameForToolIdentifier:identifier];
     return custom.length > 0 ? custom : ([self toolDisplayNames][identifier] ?: identifier);
+}
+
++ (NSString *)displayNameForSelectionIdentifier:(NSString *)identifier {
+    return [self selectionDisplayNames][identifier] ?: identifier;
 }
 
 + (NSDictionary<NSString *, NSString *> *)actionIconNames {
@@ -137,6 +166,21 @@
 + (NSString *)iconNameForToolIdentifier:(NSString *)identifier {
     NSString *custom = [self customIconNameForToolIdentifier:identifier];
     return custom.length > 0 ? custom : [self toolIconNames][identifier];
+}
+
++ (NSString *)iconNameForSelectionIdentifier:(NSString *)identifier {
+    static NSDictionary<NSString *, NSString *> *icons;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        icons = @{@"cancel": @"xmark.circle",
+                  @"selectall": @"viewfinder",
+                  @"editor": @"pencil.and.outline",
+                  @"float": @"rectangle.on.rectangle",
+                  @"save": @"square.and.arrow.down",
+                  @"copy": @"doc.on.doc",
+                  @"confirm": @"checkmark.circle"};
+    });
+    return icons[identifier];
 }
 
 // MARK: 自定义名称/图标覆盖（id=值 CSV 字典）
@@ -279,6 +323,10 @@
     return [self resolvedOrderFromString:csv defaults:[self defaultToolIdentifiers]];
 }
 
++ (NSArray<NSString *> *)resolvedSelectionOrderFromString:(NSString *)csv {
+    return [self resolvedOrderFromString:csv defaults:[self defaultSelectionIdentifiers]];
+}
+
 + (NSArray<NSString *> *)resolvedOrderFromString:(NSString *)csv
                                         defaults:(NSArray<NSString *> *)defaults {
     NSMutableSet<NSString *> *known = [NSMutableSet setWithArray:defaults];
@@ -343,6 +391,27 @@
     return [visible copy];
 }
 
++ (NSArray<NSString *> *)visibleSelectionOrderForOrder:(NSArray<NSString *> *)order
+                                                hidden:(NSArray<NSString *> *)hidden
+                                               instant:(BOOL)instant {
+    // 取消/完成是选区交互的唯一出口，设置页开关对其禁用，这里再兜底。
+    NSMutableArray<NSString *> *effectiveHidden = [hidden mutableCopy];
+    [effectiveHidden removeObject:@"cancel"];
+    [effectiveHidden removeObject:@"confirm"];
+    NSMutableArray<NSString *> *visible =
+        [[self visibleOrderForOrder:order hidden:effectiveHidden] mutableCopy];
+    if (instant) {
+        // 即时模式保持历史行为：只保留 快速三键，其余按钮（含悬浮）不参与。
+        NSSet<NSString *> *allowed = [NSSet setWithArray:@[@"cancel", @"selectall", @"confirm"]];
+        [visible filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *identifier, NSDictionary *bindings) {
+            return [allowed containsObject:identifier];
+        }]];
+    }
+    if (![visible containsObject:@"cancel"]) [visible insertObject:@"cancel" atIndex:0];
+    if (![visible containsObject:@"confirm"]) [visible addObject:@"confirm"];
+    return [visible copy];
+}
+
 + (nullable NSString *)preferenceForKey:(NSString *)key {
     id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key,
                                                            (__bridge CFStringRef)PXPreferencesDomain));
@@ -360,6 +429,10 @@
     return [self resolvedToolOrderFromString:[self preferenceForKey:PXKeyEditorToolOrder]];
 }
 
++ (NSArray<NSString *> *)currentSelectionOrder {
+    return [self resolvedSelectionOrderFromString:[self preferenceForKey:PXKeySelectionButtonOrder]];
+}
+
 + (NSArray<NSString *> *)currentActionHidden {
     return [self normalizedHiddenFromString:[self preferenceForKey:PXKeyEditorActionHidden]
                                    defaults:[self defaultActionIdentifiers]];
@@ -368,6 +441,11 @@
 + (NSArray<NSString *> *)currentToolHidden {
     return [self normalizedHiddenFromString:[self preferenceForKey:PXKeyEditorToolHidden]
                                    defaults:[self defaultToolIdentifiers]];
+}
+
++ (NSArray<NSString *> *)currentSelectionHidden {
+    return [self normalizedHiddenFromString:[self preferenceForKey:PXKeySelectionButtonHidden]
+                                   defaults:[self defaultSelectionIdentifiers]];
 }
 
 + (void)saveActionOrderString:(NSString *)csv {
@@ -384,6 +462,13 @@
     CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
 }
 
++ (void)saveSelectionOrderString:(NSString *)csv {
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeySelectionButtonOrder,
+                             (__bridge CFStringRef)csv,
+                             (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
 + (void)saveActionHiddenString:(NSString *)csv {
     CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyEditorActionHidden,
                              (__bridge CFStringRef)csv,
@@ -393,6 +478,13 @@
 
 + (void)saveToolHiddenString:(NSString *)csv {
     CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyEditorToolHidden,
+                             (__bridge CFStringRef)csv,
+                             (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
++ (void)saveSelectionHiddenString:(NSString *)csv {
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeySelectionButtonHidden,
                              (__bridge CFStringRef)csv,
                              (__bridge CFStringRef)PXPreferencesDomain);
     CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);

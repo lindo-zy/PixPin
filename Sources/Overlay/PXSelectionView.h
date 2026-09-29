@@ -13,6 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
                  action:(PXOutputAction)action;
 - (void)selectionViewDidCancel:(PXSelectionView *)view;
 - (void)selectionViewDidRequestEditor:(PXSelectionView *)view displayRect:(CGRect)displayRect;
+/// 工具栏“悬浮”按钮：把选区裁剪结果以可拖动悬浮窗常驻屏幕（不执行输出动作）。
+- (void)selectionViewDidRequestFloat:(PXSelectionView *)view displayRect:(CGRect)displayRect;
 @end
 
 /// 区域/冻结/即时模式共用的选区交互层。

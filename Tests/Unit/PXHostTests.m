@@ -382,6 +382,40 @@ static void testEditorOverrides(void) {
     [PXEditorOrder saveButtonIconPointSize:17.0];
 }
 
+static void testSelectionOrder(void) {
+    printf("[selection order]\n");
+    NSArray<NSString *> *defaults = [PXEditorOrder defaultSelectionIdentifiers];
+    PXCheckInt(defaults.count, 7, "selection catalog count");
+    PXCheckInt([NSSet setWithArray:defaults].count, 7, "selection ids unique");
+    for (NSString *identifier in defaults) {
+        PXCheck([PXEditorOrder displayNameForSelectionIdentifier:identifier].length > 0, "selection display name");
+        PXCheck([PXEditorOrder iconNameForSelectionIdentifier:identifier].length > 0, "selection icon name");
+    }
+    PXCheck([[PXEditorOrder resolvedSelectionOrderFromString:nil] isEqualToArray:defaults], "nil csv -> defaults");
+    NSArray<NSString *> *reordered = [PXEditorOrder resolvedSelectionOrderFromString:@"float,save,bogus,cancel"];
+    PXCheck([reordered[0] isEqualToString:@"float"] && [reordered[1] isEqualToString:@"save"],
+            "selection reorder preserved, missing appended");
+
+    // 区域/冻结：自定义顺序 + 出口兜底（取消/完成不可隐藏，保持配置位置）。
+    NSArray<NSString *> *visible = [PXEditorOrder visibleSelectionOrderForOrder:reordered
+                                                                        hidden:@[@"float", @"cancel", @"confirm"]
+                                                                       instant:NO];
+    PXCheck(![visible containsObject:@"float"], "float hidable");
+    PXCheck([visible indexOfObject:@"cancel"] == 1, "cancel stays at configured position");
+    PXCheck([visible.lastObject isEqualToString:@"confirm"], "confirm stays at configured position");
+
+    // 即时模式：固定快速三键。
+    NSArray<NSString *> *instant = [PXEditorOrder visibleSelectionOrderForOrder:defaults hidden:nil instant:YES];
+    PXCheck(([[instant subarrayWithRange:NSMakeRange(0, 3)] isEqualToArray:@[@"cancel", @"selectall", @"confirm"]]),
+            "instant filtered to quick trio");
+    // 隐藏非出口键后即时模式只剩出口两键，仍不允许空工具栏。
+    NSArray<NSString *> *safe = [PXEditorOrder visibleSelectionOrderForOrder:defaults
+                                                                     hidden:@[@"selectall", @"cancel", @"confirm"]
+                                                                    instant:YES];
+    PXCheck(safe.count == 2 && [safe.firstObject isEqualToString:@"cancel"] &&
+            [safe.lastObject isEqualToString:@"confirm"], "instant exits always visible");
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
@@ -393,6 +427,7 @@ int main(int argc, const char **argv) {
         testSnapper3Aliases();
         testShellXAliases();
         testEditorOrder();
+        testSelectionOrder();
         testEditorOverrides();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
