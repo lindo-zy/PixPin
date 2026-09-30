@@ -124,7 +124,9 @@
         }
         PSSpecifier *color = [PSSpecifier preferenceSpecifierNamed:@"标记面板颜色与透明度"
             target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
-        color.buttonAction = @selector(pxChoosePanelColor:);
+        // 与 URL 行同由 didSelectRowAtIndexPath 分发：真机上系统按钮转发可能丢失动作，
+        // 且不注册第二条 buttonAction 路径，保证一次点击只打开一个选择器。
+        [color setProperty:@YES forKey:@"pxColorPicker"];
         [items insertObject:color atIndex:index];
         _specifiers = items;
     }
@@ -211,10 +213,20 @@
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    // specifierAtIndexPath: 是 Preferences 私有方法，缺失时回退系统转发，避免整页点击崩溃。
+    if (![self respondsToSelector:@selector(specifierAtIndexPath:)]) {
+        [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+        return;
+    }
     PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
     if ([[specifier propertyForKey:@"pxURL"] isKindOfClass:NSString.class]) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
         [self pxCopyAndRunURLScheme:specifier];
+        return;
+    }
+    if ([[specifier propertyForKey:@"pxColorPicker"] isKindOfClass:NSNumber.class]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        [self pxChoosePanelColor:specifier];
         return;
     }
     [super tableView:tableView didSelectRowAtIndexPath:indexPath];

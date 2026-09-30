@@ -114,6 +114,8 @@
         _messageLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
         _messageLabel.textColor = [UIColor whiteColor];
         _messageLabel.adjustsFontSizeToFitWidth = YES;
+        // 失败文案可能超过可用宽度（诊断优先），允许缩字而不是截断。
+        _messageLabel.minimumScaleFactor = 0.7;
         _messageLabel.text = @"截图完成";
         [self addSubview:_messageLabel];
 
