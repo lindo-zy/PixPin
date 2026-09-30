@@ -154,6 +154,7 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
 @property (nonatomic, strong) UIColor *currentColor;
 @property (nonatomic, assign) BOOL isExporting;
 @property (nonatomic, assign) BOOL isCropMode;
+@property (nonatomic, assign) CGFloat buttonIconSize;
 @end
 
 @implementation PXEditorViewController
@@ -172,6 +173,7 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.buttonIconSize = [PXEditorOrder buttonIconPointSize];
     self.view.backgroundColor = [UIColor blackColor];
     self.backdropView = [[UIImageView alloc] initWithImage:self.backdropImage ?: self.sourceImage];
     self.backdropView.contentMode = UIViewContentModeScaleAspectFill;
@@ -320,7 +322,7 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
                               action:(SEL)action {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     button.tintColor = [UIColor whiteColor];
-    CGFloat iconSize = [PXEditorOrder buttonIconPointSize];
+    CGFloat iconSize = self.buttonIconSize;
     UIImage *icon = [UIImage systemImageNamed:[PXEditorOrder iconNameForActionIdentifier:identifier]];
     if (icon) {
         UIImageSymbolConfiguration *configuration =
@@ -329,11 +331,11 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
     } else {
         NSString *a11y = [PXEditorOrder displayNameForActionIdentifier:identifier];
         [button setTitle:a11y forState:UIControlStateNormal];
-        button.titleLabel.font = [UIFont systemFontOfSize:10];
+        button.titleLabel.font = [UIFont systemFontOfSize:10 * self.buttonIconSize / 17.0];
         button.titleLabel.adjustsFontSizeToFitWidth = YES;
     }
     button.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.08];
-    button.layer.cornerRadius = 9.0;
+    button.layer.cornerRadius = 9.0 * self.buttonIconSize / 17.0;
     button.accessibilityLabel = [PXEditorOrder displayNameForActionIdentifier:identifier];
     [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     [self.topBar addSubview:button];
@@ -434,19 +436,19 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
         UIButton *tool = [UIButton buttonWithType:UIButtonTypeSystem];
         tool.tintColor = [UIColor whiteColor];
         tool.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
-        tool.layer.cornerRadius = 9.0;
+        tool.layer.cornerRadius = 9.0 * self.buttonIconSize / 17.0;
         tool.accessibilityLabel = self.tools[i].title;
         NSString *iconName = self.tools[i].iconName;
         UIImage *icon = iconName.length ? [UIImage systemImageNamed:iconName] : nil;
         if (icon) {
             UIImageSymbolConfiguration *configuration =
-                [UIImageSymbolConfiguration configurationWithPointSize:[PXEditorOrder buttonIconPointSize]
+                [UIImageSymbolConfiguration configurationWithPointSize:self.buttonIconSize
                                                                 weight:UIFontWeightMedium];
             [tool setImage:[icon imageWithConfiguration:configuration] forState:UIControlStateNormal];
         } else {
             // 符号缺失兜底：显示中文名
             [tool setTitle:self.tools[i].title forState:UIControlStateNormal];
-            tool.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+            tool.titleLabel.font = [UIFont systemFontOfSize:11 * self.buttonIconSize / 17.0 weight:UIFontWeightMedium];
         }
         [tool addTarget:self action:@selector(pxToolTapped:) forControlEvents:UIControlEventTouchUpInside];
         tool.tag = (NSInteger)i;
@@ -583,7 +585,7 @@ static UIImage *PXEditorSliderThumbImage(void) {
 }
 
 - (PXEditorGridLayout)pxToolLayoutForWidth:(CGFloat)width {
-    return PXEditorGridMake(width, [self pxGridItemCount], 8);
+    return PXEditorGridMakeScaled(width, [self pxGridItemCount], 8, self.buttonIconSize / 17.0);
 }
 
 - (CGFloat)pxPanelContentHeightForWidth:(CGFloat)width {
@@ -606,20 +608,21 @@ static UIImage *PXEditorSliderThumbImage(void) {
     CGFloat width = card.size.width;
     CGFloat height = card.size.height;
     CGFloat panelWidth = self.fullscreenMarkup ? MIN(600.0, width - safe.left - safe.right - 24.0) : width;
-    CGFloat topHeight = self.fullscreenMarkup ? 0.0 : PXEditorGridMake(width, self.actionButtons.count, 8).height + 14.0;
+    CGFloat buttonScale = self.buttonIconSize / 17.0;
+    PXEditorGridLayout actions = PXEditorGridMakeScaled(width, self.actionButtons.count, 8, buttonScale);
+    CGFloat topHeight = self.fullscreenMarkup ? 0.0 : actions.height + 14.0 * buttonScale;
     self.topBar.hidden = self.fullscreenMarkup;
     self.topBar.frame = CGRectMake(0, 0, width, topHeight);
-    PXEditorGridLayout actions = PXEditorGridMake(width, self.actionButtons.count, 8);
     if (!self.fullscreenMarkup) {
         for (NSUInteger i = 0; i < self.actionButtons.count; i++) {
-            self.actionButtons[i].frame = CGRectOffset(PXEditorGridFrame(actions, i), 0, 7);
+            self.actionButtons[i].frame = CGRectOffset(PXEditorGridFrame(actions, i), 0, 7 * buttonScale);
         }
     }
 
     CGFloat sliderSpace = PXEditorRowSliderHeight + PXEditorPanelRowGap;
     CGFloat wanted = PXEditorPanelPadTop + (self.fullscreenMarkup ? PXEditorPanelGripHeight : sliderSpace) +
         [self pxPanelContentHeightForWidth:panelWidth] + PXEditorPanelPadBottom;
-    // 矮屏和贴纸列表允许面板纵向滚动，始终保留画布；不缩小触控区域。
+    // 矮屏和贴纸列表允许面板纵向滚动，始终保留画布。
     CGFloat availableHeight = self.fullscreenMarkup ? height - safe.top - safe.bottom - 24.0 - sliderSpace : height - topHeight;
     CGFloat maximum = MAX(112.0, MIN(availableHeight * 0.55, availableHeight - 100.0));
     CGFloat panelHeight = self.isCropMode ? 76.0 : MIN(wanted, maximum);
@@ -720,9 +723,10 @@ static UIImage *PXEditorSliderThumbImage(void) {
 }
 
 - (void)pxLayoutCustomColorGradient {
-    self.customColorGradient.frame = CGRectInset(self.customColorButton.bounds, 2, 2);
+    CGFloat scale = self.buttonIconSize / 17.0;
+    self.customColorGradient.frame = CGRectInset(self.customColorButton.bounds, 2 * scale, 2 * scale);
     self.customColorGradient.cornerRadius = self.customColorGradient.bounds.size.width / 2.0;
-    self.customColorSwatch.frame = CGRectInset(self.customColorButton.bounds, 7, 7);
+    self.customColorSwatch.frame = CGRectInset(self.customColorButton.bounds, 7 * scale, 7 * scale);
     self.customColorSwatch.layer.cornerRadius = self.customColorSwatch.bounds.size.width / 2.0;
 }
 

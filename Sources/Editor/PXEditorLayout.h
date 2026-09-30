@@ -7,9 +7,14 @@ typedef struct {
     NSUInteger rows;
     CGFloat buttonWidth;
     CGFloat height;
+    CGFloat buttonHeight;
+    CGFloat gap;
+    CGFloat originX;
 } PXEditorGridLayout;
 
 PXEditorGridLayout PXEditorGridMake(CGFloat width, NSUInteger count, NSUInteger maximumColumns);
+// 17pt 图标对应 scale=1；按钮宽高和间距同比缩放，整组在可用宽度内居中。
+PXEditorGridLayout PXEditorGridMakeScaled(CGFloat width, NSUInteger count, NSUInteger maximumColumns, CGFloat scale);
 CGRect PXEditorGridFrame(PXEditorGridLayout layout, NSUInteger index);
 
 // 全屏标记在独立线宽条和浮动面板之外显示完整图片。

@@ -169,6 +169,31 @@ static void testEditorLayout(void) {
     PXCheckInt(PXEditorGridMake(351, 16, 8).rows, 2, "region tools fit in two rows on a narrow phone");
     PXCheckInt(PXEditorGridMake(369, 30, 8).rows, 4, "markup actions and tools fit in four rows");
     PXCheckInt(PXEditorGridMake(369, 0, 6).height, 0, "empty grid consumes no height");
+    for (NSNumber *widthValue in @[@296, @369, @600, @800]) {
+        CGFloat width = widthValue.doubleValue;
+        PXEditorGridLayout baseline = PXEditorGridMake(width, 30, 8);
+        for (NSNumber *iconSize in @[@6, @12, @17, @24]) {
+            CGFloat scale = iconSize.doubleValue / 17.0;
+            PXEditorGridLayout scaled = PXEditorGridMakeScaled(width, 30, 8, scale);
+            BOOL contained = YES, separated = YES;
+            for (NSUInteger i = 0; i < 30; i++) {
+                CGRect frame = PXEditorGridFrame(scaled, i);
+                contained &= CGRectContainsRect(CGRectMake(0, 0, width, scaled.height), frame);
+                for (NSUInteger j = 0; j < i; j++) {
+                    separated &= !CGRectIntersectsRect(frame, PXEditorGridFrame(scaled, j));
+                }
+            }
+            PXCheck(contained && separated, "scaled grid stays inside panel without overlapping controls");
+            if (scale <= 1.0) {
+                PXCheck(fabs(scaled.buttonWidth - baseline.buttonWidth * scale) < 0.001 &&
+                        fabs(scaled.buttonHeight - baseline.buttonHeight * scale) < 0.001 &&
+                        fabs(scaled.height - baseline.height * scale) < 0.001,
+                        "small icons shrink both button dimensions and occupied height proportionally");
+            }
+        }
+    }
+    PXCheckInt(PXEditorGridMakeScaled(369, 0, 8, 6.0 / 17.0).height, 0,
+               "empty scaled grid consumes no height");
     PXCheck(PXCaptureStateCanTransition(PXCaptureStateEditing, PXCaptureStateCancelling), "markup can cancel without export");
 
     // 用户选择“整图适屏”时，冻结整屏图应避开面板和独立线宽条。

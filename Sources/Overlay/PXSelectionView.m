@@ -29,6 +29,7 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
 @property (nonatomic, assign) CGRect dragStartRect;
 @property (nonatomic, assign) BOOL isInstantMode;
 @property (nonatomic, assign) PXCaptureMode mode;
+@property (nonatomic, assign) CGFloat buttonScale;
 @end
 
 @implementation PXSelectionView
@@ -125,6 +126,8 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     // 显示样式跟随设置页：图标加载失败自动回退文字，名称与图标均吃自定义覆盖。
     BOOL showIcon = [PXEditorOrder selectionShowsIcon];
     CGFloat iconPointSize = [PXEditorOrder buttonIconPointSize];
+    self.buttonScale = showIcon ? iconPointSize / 17.0 : 1.0;
+    _toolbar.layer.cornerRadius = 14.0 * self.buttonScale;
     NSMutableArray<UIView *> *stackViews = [[NSMutableArray alloc] init];
     for (NSString *identifier in order) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -145,7 +148,8 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
             [button setImage:icon forState:UIControlStateNormal];
         } else {
             [button setTitle:name forState:UIControlStateNormal];
-            button.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+            button.titleLabel.font = [UIFont systemFontOfSize:15 * self.buttonScale weight:UIFontWeightSemibold];
+            button.titleLabel.adjustsFontSizeToFitWidth = YES;
         }
         [button addTarget:self action:@selector(pxButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
         button.accessibilityIdentifier = identifier;
@@ -158,10 +162,10 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [_toolbar addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:_toolbar.topAnchor constant:2],
-        [stack.bottomAnchor constraintEqualToAnchor:_toolbar.bottomAnchor constant:-2],
-        [stack.leadingAnchor constraintEqualToAnchor:_toolbar.leadingAnchor constant:6],
-        [stack.trailingAnchor constraintEqualToAnchor:_toolbar.trailingAnchor constant:-6],
+        [stack.topAnchor constraintEqualToAnchor:_toolbar.topAnchor constant:2 * self.buttonScale],
+        [stack.bottomAnchor constraintEqualToAnchor:_toolbar.bottomAnchor constant:-2 * self.buttonScale],
+        [stack.leadingAnchor constraintEqualToAnchor:_toolbar.leadingAnchor constant:6 * self.buttonScale],
+        [stack.trailingAnchor constraintEqualToAnchor:_toolbar.trailingAnchor constant:-6 * self.buttonScale],
     ]];
 
     _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pxHandlePan:)];
@@ -235,10 +239,13 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     [super layoutSubviews];
 
     CGFloat safeBottom = self.safeAreaInsets.bottom;
-    CGFloat toolbarWidth = MIN(self.bounds.size.width - 24.0, self.buttons.count * 60.0 + 12.0);
+    CGFloat availableWidth = MAX(0.0, self.bounds.size.width - 24.0);
+    CGFloat toolbarWidth = MIN(availableWidth,
+        MIN(availableWidth, self.buttons.count * 60.0 + 12.0) * self.buttonScale);
+    CGFloat toolbarHeight = 46.0 * self.buttonScale;
     _toolbar.frame = CGRectMake((self.bounds.size.width - toolbarWidth) / 2.0,
-                                self.bounds.size.height - safeBottom - 58.0,
-                                toolbarWidth, 46.0);
+                                self.bounds.size.height - safeBottom - 12.0 - toolbarHeight,
+                                toolbarWidth, toolbarHeight);
     CGSize modeTextSize = [_modeLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, 28.0)];
     CGFloat modeLabelWidth = modeTextSize.width + 16.0;
     _modeLabel.frame = CGRectMake((self.bounds.size.width - modeLabelWidth) / 2.0,

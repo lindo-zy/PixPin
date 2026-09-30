@@ -98,10 +98,6 @@
                                                                          instant:NO];
     NSArray<NSArray<NSString *> *> *groups = @[actions, tools, selection];
     CGFloat y = 12.0;
-    CGFloat gap = 6.0;
-    CGFloat padding = 12.0;
-    NSInteger columns = MAX(1, MIN(7, (NSInteger)floor((contentWidth - 2 * padding + gap) / (44.0 + gap))));
-    CGFloat side = floor((contentWidth - 2 * padding - (columns - 1) * gap) / columns);
     CGFloat iconSize = [PXEditorOrder buttonIconPointSize];
     // 样式偏好整表读一次：预览重建由拖动/开关高频触发，避免每个按钮一次 CFPreferences 读取。
     BOOL selectionShowsIcon = [PXEditorOrder selectionShowsIcon];
@@ -115,11 +111,18 @@
         [header addSubview:caption];
         y += 28;
         NSArray<NSString *> *order = groups[section];
+        CGFloat scale = section == 2 && !selectionShowsIcon ? 1.0 : iconSize / 17.0;
+        CGFloat referenceWidth = contentWidth / MAX(1.0, scale);
+        CGFloat gap = 6.0 * scale;
+        CGFloat padding = 12.0 * scale;
+        NSInteger columns = MAX(1, MIN(7, (NSInteger)floor((referenceWidth - 24.0 + 6.0) / 50.0)));
+        CGFloat side = floor((referenceWidth - 24.0 - (columns - 1) * 6.0) / columns) * scale;
+        CGFloat originX = (contentWidth - columns * side - (columns - 1) * gap) / 2.0;
         NSInteger rows = (order.count + columns - 1) / columns;
         CGFloat cardHeight = padding * 2 + rows * side + MAX(0, rows - 1) * gap;
         UIView *card = [[UIView alloc] initWithFrame:CGRectMake(inset, y, contentWidth, cardHeight)];
         card.backgroundColor = [UIColor colorWithWhite:0.14 alpha:1.0];
-        card.layer.cornerRadius = 22.0;
+        card.layer.cornerRadius = 22.0 * scale;
         [header addSubview:card];
         for (NSUInteger i = 0; i < order.count; i++) {
             NSString *identifier = order[i];
@@ -128,10 +131,10 @@
                                             : (section == 1 ? [PXEditorOrder iconNameForToolIdentifier:identifier]
                                                             : [PXEditorOrder iconNameForSelectionIdentifier:identifier]);
             UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-            button.frame = CGRectMake(padding + (i % columns) * (side + gap),
+            button.frame = CGRectMake(originX + (i % columns) * (side + gap),
                                       padding + (i / columns) * (side + gap), side, side);
             button.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
-            button.layer.cornerRadius = 10.0;
+            button.layer.cornerRadius = 10.0 * scale;
             button.tintColor = UIColor.whiteColor;
             button.userInteractionEnabled = NO;
             button.accessibilityLabel = name;
@@ -145,7 +148,7 @@
                         forState:UIControlStateNormal];
             } else {
                 [button setTitle:name forState:UIControlStateNormal];
-                button.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+                button.titleLabel.font = [UIFont systemFontOfSize:11 * scale weight:UIFontWeightMedium];
                 button.titleLabel.adjustsFontSizeToFitWidth = YES;
             }
             [card addSubview:button];
