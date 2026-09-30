@@ -32,36 +32,6 @@
 			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>截图模式</string>
-			<key>footerText</key>
-			<string>关闭某个模式后，对应的入口将不产生任何动作。</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.pixpin.screenshot</string>
-			<key>key</key>
-			<string>FullscreenEnabled</string>
-			<key>label</key>
-			<string>全屏截图</string>
-			<key>PostNotification</key>
-			<string>com.pixpin.screenshot/preferences/reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.pixpin.screenshot</string>
-			<key>key</key>
-			<string>AreaEnabled</string>
-			<key>label</key>
-			<string>区域截图</string>
-			<key>PostNotification</key>
-			<string>com.pixpin.screenshot/preferences/reload</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -74,48 +44,6 @@
 			<string>AreaRememberLastRect</string>
 			<key>label</key>
 			<string>记住上次区域选区</string>
-			<key>PostNotification</key>
-			<string>com.pixpin.screenshot/preferences/reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.pixpin.screenshot</string>
-			<key>key</key>
-			<string>FreezeEnabled</string>
-			<key>label</key>
-			<string>冻结截图</string>
-			<key>PostNotification</key>
-			<string>com.pixpin.screenshot/preferences/reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.pixpin.screenshot</string>
-			<key>key</key>
-			<string>InstantEnabled</string>
-			<key>label</key>
-			<string>即时区域截图</string>
-			<key>PostNotification</key>
-			<string>com.pixpin.screenshot/preferences/reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.pixpin.screenshot</string>
-			<key>key</key>
-			<string>MarkupEnabled</string>
-			<key>label</key>
-			<string>全屏标记</string>
 			<key>PostNotification</key>
 			<string>com.pixpin.screenshot/preferences/reload</string>
 		</dict>

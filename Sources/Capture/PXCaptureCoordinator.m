@@ -119,8 +119,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }
 
     PXConfig *config = PXPreferences.config;
-    if (![PXPreferences modeEnabled:mode config:config]) {
-        PXLogInfo(@"mode %@ disabled, request ignored", PXStringFromCaptureMode(mode));
+    if (!config.enabled) {
+        PXLogInfo(@"PixPin disabled, request ignored (%@)", PXStringFromCaptureMode(mode));
         return;
     }
 

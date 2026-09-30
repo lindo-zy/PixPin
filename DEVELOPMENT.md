@@ -539,10 +539,6 @@ preparing/capturing/presenting/editing/exporting
 
 ```text
 Enabled
-FullscreenEnabled
-AreaEnabled
-FreezeEnabled
-InstantEnabled
 DefaultResultAction
 AutoSaveToPhotos
 CopyToClipboard

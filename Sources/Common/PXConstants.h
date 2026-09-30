@@ -45,11 +45,6 @@ FOUNDATION_EXPORT NSString * const PXNotificationResultUpdated; // com.pixpin.sc
 // MARK: - 偏好键（集中定义）
 
 FOUNDATION_EXPORT NSString * const PXKeyEnabled;
-FOUNDATION_EXPORT NSString * const PXKeyFullscreenEnabled;
-FOUNDATION_EXPORT NSString * const PXKeyAreaEnabled;
-FOUNDATION_EXPORT NSString * const PXKeyFreezeEnabled;
-FOUNDATION_EXPORT NSString * const PXKeyInstantEnabled;
-FOUNDATION_EXPORT NSString * const PXKeyMarkupEnabled;
 FOUNDATION_EXPORT NSString * const PXKeyDefaultResultAction;
 FOUNDATION_EXPORT NSString * const PXKeyAutoSaveToPhotos;
 FOUNDATION_EXPORT NSString * const PXKeyCopyToClipboard;

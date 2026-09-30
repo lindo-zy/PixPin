@@ -27,11 +27,6 @@ CFStringRef const PXDarwinShellXClose = CFSTR("com.iosdump.screenshotshell.close
 NSString * const PXNotificationResultUpdated = @"com.pixpin.screenshot/result/updated";
 
 NSString * const PXKeyEnabled = @"Enabled";
-NSString * const PXKeyFullscreenEnabled = @"FullscreenEnabled";
-NSString * const PXKeyAreaEnabled = @"AreaEnabled";
-NSString * const PXKeyFreezeEnabled = @"FreezeEnabled";
-NSString * const PXKeyInstantEnabled = @"InstantEnabled";
-NSString * const PXKeyMarkupEnabled = @"MarkupEnabled";
 NSString * const PXKeyDefaultResultAction = @"DefaultResultAction";
 NSString * const PXKeyAutoSaveToPhotos = @"AutoSaveToPhotos";
 NSString * const PXKeyCopyToClipboard = @"CopyToClipboard";

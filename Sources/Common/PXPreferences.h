@@ -7,11 +7,6 @@ NS_ASSUME_NONNULL_BEGIN
 @interface PXConfig : NSObject
 
 @property (nonatomic, readonly) BOOL enabled;
-@property (nonatomic, readonly) BOOL fullscreenEnabled;
-@property (nonatomic, readonly) BOOL areaEnabled;
-@property (nonatomic, readonly) BOOL freezeEnabled;
-@property (nonatomic, readonly) BOOL instantEnabled;
-@property (nonatomic, readonly) BOOL markupEnabled;
 @property (nonatomic, readonly) PXOutputAction defaultResultAction;
 @property (nonatomic, readonly) BOOL showResultBubble;
 @property (nonatomic, readonly) BOOL screenshotHaptic;
@@ -29,9 +24,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// 重新从 CFPreferences 读取全部键，原子替换当前快照。
 + (void)reload;
-
-/// 指定模式的独立开关（含总开关短路）。
-+ (BOOL)modeEnabled:(PXCaptureMode)mode config:(nullable PXConfig *)cfg;
 
 @end
 
