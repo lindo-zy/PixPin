@@ -21,11 +21,12 @@
 
 // 三个入口共用行交互，sectionKinds 只列出当前页面实际拥有的分组。
 // kind：0=编辑操作 1=标记工具 2=截图按钮 3=外观滑杆 4=截图按钮显示样式。
+// 外观滑杆三页都保留：所有按钮图标共用一个大小，任意页面均可滑动调整。
 - (BOOL)pxFullscreen { return NO; }
 - (BOOL)pxRegion { return NO; }
 - (NSArray<NSNumber *> *)pxSectionKinds {
-    if ([self pxRegion]) return @[@2, @4];
-    return [self pxFullscreen] ? @[@0, @1] : @[@0, @1, @3];
+    if ([self pxRegion]) return @[@2, @4, @3];
+    return @[@0, @1, @3];
 }
 - (NSInteger)pxKindForSection:(NSInteger)section {
     return [self pxSectionKinds][section].integerValue;
@@ -157,8 +158,8 @@
     }
     UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 0)];
     note.text = [self pxRegion]
-        ? @"拖动手柄排序，开关控制区域选区按钮显隐，点击行修改名称与图标，“显示样式”切换 图标/文字。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏、完成。"
-        : ([self pxFullscreen] ? @"仅设置全屏标记面板的按钮顺序与显隐，与区域截图和普通图片编辑相互独立。修改即时保存，下次打开生效。"
+        ? @"拖动手柄排序，开关控制区域选区按钮显隐，点击行修改名称与图标，“显示样式”切换 图标/文字。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏、完成。图标大小与编辑器共用。"
+        : ([self pxFullscreen] ? @"仅设置全屏标记面板的按钮顺序与显隐，与区域截图和普通图片编辑相互独立；图标大小三处共用，可在任一按钮设置页调整。修改即时保存，下次打开生效。"
                               : @"设置普通图片编辑的按钮顺序与显隐；名称、图标和大小仍与全屏标记共用。修改即时保存，下次打开生效。");
     note.font = [UIFont systemFontOfSize:12];
     note.textColor = UIColor.secondaryLabelColor;
@@ -205,7 +206,7 @@
     if (section == 4) {
         return @"开启后选区工具栏显示图标，关闭显示文字，下次打开截图生效；名称与图标修改对两种样式都有效。";
     }
-    return @"调整编辑器按钮图标的显示大小。";
+    return @"调整按钮图标的显示大小，三个按钮设置页共用同一数值；区域截图在文字样式下不生效。";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
