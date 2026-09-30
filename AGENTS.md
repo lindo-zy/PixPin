@@ -144,8 +144,8 @@ git diff
 
 ## 6. 编译和打包
 
-只能使用项目已有的构建脚本，比如build_roothide.sh，不要自己去执行打包编译。
-打包编译失败需要定位分析解决。
+- 打包编译只能使用项目下的构建脚本（本项目为根目录 `build.sh`），不要自己去执行打包编译。
+- 打包编译失败需要定位分析解决。
 
 ## 7. 发布前审查
 
@@ -173,4 +173,9 @@ git diff
 ```
 
 ## 8. 完成标准
-每次完成后，提交commit，但是不要上库。
+
+开发完成后按以下顺序收尾：
+
+1. 提交 commit（本地提交，不要 push 上库）。
+2. 归档 deb 到 iCloud 云盘：执行 `~/dev/scripts/deb-to-icloud.sh PixPin <打包生成的 deb...>`，按 `Downloads/PixPin/ios16|ios17` 分类归档，旧版本保留不删除。
+3. 同步坚果云：执行 `python3 ~/dev/github/TypeX/webdav-sync.py PixPin`（脚本与 TypeX 共用，增量同步 iCloud 归档到坚果云 WebDAV，凭据在 `~/.netrc`，不含明文密码），同步后确认对账一致。
