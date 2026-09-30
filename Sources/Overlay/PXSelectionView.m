@@ -156,17 +156,41 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         [_buttons addObject:button];
         [stackViews addObject:button];
     }
+    // 按钮之间插入白色竖线分隔：竖线定宽且上下留边，按钮保持等宽分摊剩余空间。
+    NSArray<UIView *> *buttonViews = [stackViews copy];
+    for (NSUInteger idx = buttonViews.count; idx > 1; idx--) {
+        UIView *separator = [[UIView alloc] init];
+        separator.translatesAutoresizingMaskIntoConstraints = NO;
+        separator.userInteractionEnabled = NO;
+        UIView *line = [[UIView alloc] init];
+        line.backgroundColor = [UIColor whiteColor];
+        line.translatesAutoresizingMaskIntoConstraints = NO;
+        line.userInteractionEnabled = NO;
+        [separator addSubview:line];
+        [NSLayoutConstraint activateConstraints:@[
+            [separator.widthAnchor constraintEqualToConstant:1.0 * self.buttonScale],
+            [line.topAnchor constraintEqualToAnchor:separator.topAnchor constant:10.0 * self.buttonScale],
+            [line.bottomAnchor constraintEqualToAnchor:separator.bottomAnchor constant:-10.0 * self.buttonScale],
+            [line.centerXAnchor constraintEqualToAnchor:separator.centerXAnchor],
+            [line.widthAnchor constraintEqualToConstant:1.0 * self.buttonScale],
+        ]];
+        [stackViews insertObject:separator atIndex:idx - 1];
+    }
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:stackViews];
     stack.axis = UILayoutConstraintAxisHorizontal;
-    stack.distribution = UIStackViewDistributionFillEqually;
+    stack.distribution = UIStackViewDistributionFill;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [_toolbar addSubview:stack];
-    [NSLayoutConstraint activateConstraints:@[
+    NSMutableArray<NSLayoutConstraint *> *stackConstraints = [[NSMutableArray alloc] initWithArray:@[
         [stack.topAnchor constraintEqualToAnchor:_toolbar.topAnchor constant:2 * self.buttonScale],
         [stack.bottomAnchor constraintEqualToAnchor:_toolbar.bottomAnchor constant:-2 * self.buttonScale],
         [stack.leadingAnchor constraintEqualToAnchor:_toolbar.leadingAnchor constant:6 * self.buttonScale],
         [stack.trailingAnchor constraintEqualToAnchor:_toolbar.trailingAnchor constant:-6 * self.buttonScale],
     ]];
+    for (NSUInteger idx = 1; idx < buttonViews.count; idx++) {
+        [stackConstraints addObject:[buttonViews[idx].widthAnchor constraintEqualToAnchor:buttonViews[0].widthAnchor]];
+    }
+    [NSLayoutConstraint activateConstraints:stackConstraints];
 
     _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pxHandlePan:)];
     _panGesture.delegate = self;
