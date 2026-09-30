@@ -60,7 +60,7 @@
 			<string>com.pixpin.screenshot</string>
 			<key>key</key>
 			<string>DefaultResultAction</string>
-			<key>title</key>
+			<key>label</key>
 			<string>默认结果动作</string>
 			<key>default</key>
 			<integer>0</integer>
