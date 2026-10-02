@@ -994,11 +994,19 @@ typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
 }
 
 - (void)pxUndoTapped:(UIButton *)sender {
+    // 裁剪模式先放弃未应用裁剪再撤销：撤销会换底图，其几何回调在裁剪模式中被跳过，
+    // 画布将滞留旧几何，且遗留裁剪框坐标会作用在被换掉的底图上裁出错位区域。
+    if (self.isCropMode) {
+        [self pxExitCropModeApply:NO];
+    }
     [self.canvas undo];
     [self pxRefreshButtons];
 }
 
 - (void)pxRedoTapped:(UIButton *)sender {
+    if (self.isCropMode) {
+        [self pxExitCropModeApply:NO];
+    }
     [self.canvas redo];
     [self pxRefreshButtons];
 }
@@ -1127,7 +1135,9 @@ typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
     // 表情行显隐由 pxLayoutBottomPanel 按 selectedToolIndex 统一恢复。
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
-    // viewDidLayoutSubviews 仅按退出裁剪模式后的最终视口适配新底图。
+    // applyCrop 的几何回调在裁剪模式中被跳过，新底图的适配不能依赖 viewDidLayoutSubviews
+    // （其重排以 scrollView frame 变化为前提，裁剪前后视口一致时不触发，会滞留旧几何）。
+    [self pxRelayoutZoomContainer];
     [self pxRefreshButtons];
 }
 
