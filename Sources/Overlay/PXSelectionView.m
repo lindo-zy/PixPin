@@ -1,5 +1,7 @@
 #import "PXSelectionView.h"
 #import "../Common/PXEditorOrder.h"
+#import "../Common/PXSelectionToolbar.h"
+#import "../Common/PXLog.h"
 
 static const CGFloat PXSelectionMinimumSize = 44.0;   // 点；过小选区会产出无意义的细条裁剪
 static const CGFloat PXHandleHitRadius = 36.0;
@@ -18,8 +20,7 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
 @property (nonatomic, strong) NSMutableArray<UIView *> *handles;
 @property (nonatomic, strong) UILabel *sizeLabel;
 @property (nonatomic, strong) UILabel *modeLabel;
-@property (nonatomic, strong) UIView *toolbar;
-@property (nonatomic, strong) NSMutableArray<UIButton *> *buttons;
+@property (nonatomic, strong) PXSelectionToolbar *toolbar;
 @property (nonatomic, strong) UIPanGestureRecognizer *panGesture;
 
 @property (nonatomic, assign) CGRect selectionRect;
@@ -29,7 +30,6 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
 @property (nonatomic, assign) CGRect dragStartRect;
 @property (nonatomic, assign) BOOL isInstantMode;
 @property (nonatomic, assign) PXCaptureMode mode;
-@property (nonatomic, assign) CGFloat buttonScale;
 @end
 
 @implementation PXSelectionView
@@ -112,85 +112,19 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     [_modeLabel sizeToFit];
     [self addSubview:_modeLabel];
 
-    _toolbar = [[UIView alloc] init];
-    _toolbar.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.78];
-    _toolbar.layer.cornerRadius = 14.0;
-    _toolbar.clipsToBounds = YES;
-    [self addSubview:_toolbar];
-
-    _buttons = [[NSMutableArray alloc] init];
-    // 按钮目录化：顺序与显隐来自设置页（PXEditorOrder），即时模式过滤为快速三键。
+    // 顺序、显隐、外观在打开时取快照；与设置预览共用同一工具栏布局。
     NSArray<NSString *> *order = [PXEditorOrder visibleSelectionOrderForOrder:[PXEditorOrder currentSelectionOrder]
                                                                       hidden:[PXEditorOrder currentSelectionHidden]
                                                                      instant:_isInstantMode];
-    // 显示样式跟随设置页：图标加载失败自动回退文字，名称与图标均吃自定义覆盖。
-    BOOL showIcon = [PXEditorOrder selectionShowsIcon];
+    PXSelectionButtonStyle style = [PXEditorOrder selectionButtonStyle];
     CGFloat iconPointSize = [PXEditorOrder buttonIconPointSize];
-    self.buttonScale = iconPointSize / 17.0;
-    _toolbar.layer.cornerRadius = 14.0 * self.buttonScale;
-    NSMutableArray<UIView *> *stackViews = [[NSMutableArray alloc] init];
-    for (NSString *identifier in order) {
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        button.tintColor = [UIColor whiteColor];
-        NSString *name = [PXEditorOrder displayNameForSelectionIdentifier:identifier];
-        button.accessibilityLabel = name;
-        UIImage *icon = nil;
-        if (showIcon) {
-            NSString *symbol = [PXEditorOrder iconNameForSelectionIdentifier:identifier];
-            icon = symbol.length ? [UIImage systemImageNamed:symbol] : nil;
-            if (icon) {
-                icon = [icon imageWithConfiguration:
-                    [UIImageSymbolConfiguration configurationWithPointSize:iconPointSize
-                                                                    weight:UIImageSymbolWeightMedium]];
-            }
-        }
-        if (icon) {
-            [button setImage:icon forState:UIControlStateNormal];
-        } else {
-            [button setTitle:name forState:UIControlStateNormal];
-            button.titleLabel.font = [UIFont systemFontOfSize:15 * self.buttonScale weight:UIFontWeightSemibold];
-            button.titleLabel.adjustsFontSizeToFitWidth = YES;
-        }
+    _toolbar = [[PXSelectionToolbar alloc] initWithIdentifiers:order style:style iconPointSize:iconPointSize];
+    for (UIButton *button in _toolbar.buttons) {
         [button addTarget:self action:@selector(pxButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
-        button.accessibilityIdentifier = identifier;
-        [_buttons addObject:button];
-        [stackViews addObject:button];
     }
-    // 按钮之间插入白色竖线分隔：竖线定宽且上下留边，按钮保持等宽分摊剩余空间。
-    NSArray<UIView *> *buttonViews = [stackViews copy];
-    for (NSUInteger idx = buttonViews.count; idx > 1; idx--) {
-        UIView *separator = [[UIView alloc] init];
-        separator.translatesAutoresizingMaskIntoConstraints = NO;
-        separator.userInteractionEnabled = NO;
-        UIView *line = [[UIView alloc] init];
-        line.backgroundColor = [UIColor whiteColor];
-        line.translatesAutoresizingMaskIntoConstraints = NO;
-        line.userInteractionEnabled = NO;
-        [separator addSubview:line];
-        [NSLayoutConstraint activateConstraints:@[
-            [separator.widthAnchor constraintEqualToConstant:1.0 * self.buttonScale],
-            [line.topAnchor constraintEqualToAnchor:separator.topAnchor constant:10.0 * self.buttonScale],
-            [line.bottomAnchor constraintEqualToAnchor:separator.bottomAnchor constant:-10.0 * self.buttonScale],
-            [line.centerXAnchor constraintEqualToAnchor:separator.centerXAnchor],
-            [line.widthAnchor constraintEqualToConstant:1.0 * self.buttonScale],
-        ]];
-        [stackViews insertObject:separator atIndex:idx - 1];
-    }
-    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:stackViews];
-    stack.axis = UILayoutConstraintAxisHorizontal;
-    stack.distribution = UIStackViewDistributionFill;
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [_toolbar addSubview:stack];
-    NSMutableArray<NSLayoutConstraint *> *stackConstraints = [[NSMutableArray alloc] initWithArray:@[
-        [stack.topAnchor constraintEqualToAnchor:_toolbar.topAnchor constant:2 * self.buttonScale],
-        [stack.bottomAnchor constraintEqualToAnchor:_toolbar.bottomAnchor constant:-2 * self.buttonScale],
-        [stack.leadingAnchor constraintEqualToAnchor:_toolbar.leadingAnchor constant:6 * self.buttonScale],
-        [stack.trailingAnchor constraintEqualToAnchor:_toolbar.trailingAnchor constant:-6 * self.buttonScale],
-    ]];
-    for (NSUInteger idx = 1; idx < buttonViews.count; idx++) {
-        [stackConstraints addObject:[buttonViews[idx].widthAnchor constraintEqualToAnchor:buttonViews[0].widthAnchor]];
-    }
-    [NSLayoutConstraint activateConstraints:stackConstraints];
+    [self addSubview:_toolbar];
+    PXLogInfo(@"selection toolbar built: style=%ld size=%.1f buttons=%lu", (long)style,
+              iconPointSize, (unsigned long)order.count);
 
     _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pxHandlePan:)];
     _panGesture.delegate = self;
@@ -264,9 +198,8 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
 
     CGFloat safeBottom = self.safeAreaInsets.bottom;
     CGFloat availableWidth = MAX(0.0, self.bounds.size.width - 24.0);
-    CGFloat toolbarWidth = MIN(availableWidth,
-        MIN(availableWidth, self.buttons.count * 60.0 + 12.0) * self.buttonScale);
-    CGFloat toolbarHeight = 46.0 * self.buttonScale;
+    CGFloat toolbarWidth = [self.toolbar preferredWidthForAvailableWidth:availableWidth];
+    CGFloat toolbarHeight = self.toolbar.preferredHeight;
     _toolbar.frame = CGRectMake((self.bounds.size.width - toolbarWidth) / 2.0,
                                 self.bounds.size.height - safeBottom - 12.0 - toolbarHeight,
                                 toolbarWidth, toolbarHeight);

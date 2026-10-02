@@ -472,12 +472,23 @@ static void testSelectionOverrides(void) {
     PXCheck([[PXEditorOrder displayNameForSelectionIdentifier:identifier] isEqualToString:@"编辑"], "selection name override cleared");
     PXCheck([[PXEditorOrder iconNameForSelectionIdentifier:identifier] isEqualToString:@"pencil.and.outline"], "selection icon override cleared");
 
-    // 显示样式：默认图标（与设置页预览一致），可切文字再切回。
-    PXCheck([PXEditorOrder selectionShowsIcon], "selection icon style defaults to icon");
-    [PXEditorOrder saveSelectionShowsIcon:NO];
-    PXCheck(![PXEditorOrder selectionShowsIcon], "selection icon style switched to text");
-    [PXEditorOrder saveSelectionShowsIcon:YES];
-    PXCheck([PXEditorOrder selectionShowsIcon], "selection icon style switched back");
+    // 旧布尔配置必须原样保留，新增值 2 不能被当作 YES 丢失图文样式。
+    PXCheckInt([PXEditorOrder selectionButtonStyle], PXSelectionButtonStyleIcon, "selection style defaults to icon");
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeySelectionButtonIconStyle, kCFBooleanFalse, domain);
+    PXCheckInt([PXEditorOrder selectionButtonStyle], PXSelectionButtonStyleText, "legacy false remains text");
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeySelectionButtonIconStyle, kCFBooleanTrue, domain);
+    PXCheckInt([PXEditorOrder selectionButtonStyle], PXSelectionButtonStyleIcon, "legacy true remains icon");
+    [PXEditorOrder saveSelectionButtonStyle:PXSelectionButtonStyleIconAndText];
+    PXCheckInt([PXEditorOrder selectionButtonStyle], PXSelectionButtonStyleIconAndText, "icon and text persisted distinctly");
+    [PXEditorOrder saveSelectionButtonStyle:PXSelectionButtonStyleText];
+    PXCheckInt([PXEditorOrder selectionButtonStyle], PXSelectionButtonStyleText, "combined style can switch to text");
+    [PXEditorOrder saveSelectionButtonStyle:PXSelectionButtonStyleIcon];
+    PXCheckInt([PXEditorOrder selectionButtonStyle], PXSelectionButtonStyleIcon, "selection style reset to icon");
+    for (id invalid in @[@(-1), @3, @1.5, @"2"]) {
+        CFPreferencesSetAppValue((__bridge CFStringRef)PXKeySelectionButtonIconStyle,
+                                 (__bridge CFTypeRef)invalid, domain);
+        PXCheckInt([PXEditorOrder selectionButtonStyle], PXSelectionButtonStyleIcon, "invalid stored style defaults to icon");
+    }
 
     for (NSString *key in keys) {
         id value = backup[key];

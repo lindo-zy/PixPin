@@ -2,6 +2,13 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// 数值沿用旧 SelectionButtonIconStyle 布尔配置：0=文字，1=图标。
+typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
+    PXSelectionButtonStyleText = 0,
+    PXSelectionButtonStyleIcon = 1,
+    PXSelectionButtonStyleIconAndText = 2,
+};
+
 /// 编辑器按钮目录与顺序解析：主 tweak、设置包、宿主测试三方共用。
 /// 顺序偏好以 CSV 存储；解析策略固定：未知剔除、重复只保留首次、缺失按默认顺序补尾。
 /// 读取与写入直接走 CFPreferences（编辑器每次打开解析一次，遵循"新配置从下一个任务生效"）。
@@ -25,7 +32,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// 均为"自定义覆盖优先，缺省回目录默认"；自定义符号失效时由调用方回退显示名称。
 + (NSString *)iconNameForActionIdentifier:(NSString *)identifier;
 + (NSString *)iconNameForToolIdentifier:(NSString *)identifier;
-/// 选区按钮符号：目录默认 + 自定义覆盖合并；仅在"图标显示"样式下渲染到工具栏，设置页条目始终展示。
+/// 选区按钮符号：目录默认 + 自定义覆盖合并；图标及图标＋文字样式使用，设置页条目始终展示。
 + (NSString *)iconNameForSelectionIdentifier:(NSString *)identifier;
 
 /// 目录默认符号（不含覆盖），供编辑页展示"默认"项。
@@ -52,13 +59,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 // MARK: 截图按钮外观
 
-/// 选区工具栏按钮显示样式：YES=图标（默认，与设置页预览一致），NO=文字。
-+ (BOOL)selectionShowsIcon;
-+ (void)saveSelectionShowsIcon:(BOOL)showIcon;
+/// 默认图标；兼容旧布尔配置，无效值回退默认。工具栏与设置预览使用同一枚举。
++ (PXSelectionButtonStyle)selectionButtonStyle;
++ (void)saveSelectionButtonStyle:(PXSelectionButtonStyle)style;
 
 // MARK: 外观
 
-/// 共用按钮图标点大小；区域截图文字按钮也按此比例缩放。默认 17，夹取 10–20。
+/// 共用按钮图标点大小；区域截图三种样式的图标、文字和布局均按此比例缩放。默认 17，夹取 10–20。
 + (CGFloat)buttonIconPointSize;
 + (void)saveButtonIconPointSize:(CGFloat)size;
 

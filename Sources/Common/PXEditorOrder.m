@@ -349,16 +349,24 @@
 
 // MARK: 截图按钮外观
 
-+ (BOOL)selectionShowsIcon {
++ (PXSelectionButtonStyle)selectionButtonStyle {
     id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)PXKeySelectionButtonIconStyle,
                                                            (__bridge CFStringRef)PXPreferencesDomain));
-    if ([value isKindOfClass:[NSNumber class]]) return [(NSNumber *)value boolValue];
-    return YES;   // 默认图标：与设置页预览一致；存过非数字值同样按默认处理。
+    if ([value isKindOfClass:[NSNumber class]]) {
+        for (NSNumber *style in @[@(PXSelectionButtonStyleText), @(PXSelectionButtonStyleIcon),
+                                  @(PXSelectionButtonStyleIconAndText)]) {
+            if ([(NSNumber *)value isEqualToNumber:style]) return style.integerValue;
+        }
+    }
+    return PXSelectionButtonStyleIcon;
 }
 
-+ (void)saveSelectionShowsIcon:(BOOL)showIcon {
++ (void)saveSelectionButtonStyle:(PXSelectionButtonStyle)style {
+    if (style < PXSelectionButtonStyleText || style > PXSelectionButtonStyleIconAndText) {
+        style = PXSelectionButtonStyleIcon;
+    }
     CFPreferencesSetAppValue((__bridge CFStringRef)PXKeySelectionButtonIconStyle,
-                             (__bridge CFTypeRef)@(showIcon),
+                             (__bridge CFTypeRef)@(style),
                              (__bridge CFStringRef)PXPreferencesDomain);
     CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
 }

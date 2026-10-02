@@ -13,6 +13,7 @@ PixPinPrefs_FILES = PXRootListController.m \
 	../Sources/Common/PXConstants.m \
 	../Sources/Common/PXPanelAppearance.m \
 	../Sources/Common/PXEditorOrder.m \
+	../Sources/Common/PXSelectionToolbar.m \
 	../Sources/Common/PXLog.m \
 	../Sources/Common/PXExternalRequest.m
 

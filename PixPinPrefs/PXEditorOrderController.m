@@ -2,6 +2,7 @@
 #import "PXEditorButtonEditController.h"
 #import "../Sources/Common/PXConstants.h"
 #import "../Sources/Common/PXEditorOrder.h"
+#import "../Sources/Common/PXSelectionToolbar.h"
 #import "../Sources/Common/PXLog.h"
 
 @interface PXEditorOrderController () <UITableViewDataSource, UITableViewDelegate>
@@ -30,6 +31,16 @@
 }
 - (NSInteger)pxKindForSection:(NSInteger)section {
     return [self pxSectionKinds][section].integerValue;
+}
+
+- (NSArray<NSNumber *> *)pxSelectionStyles {
+    return @[@(PXSelectionButtonStyleIcon), @(PXSelectionButtonStyleText), @(PXSelectionButtonStyleIconAndText)];
+}
+
+- (NSString *)pxTitleForSelectionStyle:(PXSelectionButtonStyle)style {
+    if (style == PXSelectionButtonStyleText) return @"文字";
+    if (style == PXSelectionButtonStyleIconAndText) return @"图标＋文字";
+    return @"图标";
 }
 
 - (void)loadView {
@@ -103,7 +114,7 @@
     CGFloat y = 12.0;
     CGFloat iconSize = [PXEditorOrder buttonIconPointSize];
     // 样式偏好整表读一次：预览重建由拖动/开关高频触发，避免每个按钮一次 CFPreferences 读取。
-    BOOL selectionShowsIcon = [PXEditorOrder selectionShowsIcon];
+    PXSelectionButtonStyle selectionStyle = [PXEditorOrder selectionButtonStyle];
     for (NSNumber *kind in [self pxSectionKinds]) {
         NSInteger section = kind.integerValue;
         if (section == 3 || section == 4) continue;
@@ -114,6 +125,19 @@
         [header addSubview:caption];
         y += 28;
         NSArray<NSString *> *order = groups[section];
+        if (section == 2) {
+            // 直接展示实际工具栏：图文排列、分隔线及大小调整与截图界面一致。
+            PXSelectionToolbar *toolbar = [[PXSelectionToolbar alloc] initWithIdentifiers:order
+                style:selectionStyle iconPointSize:iconSize];
+            CGFloat toolbarWidth = [toolbar preferredWidthForAvailableWidth:contentWidth];
+            toolbar.frame = CGRectMake(inset + (contentWidth - toolbarWidth) / 2.0, y,
+                                       toolbarWidth, toolbar.preferredHeight);
+            toolbar.userInteractionEnabled = NO;
+            for (UIButton *button in toolbar.buttons) button.accessibilityTraits = UIAccessibilityTraitImage;
+            [header addSubview:toolbar];
+            y += toolbar.preferredHeight + 14.0;
+            continue;
+        }
         CGFloat scale = iconSize / 17.0;
         CGFloat referenceWidth = contentWidth / MAX(1.0, scale);
         CGFloat gap = 6.0 * scale;
@@ -142,9 +166,7 @@
             button.userInteractionEnabled = NO;
             button.accessibilityLabel = name;
             button.accessibilityTraits = UIAccessibilityTraitImage;
-            // 截图按钮预览跟随"以图标显示"开关，文字模式下直接渲染名称。
-            BOOL showIcon = section != 2 || selectionShowsIcon;
-            UIImage *icon = showIcon && symbol.length ? [UIImage systemImageNamed:symbol] : nil;
+            UIImage *icon = symbol.length ? [UIImage systemImageNamed:symbol] : nil;
             if (icon) {
                 [button setImage:[icon imageWithConfiguration:
                     [UIImageSymbolConfiguration configurationWithPointSize:iconSize weight:UIImageSymbolWeightMedium]]
@@ -160,7 +182,7 @@
     }
     UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 0)];
     note.text = [self pxRegion]
-        ? @"拖动手柄排序，开关控制区域选区按钮显隐，点击行修改名称与图标，“显示样式”切换 图标/文字。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏、完成。图标大小与编辑器共用。"
+        ? @"拖动手柄排序，开关控制区域选区按钮显隐，点击行修改名称与图标。“显示样式”可选图标、文字、图标＋文字（上图下字），预览与大小调整同步。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏、完成。大小与编辑器共用。"
         : ([self pxFullscreen] ? @"仅设置全屏标记面板的按钮顺序与显隐，与区域截图和普通图片编辑相互独立；图标大小三处共用，可在任一按钮设置页调整。修改即时保存，下次打开生效。"
                               : @"设置普通图片编辑的按钮顺序与显隐；名称、图标和大小仍与全屏标记共用。修改即时保存，下次打开生效。");
     note.font = [UIFont systemFontOfSize:12];
@@ -182,6 +204,7 @@
     if (section == 0) return self.actionOrder.count;
     if (section == 1) return self.toolOrder.count;
     if (section == 2) return self.selectionOrder.count;
+    if (section == 4) return [self pxSelectionStyles].count;
     return 1;   // 外观：图标大小
 }
 
@@ -206,9 +229,9 @@
         return @"区域/冻结截图选区工具栏的按钮排序与显隐；“取消”和“完成”始终显示，“悬浮”把选区结果以可拖动悬浮窗常驻屏幕。即时模式仅显示 取消/全屏/完成。点击行可修改名称与图标。";
     }
     if (section == 4) {
-        return @"开启后选区工具栏显示图标，关闭显示文字，下次打开截图生效；名称与图标修改对两种样式都有效。";
+        return @"可选图标、文字、图标＋文字；图标＋文字采用上图下字。预览即时更新，下次打开截图生效；三种样式均支持自定义名称和大小调整。";
     }
-    return @"大小范围为 10–20pt，三个按钮设置页共用同一数值；区域截图的图标和文字按钮都会随大小调整。";
+    return @"大小范围为 10–20pt，三个按钮设置页共用同一数值；区域截图三种样式的图标、文字、间距和工具栏尺寸同步调整。";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -217,7 +240,7 @@
         return [self pxSliderCellForTableView:tableView];
     }
     if (kind == 4) {
-        return [self pxIconStyleCellForTableView:tableView];
+        return [self pxStyleCellForTableView:tableView indexPath:indexPath];
     }
 
     NSString *reuse = @"PXEditorOrderCell";
@@ -259,7 +282,6 @@
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:reuse];
-        cell.textLabel.text = @"按钮图标大小";
         UISlider *slider = [[UISlider alloc] initWithFrame:CGRectMake(0, 0, 150, 31)];
         slider.minimumValue = 10.0;
         slider.maximumValue = 20.0;
@@ -268,6 +290,7 @@
         self.sizeValueLabel = cell.detailTextLabel;
     }
     UISlider *slider = (UISlider *)cell.accessoryView;
+    cell.textLabel.text = [self pxRegion] ? @"按钮大小" : @"按钮图标大小";
     cell.editingAccessoryView = slider;
     CGFloat size = [PXEditorOrder buttonIconPointSize];
     if (slider.value != size) slider.value = size;   // 拖动中重入时避免打断
@@ -278,24 +301,19 @@
     return cell;
 }
 
-// 截图按钮显示样式行：开关即保存，预览即时跟随。
-- (UITableViewCell *)pxIconStyleCellForTableView:(UITableView *)tableView {
-    NSString *reuse = @"PXEditorIconStyleCell";
+// 三种显示样式以单选行展示，兼容排序页的 editingAccessoryType。
+- (UITableViewCell *)pxStyleCellForTableView:(UITableView *)tableView indexPath:(NSIndexPath *)indexPath {
+    NSString *reuse = @"PXEditorSelectionStyleCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
     if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:reuse];
-        cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-        UISwitch *toggle = [[UISwitch alloc] init];
-        [toggle addTarget:self action:@selector(pxIconStyleChanged:) forControlEvents:UIControlEventValueChanged];
-        cell.accessoryView = toggle;
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:reuse];
     }
-    UISwitch *toggle = (UISwitch *)cell.accessoryView;
-    cell.editingAccessoryView = toggle;
-    cell.textLabel.text = @"以图标显示";
-    BOOL showIcon = [PXEditorOrder selectionShowsIcon];
-    if (toggle.on != showIcon) toggle.on = showIcon;
-    toggle.accessibilityLabel = @"以图标显示截图按钮";
-    cell.detailTextLabel.text = showIcon ? @"图标" : @"文字";
+    PXSelectionButtonStyle style = [self pxSelectionStyles][indexPath.row].integerValue;
+    BOOL selected = style == [PXEditorOrder selectionButtonStyle];
+    cell.textLabel.text = [self pxTitleForSelectionStyle:style];
+    cell.accessoryType = selected ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    cell.editingAccessoryType = cell.accessoryType;
+    cell.accessibilityTraits = UIAccessibilityTraitButton | (selected ? UIAccessibilityTraitSelected : 0);
     cell.showsReorderControl = NO;
     return cell;
 }
@@ -342,6 +360,15 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:NO];
     NSInteger kind = [self pxKindForSection:indexPath.section];
+    if (kind == 4) {
+        PXSelectionButtonStyle style = [self pxSelectionStyles][indexPath.row].integerValue;
+        [PXEditorOrder saveSelectionButtonStyle:style];
+        [tableView reloadSections:[NSIndexSet indexSetWithIndex:indexPath.section]
+                 withRowAnimation:UITableViewRowAnimationNone];
+        [self pxRefreshPreview];
+        PXLogInfo(@"prefs selection button style saved: %ld", (long)style);
+        return;
+    }
     // 外观/样式行与全屏标记页（名称图标共用普通编辑配置）不进编辑页。
     if (kind >= 3 || [self pxFullscreen]) return;
     [self.view endEditing:YES];
@@ -425,20 +452,6 @@
     [self pxRefreshPreview];
 }
 
-// 截图按钮 图标/文字 显示切换：即时保存并刷新预览，工具栏下次打开生效。
-- (void)pxIconStyleChanged:(UISwitch *)sender {
-    [PXEditorOrder saveSelectionShowsIcon:sender.on];
-    CGPoint point = [sender convertPoint:CGPointMake(CGRectGetMidX(sender.bounds), CGRectGetMidY(sender.bounds))
-                                  toView:self.tableView];
-    NSIndexPath *indexPath = [self.tableView indexPathForRowAtPoint:point];
-    if (indexPath) {
-        UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:indexPath];
-        cell.detailTextLabel.text = sender.on ? @"图标" : @"文字";
-    }
-    [self pxRefreshPreview];
-    PXLogInfo(@"prefs selection icon style saved: %@", sender.on ? @"icon" : @"text");
-}
-
 #pragma mark - 拖动排序
 
 - (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -509,7 +522,7 @@
                 [PXEditorOrder saveSelectionName:nil forIdentifier:identifier];
                 [PXEditorOrder saveSelectionIconName:nil forIdentifier:identifier];
             }
-            [PXEditorOrder saveSelectionShowsIcon:YES];
+            [PXEditorOrder saveSelectionButtonStyle:PXSelectionButtonStyleIcon];
         } else {
             [PXEditorOrder saveActionOrderString:nil fullscreenMarkup:[self pxFullscreen]];
             [PXEditorOrder saveToolOrderString:nil fullscreenMarkup:[self pxFullscreen]];
