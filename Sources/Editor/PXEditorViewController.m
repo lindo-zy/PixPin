@@ -15,6 +15,7 @@ static const CGFloat PXEditorRowSliderHeight = 44.0;
 static const CGFloat PXEditorPanelPadTop = 10.0;
 static const CGFloat PXEditorPanelPadBottom = 12.0;
 static const CGFloat PXEditorPanelRowGap = 8.0;
+static const CGFloat PXEditorPanelSideMargin = 52.0;   // 全屏标记：网格两侧让出的留白带，四角键居中其中
 static const CGFloat PXEditorCropRowHeight = 48.0;
 static const CGFloat PXEditorPanelGripHeight = 24.0;
 static const CGFloat PXEditorCollapsedHandleWidth = 48.0;
@@ -107,6 +108,7 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
 @property (nonatomic, strong) UIScrollView *panelScrollView;
 @property (nonatomic, copy) NSArray<PXEditorTool *> *tools;   // 按设置页排序后的展示顺序
 @property (nonatomic, strong) NSArray<UIButton *> *actionButtons;
+@property (nonatomic, strong) NSArray<UIButton *> *cornerActionButtons;   // 全屏标记：固定四角键（关闭/撤销/完成）
 @property (nonatomic, strong) UIButton *saveButton;
 @property (nonatomic, strong) UIButton *fitButton;
 @property (nonatomic, strong) UIButton *dockButton;
@@ -139,7 +141,7 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
 @property (nonatomic, strong) UISlider *widthSlider;
 @property (nonatomic, strong) UIView *toolGrid;
 @property (nonatomic, strong) NSMutableArray<UIButton *> *toolButtons;
-@property (nonatomic, strong) UIButton *customColorButton;      // 彩虹环取色钮（网格右侧）
+@property (nonatomic, strong) UIButton *customColorButton;      // 彩虹环取色钮（全屏标记下面板右上角键；普通编辑器仍是网格项）
 @property (nonatomic, strong) CAGradientLayer *customColorGradient;
 @property (nonatomic, strong) UIView *customColorSwatch;        // 环心：显示当前画笔色
 @property (nonatomic, strong) UIScrollView *stickerRow;
@@ -295,7 +297,12 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
     }
     self.actionButtons = buttons;
     if (self.fullscreenMarkup) {
-        for (UIButton *button in self.actionButtons) [self.toolGrid addSubview:button];
+        NSArray<UIButton *> *corner = self.cornerActionButtons ?: @[];
+        // 四角键不进网格：关闭/撤销/完成固定在面板四角（见 pxInstallCornerKeys）。
+        for (UIButton *button in self.actionButtons) {
+            if ([corner containsObject:button]) continue;
+            [self.toolGrid addSubview:button];
+        }
     }
 }
 
@@ -522,7 +529,29 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
     [_cropApplyButton addTarget:self action:@selector(pxCropApplyTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_cropRow addSubview:_cropApplyButton];
 
+    if (self.fullscreenMarkup) {
+        [self pxInstallCornerKeys];
+    }
     [self pxApplyFrostedBackgrounds];
+}
+
+/// 全屏标记四角键：左上关闭、右上取色、左下撤销、右下完成，固定于面板两侧留白带，
+/// 不占网格项。关闭/完成是编辑器唯一出口无条件常驻；撤销尊重设置页显隐偏好，
+/// 被隐藏时不占左下角（与旧版“隐藏后不出现”口径一致）。
+- (void)pxInstallCornerKeys {
+    NSMutableArray<UIButton *> *keys = [NSMutableArray arrayWithObjects:self.closeButton, self.doneButton, nil];
+    NSArray<NSString *> *hiddenActions = [PXEditorOrder currentActionHiddenForFullscreenMarkup:self.fullscreenMarkup];
+    if (![hiddenActions containsObject:@"undo"]) {
+        [keys insertObject:self.undoButton atIndex:1];
+    }
+    self.cornerActionButtons = keys;
+    for (UIButton *key in self.cornerActionButtons) {
+        [key removeFromSuperview];
+        key.backgroundColor = nil;   // 参考布局：四角键无底色，只留图标
+        [self.bottomPanel addSubview:key];
+    }
+    [_customColorButton removeFromSuperview];
+    [self.bottomPanel addSubview:_customColorButton];
 }
 
 /// 背景单独使用透明磨砂，按钮、图标和滑杆保持不透明。
@@ -581,11 +610,18 @@ static UIImage *PXEditorSliderThumbImage(void) {
 #pragma mark - 布局
 
 - (NSUInteger)pxGridItemCount {
-    return self.toolButtons.count + 1 + (self.fullscreenMarkup ? self.actionButtons.count : 0);
+    if (!self.fullscreenMarkup) return self.toolButtons.count + 1;
+    NSUInteger cornerInActions = 0;
+    for (UIButton *button in self.actionButtons) {
+        if ([self.cornerActionButtons containsObject:button]) cornerInActions++;
+    }
+    return self.toolButtons.count + self.actionButtons.count - cornerInActions;
 }
 
 - (PXEditorGridLayout)pxToolLayoutForWidth:(CGFloat)width {
-    return PXEditorGridMakeScaled(width, [self pxGridItemCount], 8, self.buttonIconSize / 17.0);
+    // 全屏标记：网格在缩窄后的宽度内重排列数，两侧留白带给四角键。
+    CGFloat layoutWidth = self.fullscreenMarkup ? width - 2.0 * PXEditorPanelSideMargin : width;
+    return PXEditorGridMakeScaled(layoutWidth, [self pxGridItemCount], 8, self.buttonIconSize / 17.0);
 }
 
 - (CGFloat)pxPanelContentHeightForWidth:(CGFloat)width {
@@ -693,11 +729,22 @@ static UIImage *PXEditorSliderThumbImage(void) {
     self.toolGrid.frame = CGRectMake(0, 0, width, layout.height);
     NSMutableArray<UIView *> *items = [NSMutableArray array];
     [items addObjectsFromArray:self.toolButtons];
-    [items addObject:self.customColorButton];
-    if (self.fullscreenMarkup) [items addObjectsFromArray:self.actionButtons];
+    if (self.fullscreenMarkup) {
+        // 四角键与取色钮不占网格项。
+        for (UIButton *button in self.actionButtons) {
+            if ([self.cornerActionButtons containsObject:button]) continue;
+            [items addObject:button];
+        }
+    } else {
+        [items addObject:self.customColorButton];
+    }
+    CGFloat gridOffsetX = self.fullscreenMarkup ? PXEditorPanelSideMargin : 0.0;
     for (NSUInteger i = 0; i < items.count; i++) {
-        CGRect frame = PXEditorGridFrame(layout, i);
+        CGRect frame = CGRectOffset(PXEditorGridFrame(layout, i), gridOffsetX, 0.0);
         items[i].frame = frame;
+    }
+    if (self.fullscreenMarkup) {
+        [self pxLayoutCornerKeysWithLayout:layout gridY:gridY];
     }
     BOOL sticker = self.tools[self.selectedToolIndex].type == PXAnnotationTypeSticker;
     self.stickerRow.hidden = !sticker || self.isCropMode;
@@ -715,6 +762,25 @@ static UIImage *PXEditorSliderThumbImage(void) {
     [self pxLayoutCustomColorGradient];
 }
 
+/// 四角键定位：上排对齐网格第 1 行中心，下排对齐工具网格最后一行（内容超高被面板
+/// 截断时对齐视口底部行槽）；横向居中于「面板边缘→网格」的留白带。裁剪模式隐藏。
+- (void)pxLayoutCornerKeysWithLayout:(PXEditorGridLayout)layout gridY:(CGFloat)gridY {
+    if (self.cornerActionButtons.count == 0) return;
+    CGFloat keySize = layout.buttonWidth;
+    CGFloat band = (PXEditorPanelSideMargin + layout.originX) / 2.0;
+    CGFloat panelWidth = self.bottomPanel.bounds.size.width;
+    CGFloat gridVisibleHeight = MIN(layout.height, self.panelScrollView.bounds.size.height);
+    CGFloat topCenterY = gridY + layout.buttonHeight / 2.0;
+    CGFloat bottomCenterY = gridY + gridVisibleHeight - layout.buttonHeight / 2.0;
+    self.closeButton.frame = CGRectMake(band - keySize / 2.0, topCenterY - keySize / 2.0, keySize, keySize);
+    self.customColorButton.frame = CGRectMake(panelWidth - band - keySize / 2.0, topCenterY - keySize / 2.0, keySize, keySize);
+    self.undoButton.frame = CGRectMake(band - keySize / 2.0, bottomCenterY - keySize / 2.0, keySize, keySize);
+    self.doneButton.frame = CGRectMake(panelWidth - band - keySize / 2.0, bottomCenterY - keySize / 2.0, keySize, keySize);
+    BOOL hidden = self.isCropMode;
+    for (UIButton *key in self.cornerActionButtons) key.hidden = hidden;
+    self.customColorButton.hidden = hidden;
+}
+
 - (void)pxLayoutWidthRow {
     CGFloat width = self.widthRow.bounds.size.width;
     self.minWidthIcon.frame = CGRectMake(16, 11, 22, 22);
@@ -724,9 +790,12 @@ static UIImage *PXEditorSliderThumbImage(void) {
 
 - (void)pxLayoutCustomColorGradient {
     CGFloat scale = self.buttonIconSize / 17.0;
-    self.customColorGradient.frame = CGRectInset(self.customColorButton.bounds, 2 * scale, 2 * scale);
+    // 全屏标记下取色钮是四角键：环与环心收小，接近参考图的外径/键宽比例。
+    CGFloat ringInset = (self.fullscreenMarkup ? 5.0 : 2.0) * scale;
+    CGFloat swatchInset = (self.fullscreenMarkup ? 10.0 : 7.0) * scale;
+    self.customColorGradient.frame = CGRectInset(self.customColorButton.bounds, ringInset, ringInset);
     self.customColorGradient.cornerRadius = self.customColorGradient.bounds.size.width / 2.0;
-    self.customColorSwatch.frame = CGRectInset(self.customColorButton.bounds, 7 * scale, 7 * scale);
+    self.customColorSwatch.frame = CGRectInset(self.customColorButton.bounds, swatchInset, swatchInset);
     self.customColorSwatch.layer.cornerRadius = self.customColorSwatch.bounds.size.width / 2.0;
 }
 
