@@ -114,7 +114,7 @@
         [header addSubview:caption];
         y += 28;
         NSArray<NSString *> *order = groups[section];
-        CGFloat scale = section == 2 && !selectionShowsIcon ? 1.0 : iconSize / 17.0;
+        CGFloat scale = iconSize / 17.0;
         CGFloat referenceWidth = contentWidth / MAX(1.0, scale);
         CGFloat gap = 6.0 * scale;
         CGFloat padding = 12.0 * scale;
@@ -208,7 +208,7 @@
     if (section == 4) {
         return @"开启后选区工具栏显示图标，关闭显示文字，下次打开截图生效；名称与图标修改对两种样式都有效。";
     }
-    return @"调整按钮图标的显示大小，三个按钮设置页共用同一数值；区域截图在文字样式下不生效。";
+    return @"大小范围为 10–20pt，三个按钮设置页共用同一数值；区域截图的图标和文字按钮都会随大小调整。";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -261,8 +261,8 @@
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:reuse];
         cell.textLabel.text = @"按钮图标大小";
         UISlider *slider = [[UISlider alloc] initWithFrame:CGRectMake(0, 0, 150, 31)];
-        slider.minimumValue = 6.0;
-        slider.maximumValue = 24.0;
+        slider.minimumValue = 10.0;
+        slider.maximumValue = 20.0;
         [slider addTarget:self action:@selector(pxIconSizeChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = slider;
         self.sizeValueLabel = cell.detailTextLabel;
@@ -419,7 +419,7 @@
 #pragma mark - 图标大小
 
 - (void)pxIconSizeChanged:(UISlider *)sender {
-    CGFloat size = MAX(6.0, MIN(24.0, sender.value));
+    CGFloat size = MAX(10.0, MIN(20.0, sender.value));
     [PXEditorOrder saveButtonIconPointSize:size];
     self.sizeValueLabel.text = [NSString stringWithFormat:@"%.0fpt", size];
     [self pxRefreshPreview];

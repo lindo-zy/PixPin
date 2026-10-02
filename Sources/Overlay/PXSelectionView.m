@@ -126,7 +126,7 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     // 显示样式跟随设置页：图标加载失败自动回退文字，名称与图标均吃自定义覆盖。
     BOOL showIcon = [PXEditorOrder selectionShowsIcon];
     CGFloat iconPointSize = [PXEditorOrder buttonIconPointSize];
-    self.buttonScale = showIcon ? iconPointSize / 17.0 : 1.0;
+    self.buttonScale = iconPointSize / 17.0;
     _toolbar.layer.cornerRadius = 14.0 * self.buttonScale;
     NSMutableArray<UIView *> *stackViews = [[NSMutableArray alloc] init];
     for (NSString *identifier in order) {

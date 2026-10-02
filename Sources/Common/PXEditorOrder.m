@@ -322,13 +322,13 @@
     id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)PXKeyEditorButtonIconSize,
                                                            (__bridge CFStringRef)PXPreferencesDomain));
     if ([value isKindOfClass:[NSNumber class]]) {
-        return MAX(6.0, MIN(24.0, [(NSNumber *)value doubleValue]));
+        return MAX(10.0, MIN(20.0, [(NSNumber *)value doubleValue]));
     }
     return 17.0;
 }
 
 + (void)saveButtonIconPointSize:(CGFloat)size {
-    NSNumber *number = @(MAX(6.0, MIN(24.0, size)));
+    NSNumber *number = @(MAX(10.0, MIN(20.0, size)));
     CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyEditorButtonIconSize,
                              (__bridge CFTypeRef)number,
                              (__bridge CFStringRef)PXPreferencesDomain);

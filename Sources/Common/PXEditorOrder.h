@@ -58,7 +58,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // MARK: 外观
 
-/// 编辑器按钮图标点大小（操作与工具通用），默认 17，夹取 6–24。
+/// 共用按钮图标点大小；区域截图文字按钮也按此比例缩放。默认 17，夹取 10–20。
 + (CGFloat)buttonIconPointSize;
 + (void)saveButtonIconPointSize:(CGFloat)size;
 
