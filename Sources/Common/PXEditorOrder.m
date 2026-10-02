@@ -430,7 +430,9 @@
     [effectiveHidden removeObject:@"close"];
     [effectiveHidden removeObject:@"done"];
     NSMutableArray<NSString *> *visible = [[self visibleOrderForOrder:order hidden:effectiveHidden] mutableCopy];
-    if (!fullscreenMarkup) {
+    if (fullscreenMarkup) {
+        [visible removeObject:@"crop"];
+    } else {
         [visible removeObject:@"dock"];
         [visible removeObject:@"collapse"];
     }

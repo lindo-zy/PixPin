@@ -21,12 +21,12 @@
 
 // 三个入口共用行交互，sectionKinds 只列出当前页面实际拥有的分组。
 // kind：0=编辑操作 1=标记工具 2=截图按钮 3=外观滑杆 4=截图按钮显示样式。
-// 外观滑杆三页都保留：所有按钮图标共用一个大小，任意页面均可滑动调整。
+// 外观滑杆三页都放在预览下方：所有按钮图标共用一个大小，任意页面均可滑动调整。
 - (BOOL)pxFullscreen { return NO; }
 - (BOOL)pxRegion { return NO; }
 - (NSArray<NSNumber *> *)pxSectionKinds {
-    if ([self pxRegion]) return @[@2, @4, @3];
-    return @[@0, @1, @3];
+    if ([self pxRegion]) return @[@3, @2, @4];
+    return @[@3, @0, @1];
 }
 - (NSInteger)pxKindForSection:(NSInteger)section {
     return [self pxSectionKinds][section].integerValue;
@@ -62,7 +62,9 @@
 - (void)pxReloadFromPreferences {
     self.actionOrder = [[PXEditorOrder currentActionOrderForFullscreenMarkup:[self pxFullscreen]] mutableCopy];
     self.toolOrder = [[PXEditorOrder currentToolOrderForFullscreenMarkup:[self pxFullscreen]] mutableCopy];
-    if (![self pxFullscreen]) {
+    if ([self pxFullscreen]) {
+        [self.actionOrder removeObject:@"crop"];
+    } else {
         [self.actionOrder removeObject:@"dock"];
         [self.actionOrder removeObject:@"collapse"];
     }
@@ -345,7 +347,7 @@
     [self.view endEditing:YES];
 
     NSString *identifier = [self identifierAtIndexPath:indexPath];
-    // 按目录 kind 分流，不能按 indexPath.section：区域页首个 section 就是截图按钮。
+    // 按目录 kind 分流，不能按 indexPath.section：外观组在首位，按钮分组因页面而异。
     BOOL isAction = kind == 0;
     BOOL isSelection = kind == 2;
     NSString *defaultIcon = isAction
