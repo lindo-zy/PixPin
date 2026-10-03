@@ -1242,8 +1242,8 @@ typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
     PXLogInfo(@"markup handle origin restored (%.0f, %.0f)", origin.x, origin.y);
 }
 
-/// 把手边缘流光：锥形渐变被 2pt 圆环遮罩裁成一圈，绕中心匀速旋转即成流光。
-/// 把手尺寸恒定（48x48），渐变层与遮罩路径在创建时一次性定型，无需随布局重算。
+/// 把手边缘流光：锥形彩色光谱被 2pt 圆环遮罩裁成一圈，绕中心匀速旋转即成彩色流光。
+/// 光谱首尾同色衔接，旋转一圈无接缝；把手尺寸恒定（48x48），渐变层与遮罩路径创建时一次定型。
 - (void)pxBuildHandleGlow {
     CAGradientLayer *glow = [CAGradientLayer layer];
     CGFloat side = PXEditorCollapsedHandleWidth;
@@ -1251,12 +1251,26 @@ typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
     glow.type = kCAGradientLayerConic;
     glow.startPoint = CGPointMake(0.5, 0.5);
     glow.endPoint = CGPointMake(0.5, 0.0);
-    UIColor *dim = [[PXPanelAppearance tintColor] colorWithAlphaComponent:0.30];
-    UIColor *bright = [UIColor colorWithWhite:1.0 alpha:0.95];
-    glow.colors = @[(__bridge id)dim.CGColor, (__bridge id)dim.CGColor,
-                    (__bridge id)bright.CGColor, (__bridge id)dim.CGColor,
-                    (__bridge id)dim.CGColor];
-    glow.locations = @[@0.0, @0.40, @0.50, @0.60, @1.0];
+    // 红橙黄绿青蓝紫等分光谱，alpha 统一 0.9：整圈着色且不压过把手中心图标。
+    NSArray<UIColor *> *spectrum = @[
+        [UIColor colorWithRed:1.00 green:0.30 blue:0.35 alpha:0.90],
+        [UIColor colorWithRed:1.00 green:0.62 blue:0.20 alpha:0.90],
+        [UIColor colorWithRed:1.00 green:0.85 blue:0.25 alpha:0.90],
+        [UIColor colorWithRed:0.35 green:0.90 blue:0.45 alpha:0.90],
+        [UIColor colorWithRed:0.25 green:0.80 blue:1.00 alpha:0.90],
+        [UIColor colorWithRed:0.35 green:0.50 blue:1.00 alpha:0.90],
+        [UIColor colorWithRed:0.75 green:0.40 blue:1.00 alpha:0.90],
+    ];
+    // 末位补首色：锥形渐变 0→1 首尾同色，旋转一圈无接缝。
+    NSMutableArray *colors = [NSMutableArray array];
+    NSMutableArray *locations = [NSMutableArray array];
+    for (NSUInteger i = 0; i <= spectrum.count; i++) {
+        UIColor *color = spectrum[i % spectrum.count];
+        [colors addObject:(__bridge id)color.CGColor];
+        [locations addObject:@((CGFloat)i / (CGFloat)spectrum.count)];
+    }
+    glow.colors = colors;
+    glow.locations = locations;
     UIBezierPath *ring = [UIBezierPath bezierPathWithArcCenter:CGPointMake(side / 2.0, PXEditorCollapsedHandleHeight / 2.0)
                                                         radius:side / 2.0 - 1.0
                                                     startAngle:0.0 endAngle:2.0 * M_PI clockwise:YES];
