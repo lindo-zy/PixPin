@@ -31,6 +31,7 @@ NSString * const PXKeyDefaultResultAction = @"DefaultResultAction";
 NSString * const PXKeyAutoSaveToPhotos = @"AutoSaveToPhotos";
 NSString * const PXKeyCopyToClipboard = @"CopyToClipboard";
 NSString * const PXKeyShowResultBubble = @"ShowResultBubble";
+NSString * const PXKeyFloatingSnapShadow = @"FloatingSnapShadow";
 NSString * const PXKeyShowCompletionNotification = @"ShowCompletionNotification";
 NSString * const PXKeyMuteScreenshotSound = @"MuteScreenshotSound";
 NSString * const PXKeyScreenshotHaptic = @"ScreenshotHaptic";

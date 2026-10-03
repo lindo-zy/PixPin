@@ -9,6 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL enabled;
 @property (nonatomic, readonly) PXOutputAction defaultResultAction;
 @property (nonatomic, readonly) BOOL showResultBubble;
+@property (nonatomic, readonly) BOOL floatingSnapShadow;
 @property (nonatomic, readonly) BOOL screenshotHaptic;
 @property (nonatomic, readonly) BOOL areaRememberLastRect;
 @property (nonatomic, readonly) CGFloat editorDefaultLineWidth;

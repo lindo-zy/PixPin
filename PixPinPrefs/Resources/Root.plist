@@ -103,6 +103,20 @@
 			<key>defaults</key>
 			<string>com.pixpin.screenshot</string>
 			<key>key</key>
+			<string>FloatingSnapShadow</string>
+			<key>label</key>
+			<string>悬浮图阴影</string>
+			<key>PostNotification</key>
+			<string>com.pixpin.screenshot/preferences/reload</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.pixpin.screenshot</string>
+			<key>key</key>
 			<string>ScreenshotHaptic</string>
 			<key>label</key>
 			<string>完成时震动反馈</string>

@@ -24,7 +24,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable instancetype)presentWithImage:(UIImage *)image
                             mode:(PXCaptureMode)mode
                         delegate:(id<PXFloatingSnapDelegate>)delegate
-                      screenRect:(CGRect)screenRect;
+                      screenRect:(CGRect)screenRect
+                          shadow:(BOOL)shadowEnabled;
 
 /// 新截图任务抓屏前隐藏（悬浮图不得被截入新截图）；任务结束后恢复展示。
 - (void)updateImage:(UIImage *)image;

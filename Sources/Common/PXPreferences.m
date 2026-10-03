@@ -7,6 +7,7 @@
 @property (nonatomic, readwrite) BOOL enabled;
 @property (nonatomic, readwrite) PXOutputAction defaultResultAction;
 @property (nonatomic, readwrite) BOOL showResultBubble;
+@property (nonatomic, readwrite) BOOL floatingSnapShadow;
 @property (nonatomic, readwrite) BOOL screenshotHaptic;
 @property (nonatomic, readwrite) BOOL areaRememberLastRect;
 @property (nonatomic, readwrite) CGFloat editorDefaultLineWidth;
@@ -19,6 +20,7 @@
         _enabled = YES;
         _defaultResultAction = (PXOutputAction)PXDefaultResultAction;
         _showResultBubble = YES;
+        _floatingSnapShadow = YES;
         _screenshotHaptic = YES;
         _areaRememberLastRect = NO;
         _editorDefaultLineWidth = PXDefaultEditorLineWidth;
@@ -27,9 +29,9 @@
 }
 
 - (NSString *)description {
-    return [NSString stringWithFormat:@"<PXConfig enabled=%d action=%ld bubble=%d haptic=%d rememberRect=%d lineWidth=%.1f>",
+    return [NSString stringWithFormat:@"<PXConfig enabled=%d action=%ld bubble=%d snapShadow=%d haptic=%d rememberRect=%d lineWidth=%.1f>",
             self.enabled, (long)self.defaultResultAction,
-            self.showResultBubble, self.screenshotHaptic, self.areaRememberLastRect,
+            self.showResultBubble, self.floatingSnapShadow, self.screenshotHaptic, self.areaRememberLastRect,
             self.editorDefaultLineWidth];
 }
 
@@ -78,6 +80,7 @@ static PXConfig *_currentConfig = nil;
 
     config.enabled = PXPrefBool(PXKeyEnabled, YES);
     config.showResultBubble = PXPrefBool(PXKeyShowResultBubble, YES);
+    config.floatingSnapShadow = PXPrefBool(PXKeyFloatingSnapShadow, YES);
     config.screenshotHaptic = PXPrefBool(PXKeyScreenshotHaptic, YES);
     config.areaRememberLastRect = PXPrefBool(PXKeyAreaRememberLastRect, NO);
 

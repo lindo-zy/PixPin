@@ -474,7 +474,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 - (void)pxPresentFloatingSnapForTask:(PXCaptureTask *)task screenRect:(CGRect)screenRect {
     if (![self pxIsTaskCurrent:task] || ![task transitionToState:PXCaptureStateExporting]) return;
     PXFloatingSnap *snap = [PXFloatingSnap presentWithImage:task.resultImage mode:task.mode
-                                                 delegate:self screenRect:screenRect];
+                                                 delegate:self screenRect:screenRect
+                                                    shadow:task.configSnapshot.floatingSnapShadow];
     if (!snap) {
         [self pxFailTask:task code:@"floating-window" message:@"悬浮图片显示失败"];
         return;

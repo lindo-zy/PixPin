@@ -8,6 +8,7 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
 @property (nonatomic, strong, readwrite) UIImage *image;
 @property (nonatomic, assign, readwrite) PXCaptureMode captureMode;
 @property (nonatomic, strong) UIImageView *imageView;
+@property (nonatomic, assign) BOOL shadowEnabled;
 @property (nonatomic, strong) PXCaptureWindow *overlayWindow;
 @property (nonatomic, strong) UIVisualEffectView *actionBar;
 @property (nonatomic, strong) NSArray<UIButton *> *actionButtons;
@@ -41,20 +42,22 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
 + (instancetype)presentWithImage:(UIImage *)image
                             mode:(PXCaptureMode)mode
                         delegate:(id<PXFloatingSnapDelegate>)delegate
-                      screenRect:(CGRect)screenRect {
+                      screenRect:(CGRect)screenRect
+                          shadow:(BOOL)shadowEnabled {
     if (![NSThread isMainThread]) {
         // 调用契约是主线程。降级路径只记日志不弹出：异步弹出会返回 nil，调用方将永远无法 dismiss，
         // 悬浮窗会沦为无人能关的孤儿窗口。
         PXLogWarn(@"floating snap present called off main thread, dropped");
         return nil;
     }
-    return [self pxPresentWithImage:image mode:mode delegate:delegate screenRect:screenRect];
+    return [self pxPresentWithImage:image mode:mode delegate:delegate screenRect:screenRect shadow:shadowEnabled];
 }
 
 + (instancetype)pxPresentWithImage:(UIImage *)image
                               mode:(PXCaptureMode)mode
                           delegate:(id<PXFloatingSnapDelegate>)delegate
-                        screenRect:(CGRect)screenRect {
+                        screenRect:(CGRect)screenRect
+                            shadow:(BOOL)shadowEnabled {
     if (!image || image.size.width <= 0 || image.size.height <= 0) return nil;
 
     PXCaptureWindow *window = [PXCaptureWindow pxCaptureWindow];
@@ -68,6 +71,8 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
     snap.captureMode = mode;
     snap.delegate = delegate;
     snap.alive = YES;
+    snap.shadowEnabled = shadowEnabled;
+    [snap pxApplyShadow];
 
     window.windowLevel = 999000.0;   // 低于选区/编辑器（1000000）与结果气泡（1000001）
     window.frame = screenBounds;
@@ -174,8 +179,27 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
     return self;
 }
 
+#pragma mark - 外观
+
+// 投影画在自身 layer 上，自身不能再裁剪：圆角裁剪下沉到 imageView，避免把阴影裁没。
+- (void)pxApplyShadow {
+    if (!self.shadowEnabled) return;
+    self.clipsToBounds = NO;
+    self.layer.shadowColor = UIColor.blackColor.CGColor;
+    self.layer.shadowOpacity = 0.45;
+    self.layer.shadowRadius = 16.0;
+    self.layer.shadowOffset = CGSizeMake(0.0, 6.0);
+    self.imageView.layer.cornerRadius = self.layer.cornerRadius;
+    self.imageView.clipsToBounds = YES;
+}
+
 - (void)layoutSubviews {
     [super layoutSubviews];
+    if (self.shadowEnabled) {
+        // 显式 shadowPath：拖动和 updateImage 改 frame 时随 layout 同步，避免逐帧离屏渲染。
+        self.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.bounds
+                                                           cornerRadius:self.layer.cornerRadius].CGPath;
+    }
     [self pxLayoutActionBar];
 }
 

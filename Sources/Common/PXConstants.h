@@ -49,6 +49,7 @@ FOUNDATION_EXPORT NSString * const PXKeyDefaultResultAction;
 FOUNDATION_EXPORT NSString * const PXKeyAutoSaveToPhotos;
 FOUNDATION_EXPORT NSString * const PXKeyCopyToClipboard;
 FOUNDATION_EXPORT NSString * const PXKeyShowResultBubble;
+FOUNDATION_EXPORT NSString * const PXKeyFloatingSnapShadow;
 FOUNDATION_EXPORT NSString * const PXKeyShowCompletionNotification;
 FOUNDATION_EXPORT NSString * const PXKeyMuteScreenshotSound;
 FOUNDATION_EXPORT NSString * const PXKeyScreenshotHaptic;
