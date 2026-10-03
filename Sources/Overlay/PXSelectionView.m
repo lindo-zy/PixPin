@@ -22,6 +22,7 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
 @property (nonatomic, strong) UILabel *modeLabel;
 @property (nonatomic, strong) PXSelectionToolbar *toolbar;
 @property (nonatomic, strong) UIPanGestureRecognizer *panGesture;
+@property (nonatomic, strong, nullable) UITapGestureRecognizer *floatDoubleTap;
 
 @property (nonatomic, assign) CGRect selectionRect;
 @property (nonatomic, assign) PXSelectionDragMode dragMode;
@@ -129,6 +130,15 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pxHandlePan:)];
     _panGesture.delegate = self;
     [self addGestureRecognizer:_panGesture];
+
+    // 双击选区悬浮，与工具栏「悬浮」按钮同一条委托路径；即时模式保持历史行为不参与（工具栏也无此键）。
+    if (!_isInstantMode) {
+        _floatDoubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self
+                                                                  action:@selector(pxHandleFloatDoubleTap:)];
+        _floatDoubleTap.numberOfTapsRequired = 2;
+        _floatDoubleTap.delegate = self;
+        [self addGestureRecognizer:_floatDoubleTap];
+    }
 }
 
 #pragma mark - 选区几何
@@ -225,7 +235,12 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
     // 操作栏按钮必须独占触摸，否则轻微手指移动会被选区 pan 取消。
-    return ![touch.view isDescendantOfView:self.toolbar];
+    if ([touch.view isDescendantOfView:self.toolbar]) return NO;
+    if (gestureRecognizer == self.floatDoubleTap) {
+        // 双击只在选区内部生效：暗区双击不与“拖动新建选区”语义冲突。
+        return CGRectContainsPoint(self.selectionRect, [touch locationInView:self]);
+    }
+    return YES;
 }
 
 - (void)pxHandlePan:(UIPanGestureRecognizer *)gesture {
@@ -289,6 +304,17 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         }
         default:
             break;
+    }
+}
+
+- (void)pxHandleFloatDoubleTap:(UITapGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateRecognized) return;
+    // 与工具栏「悬浮」按钮同样要求合法选区：细条/零矩形没有悬浮价值。
+    if (CGRectIsEmpty(PXClampSelectionRect(self.selectionRect, self.bounds.size, PXSelectionMinimumSize))) {
+        return;
+    }
+    if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestFloat:displayRect:)]) {
+        [self.delegate selectionViewDidRequestFloat:self displayRect:self.selectionRect];
     }
 }
 
@@ -382,6 +408,10 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     if (_panGesture) {
         [self removeGestureRecognizer:_panGesture];
         _panGesture = nil;
+    }
+    if (_floatDoubleTap) {
+        [self removeGestureRecognizer:_floatDoubleTap];
+        _floatDoubleTap = nil;
     }
     _delegate = nil;
     _dimLayer = nil;
