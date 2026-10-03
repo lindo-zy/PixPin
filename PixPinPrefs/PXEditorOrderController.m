@@ -73,6 +73,8 @@
 - (void)pxReloadFromPreferences {
     self.actionOrder = [[PXEditorOrder currentActionOrderForFullscreenMarkup:[self pxFullscreen]] mutableCopy];
     self.toolOrder = [[PXEditorOrder currentToolOrderForFullscreenMarkup:[self pxFullscreen]] mutableCopy];
+    // 写死的四角键（关闭/撤销/完成）不进设置列表：不可排序、不可显隐、不可改图标。
+    [self.actionOrder removeObjectsInArray:[PXEditorOrder fixedActionIdentifiers]];
     if ([self pxFullscreen]) {
         [self.actionOrder removeObject:@"crop"];
     } else {
@@ -81,10 +83,10 @@
     }
     self.selectionOrder = [[PXEditorOrder currentSelectionOrder] mutableCopy];
     self.actionHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentActionHiddenForFullscreenMarkup:[self pxFullscreen]]];
-    [self.actionHidden removeObject:@"close"];
-    [self.actionHidden removeObject:@"done"];
+    // 历史上隐藏过的四角键一并清出：编辑器已写死常驻，避免陈旧偏好滞留。
+    [self.actionHidden removeObjectsInArray:[PXEditorOrder fixedActionIdentifiers]];
     self.toolHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentToolHiddenForFullscreenMarkup:[self pxFullscreen]]];
-    // 出口按钮在设置页始终呈现为开启（与 close/done 同口径）。
+    // 选区出口按钮在设置页始终呈现为开启（编辑器四角键已整体写死，不在列表内）。
     self.selectionHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentSelectionHidden]];
     [self.selectionHidden removeObject:@"cancel"];
     [self.selectionHidden removeObject:@"confirm"];
@@ -106,6 +108,15 @@
     NSArray<NSString *> *actions = [PXEditorOrder visibleActionOrderForOrder:self.actionOrder
                                                                     hidden:self.actionHidden.allObjects
                                                           fullscreenMarkup:[self pxFullscreen]];
+    if ([self pxFullscreen]) {
+        // 全屏标记预览只画网格：四角键（关闭/取色/撤销/完成）固定在两侧留白带，不占网格项。
+        NSMutableArray<NSString *> *grid = [actions mutableCopy];
+        [grid removeObjectsInArray:[PXEditorOrder fixedActionIdentifiers]];
+        actions = grid;
+    } else {
+        // 普通编辑网格包含写死的固定键（钉在目录默认位），预览与编辑器保持一致。
+        actions = [PXEditorOrder orderWithFixedActionButtonsPinned:actions];
+    }
     NSArray<NSString *> *tools = [PXEditorOrder visibleOrderForOrder:self.toolOrder hidden:self.toolHidden.allObjects];
     NSArray<NSString *> *selection = [PXEditorOrder visibleSelectionOrderForOrder:self.selectionOrder
                                                                           hidden:self.selectionHidden.allObjects
@@ -183,7 +194,7 @@
     UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 0)];
     note.text = [self pxRegion]
         ? @"拖动手柄排序，开关控制区域选区按钮显隐，点击行修改名称与图标。“显示样式”可选图标、文字、图标＋文字（上图下字），预览与大小调整同步。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏、完成。大小与编辑器共用。"
-        : ([self pxFullscreen] ? @"仅设置全屏标记面板的按钮顺序与显隐，与区域截图和普通图片编辑相互独立；图标大小三处共用，可在任一按钮设置页调整。修改即时保存，下次打开生效。"
+        : ([self pxFullscreen] ? @"仅设置全屏标记面板的按钮顺序与显隐，与区域截图和普通图片编辑相互独立；关闭、取色、撤销、完成固定为四角键。图标大小三处共用，可在任一按钮设置页调整。修改即时保存，下次打开生效。"
                               : @"设置普通图片编辑的按钮顺序与显隐；名称、图标和大小仍与全屏标记共用。修改即时保存，下次打开生效。");
     note.font = [UIFont systemFontOfSize:12];
     note.textColor = UIColor.secondaryLabelColor;
@@ -220,7 +231,9 @@
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     section = [self pxKindForSection:section];
     if (section == 0) {
-        return [self pxFullscreen] ? @"拖动排序，开关控制全屏标记操作按钮显隐；关闭和完成始终显示。" : @"拖动排序，开关控制普通图片编辑按钮显隐，点击行修改共用图标与名称。关闭和完成始终显示。";
+        return [self pxFullscreen]
+            ? @"拖动排序，开关控制全屏标记操作按钮显隐；关闭、取色、撤销、完成已固定为面板四角键，不参与排序、显隐与图标修改。"
+            : @"拖动排序，开关控制普通图片编辑按钮显隐，点击行修改共用图标与名称；关闭、撤销、完成已写死固定，不可修改。";
     }
     if (section == 1) {
         return @"工具排序与显隐仅影响当前页面对应的编辑模式。全部工具关闭时回退显示全部工具，打开编辑器默认选中排序后的第一个工具。";
@@ -347,10 +360,10 @@
     return [[self hiddenSetForSection:section] containsObject:identifier];
 }
 
-/// 出口按钮（编辑器 关闭/完成、选区 取消/完成）不提供隐藏开关。
+/// 出口按钮（选区 取消/完成）不提供隐藏开关；编辑器四角键（关闭/撤销/完成）已整体写死，
+/// 不再出现在操作按钮列表，无需在此兜底。
 - (BOOL)isAlwaysVisibleIdentifier:(NSString *)identifier section:(NSInteger)section {
     section = [self pxKindForSection:section];
-    if (section == 0) return ([identifier isEqualToString:@"close"] || [identifier isEqualToString:@"done"]);
     if (section == 2) return ([identifier isEqualToString:@"cancel"] || [identifier isEqualToString:@"confirm"]);
     return NO;
 }

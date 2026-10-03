@@ -364,7 +364,24 @@ static void testEditorOrder(void) {
                                                                           hidden:@[@"undo"] fullscreenMarkup:YES];
     PXCheck([markupActions containsObject:@"dock"] && [markupActions containsObject:@"collapse"],
             "markup preview includes panel controls");
-    PXCheck(![markupActions containsObject:@"undo"], "markup preview honors visibility");
+    PXCheck([markupActions containsObject:@"undo"], "corner key undo ignores hidden preference");
+
+    // 四角键写死：图标/名称不吃覆盖，顺序钉在目录默认位。
+    PXCheck(([[PXEditorOrder fixedActionIdentifiers] isEqualToArray:@[@"close", @"undo", @"done"]]),
+            "fixed corner key ids");
+    [PXEditorOrder saveActionName:@"改名" forIdentifier:@"close"];
+    [PXEditorOrder saveActionIconName:@"star" forIdentifier:@"close"];
+    PXCheck([[PXEditorOrder displayNameForActionIdentifier:@"close"] isEqualToString:@"关闭"],
+            "fixed key ignores custom name");
+    PXCheck([[PXEditorOrder iconNameForActionIdentifier:@"close"] isEqualToString:@"xmark"],
+            "fixed key ignores custom icon");
+    [PXEditorOrder saveActionName:nil forIdentifier:@"close"];
+    [PXEditorOrder saveActionIconName:nil forIdentifier:@"close"];
+    NSArray<NSString *> *pinned = [PXEditorOrder orderWithFixedActionButtonsPinned:
+                                   @[@"save", @"undo", @"copy", @"close", @"done"]];
+    PXCheck(([pinned isEqualToArray:@[@"close", @"undo", @"save", @"copy", @"done"]]),
+            "fixed keys pinned at catalog positions");
+
     NSArray<NSString *> *safeActions = [PXEditorOrder visibleActionOrderForOrder:custom
                                                                         hidden:@[@"close", @"done"] fullscreenMarkup:NO];
     PXCheck(([[safeActions subarrayWithRange:NSMakeRange(0, 3)] isEqualToArray:@[@"save", @"done", @"close"]]),

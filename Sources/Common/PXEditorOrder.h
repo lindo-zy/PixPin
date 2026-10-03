@@ -19,6 +19,9 @@ typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
 /// 全部操作按钮 id：关闭/撤销/重做/裁剪/旋转/复制/分享/保存/适屏/删除/置顶/面板停靠/收起面板/完成。
 /// dock、collapse 仅全屏标记显示，其他模式解析后自行过滤。
 + (NSArray<NSString *> *)defaultActionIdentifiers;
+/// 写死固定的操作按钮 id（关闭/撤销/完成）：图标、名称、顺序、显隐均不随偏好变化，设置页不出现。
+/// 全屏标记第四角键“取色”是独立彩虹环按钮，无目录 id，本就不可定制。
++ (NSArray<NSString *> *)fixedActionIdentifiers;
 /// 全部工具按钮 id：画笔/平移/方框/椭圆/箭头/放大镜/直线/马赛克/文字/实心方/实心圆/聚光/荧光/贴纸/序号图章。
 + (NSArray<NSString *> *)defaultToolIdentifiers;
 /// 区域选区工具栏按钮 id：取消/全屏/编辑/悬浮/保存/复制/完成。
@@ -92,6 +95,10 @@ typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
 + (NSArray<NSString *> *)visibleActionOrderForOrder:(NSArray<NSString *> *)order
                                              hidden:(NSArray<NSString *> *)hidden
                                    fullscreenMarkup:(BOOL)fullscreenMarkup;
+
+/// 把写死的固定按钮（关闭/撤销/完成）从顺序表摘出，按目录默认位置钉回：
+/// 固定键不参与用户排序，其余按钮的相对顺序不变。
++ (NSArray<NSString *> *)orderWithFixedActionButtonsPinned:(NSArray<NSString *> *)order;
 
 /// 选区工具栏可见顺序：兜底保留取消、完成两个出口；即时模式只保留取消/全屏/完成。
 + (NSArray<NSString *> *)visibleSelectionOrderForOrder:(NSArray<NSString *> *)order

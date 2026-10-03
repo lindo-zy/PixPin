@@ -17,6 +17,16 @@
     return identifiers;
 }
 
++ (NSArray<NSString *> *)fixedActionIdentifiers {
+    static NSArray<NSString *> *identifiers;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // 全屏标记四角键中的目录按钮：图标/名称/顺序/显隐全部写死，设置页不出现。
+        identifiers = @[@"close", @"undo", @"done"];
+    });
+    return identifiers;
+}
+
 + (NSArray<NSString *> *)defaultToolIdentifiers {
     static NSArray<NSString *> *identifiers;
     static dispatch_once_t onceToken;
@@ -100,6 +110,10 @@
 }
 
 + (NSString *)displayNameForActionIdentifier:(NSString *)identifier {
+    // 四角键写死：不吃自定义名称覆盖，保证编辑器各模式下展示一致。
+    if ([[self fixedActionIdentifiers] containsObject:identifier]) {
+        return [self actionDisplayNames][identifier] ?: identifier;
+    }
     NSString *custom = [self customNameForActionIdentifier:identifier];
     return custom.length > 0 ? custom : ([self actionDisplayNames][identifier] ?: identifier);
 }
@@ -160,6 +174,10 @@
 }
 
 + (NSString *)iconNameForActionIdentifier:(NSString *)identifier {
+    // 四角键写死：不吃自定义图标覆盖（历史遗留覆盖一并失效）。
+    if ([[self fixedActionIdentifiers] containsObject:identifier]) {
+        return [self actionIconNames][identifier];
+    }
     NSString *custom = [self customIconNameForActionIdentifier:identifier];
     return custom.length > 0 ? custom : [self actionIconNames][identifier];
 }
@@ -435,8 +453,8 @@
                                              hidden:(NSArray<NSString *> *)hidden
                                    fullscreenMarkup:(BOOL)fullscreenMarkup {
     NSMutableArray<NSString *> *effectiveHidden = [hidden mutableCopy];
-    [effectiveHidden removeObject:@"close"];
-    [effectiveHidden removeObject:@"done"];
+    // 关闭/完成是编辑器唯一出口；撤销随四角键写死后同样不再受显隐偏好。
+    [effectiveHidden removeObjectsInArray:[self fixedActionIdentifiers]];
     NSMutableArray<NSString *> *visible = [[self visibleOrderForOrder:order hidden:effectiveHidden] mutableCopy];
     if (fullscreenMarkup) {
         [visible removeObject:@"crop"];
@@ -447,6 +465,29 @@
     if (![visible containsObject:@"close"]) [visible insertObject:@"close" atIndex:0];
     if (![visible containsObject:@"done"]) [visible addObject:@"done"];
     return [visible copy];
+}
+
++ (NSArray<NSString *> *)orderWithFixedActionButtonsPinned:(NSArray<NSString *> *)order {
+    NSMutableArray<NSString *> *pinned = [[NSMutableArray alloc] initWithArray:order];
+    NSArray<NSString *> *fixed = [self fixedActionIdentifiers];
+    [pinned removeObjectsInArray:fixed];
+    // 按目录默认位置钉回：close 首位、undo 次位、done 末位；索引越界时钳到当前尾部。
+    // 空表输入产出 [close, undo, done]：约定固定键在任何合法顺序中都必然存在。
+    NSDictionary<NSString *, NSNumber *> *defaultIndex = [self indexOfIdentifiers:[self defaultActionIdentifiers]];
+    for (NSString *identifier in [self defaultActionIdentifiers]) {
+        if (![fixed containsObject:identifier]) continue;
+        NSUInteger index = MIN((NSUInteger)defaultIndex[identifier].unsignedIntegerValue, pinned.count);
+        [pinned insertObject:identifier atIndex:index];
+    }
+    return [pinned copy];
+}
+
++ (NSDictionary<NSString *, NSNumber *> *)indexOfIdentifiers:(NSArray<NSString *> *)identifiers {
+    NSMutableDictionary<NSString *, NSNumber *> *index = [NSMutableDictionary dictionary];
+    [identifiers enumerateObjectsUsingBlock:^(NSString *identifier, NSUInteger idx, BOOL *stop) {
+        if (index[identifier] == nil) index[identifier] = @(idx);
+    }];
+    return index;
 }
 
 + (NSArray<NSString *> *)visibleSelectionOrderForOrder:(NSArray<NSString *> *)order

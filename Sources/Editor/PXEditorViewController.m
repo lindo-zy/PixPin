@@ -291,11 +291,12 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
 }
 
 /// 按设置页排序与显隐组装操作按钮；面板停靠/收起仅全屏标记显示。
-/// 关闭/完成是编辑器唯一出口，设置页开关禁用，这里再兜底强制补回。
+/// 关闭/撤销/完成已写死固定（全屏标记下即四角键，不进网格），位置钉在目录默认位。
 - (void)pxAssembleActionButtons {
-    NSArray<NSString *> *order = [PXEditorOrder visibleActionOrderForOrder:[PXEditorOrder currentActionOrderForFullscreenMarkup:self.fullscreenMarkup]
-                                                                  hidden:[PXEditorOrder currentActionHiddenForFullscreenMarkup:self.fullscreenMarkup]
-                                                        fullscreenMarkup:self.fullscreenMarkup];
+    NSArray<NSString *> *order = [PXEditorOrder orderWithFixedActionButtonsPinned:
+        [PXEditorOrder visibleActionOrderForOrder:[PXEditorOrder currentActionOrderForFullscreenMarkup:self.fullscreenMarkup]
+                                            hidden:[PXEditorOrder currentActionHiddenForFullscreenMarkup:self.fullscreenMarkup]
+                                  fullscreenMarkup:self.fullscreenMarkup]];
     NSDictionary<NSString *, UIButton *> *table = [self pxActionButtonTable];
     NSMutableArray<UIButton *> *buttons = [NSMutableArray arrayWithCapacity:order.count];
     for (NSString *identifier in order) {
@@ -544,16 +545,10 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
     [self pxApplyFrostedBackgrounds];
 }
 
-/// 全屏标记四角键：左上关闭、右上取色、左下撤销、右下完成，固定于面板两侧留白带，
-/// 不占网格项。关闭/完成是编辑器唯一出口无条件常驻；撤销尊重设置页显隐偏好，
-/// 被隐藏时不占左下角（与旧版“隐藏后不出现”口径一致）。
+/// 全屏标记四角键：左上关闭、右上取色、左下撤销、右下完成，代码写死固定于面板两侧留白带，
+/// 不占网格项，也不随设置页的排序、显隐、图标名称配置变化（PXEditorOrder fixedActionIdentifiers）。
 - (void)pxInstallCornerKeys {
-    NSMutableArray<UIButton *> *keys = [NSMutableArray arrayWithObjects:self.closeButton, self.doneButton, nil];
-    NSArray<NSString *> *hiddenActions = [PXEditorOrder currentActionHiddenForFullscreenMarkup:self.fullscreenMarkup];
-    if (![hiddenActions containsObject:@"undo"]) {
-        [keys insertObject:self.undoButton atIndex:1];
-    }
-    self.cornerActionButtons = keys;
+    self.cornerActionButtons = [NSMutableArray arrayWithObjects:self.closeButton, self.undoButton, self.doneButton, nil];
     for (UIButton *key in self.cornerActionButtons) {
         [key removeFromSuperview];
         key.backgroundColor = nil;   // 参考布局：四角键无底色，只留图标
