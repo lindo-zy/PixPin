@@ -84,7 +84,8 @@
     self.selectionOrder = [[PXEditorOrder currentSelectionOrder] mutableCopy];
     self.actionHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentActionHiddenForFullscreenMarkup:[self pxFullscreen]]];
     // 历史上隐藏过的四角键一并清出：编辑器已写死常驻，避免陈旧偏好滞留。
-    [self.actionHidden removeObjectsInArray:[PXEditorOrder fixedActionIdentifiers]];
+    NSMutableSet<NSString *> *fixedIds = [NSMutableSet setWithArray:[PXEditorOrder fixedActionIdentifiers]];
+    [self.actionHidden minusSet:fixedIds];
     self.toolHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentToolHiddenForFullscreenMarkup:[self pxFullscreen]]];
     // 选区出口按钮在设置页始终呈现为开启（编辑器四角键已整体写死，不在列表内）。
     self.selectionHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentSelectionHidden]];
