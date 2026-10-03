@@ -120,6 +120,9 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
 @property (nonatomic, assign) CGPoint panelOrigin;
 @property (nonatomic, assign) CGPoint panStartOrigin;
 @property (nonatomic, assign) CGPoint collapsedHandleOrigin;
+@property (nonatomic, assign) BOOL hasRememberedHandleOrigin;   // 本会话或历史落盘中存在有效把手位置
+@property (nonatomic, strong) CAGradientLayer *handleGlowLayer; // 把手边缘流光层
+@property (nonatomic, assign) BOOL handleGlowRunning;
 @property (nonatomic, strong) UIView *topBar;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) UIButton *cropButton;
@@ -226,6 +229,10 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
             [container removeGestureRecognizer:gesture];
         }
     }
+    if (self.hasRememberedHandleOrigin) [self pxPersistHandleOrigin];
+    [self pxSetHandleGlowRunning:NO];
+    [self.handleGlowLayer removeFromSuperlayer];
+    self.handleGlowLayer = nil;
     [self.canvas prepareForDismissal];
 }
 
@@ -401,6 +408,8 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
         [_collapsedHandle addGestureRecognizer:handleDrag];
         _collapsedHandle.hidden = YES;
         [self.editorCard addSubview:_collapsedHandle];
+        [self pxBuildHandleGlow];
+        [self pxRestoreHandleOrigin];
     }
 
     // 线宽行：两端“最细/最粗”示意图标 + 白色大圆滑块，置于工具网格上方。
@@ -681,17 +690,18 @@ static UIImage *PXEditorSliderThumbImage(void) {
         CGRect handleAllowed = CGRectMake(safe.left + 12.0, safe.top + 12.0,
             MAX(1.0, width - safe.left - safe.right - 24.0),
             MAX(1.0, height - safe.top - safe.bottom - 24.0));
-        CGPoint handleOrigin = self.panelCollapsed
-            ? self.collapsedHandleOrigin
-            : CGPointMake(origin.x + (panelWidth - PXEditorCollapsedHandleWidth) / 2.0, origin.y);
-        handleOrigin = PXEditorClampFloatingOrigin(handleOrigin,
+        // 把手只停在记忆位（拖过或上次会话落盘），展开期间也不跟随面板回中，
+        // 否则每次收起都会被布局重置到面板顶部中央。
+        CGPoint handleOrigin = PXEditorClampFloatingOrigin(self.collapsedHandleOrigin,
             CGSizeMake(PXEditorCollapsedHandleWidth, PXEditorCollapsedHandleHeight), handleAllowed);
         self.collapsedHandle.frame = CGRectMake(handleOrigin.x, handleOrigin.y,
             PXEditorCollapsedHandleWidth, PXEditorCollapsedHandleHeight);
-        self.collapsedHandleOrigin = handleOrigin;
+        if (self.panelCollapsed) self.collapsedHandleOrigin = handleOrigin;
         self.bottomPanel.hidden = self.panelCollapsed;
         self.widthRow.hidden = self.panelCollapsed || self.isCropMode;
-        self.collapsedHandle.hidden = !self.panelCollapsed || self.isCropMode;
+        BOOL handleVisible = self.panelCollapsed && !self.isCropMode;
+        self.collapsedHandle.hidden = !handleVisible;
+        [self pxSetHandleGlowRunning:handleVisible];
     }
     [self pxLayoutBottomPanel];
 
@@ -1170,9 +1180,13 @@ typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
 
 - (void)pxCollapsePanelTapped:(UIButton *)sender {
     if (self.isExporting || self.isCropMode || !self.fullscreenMarkup) return;
-    self.collapsedHandleOrigin = CGPointMake(
-        CGRectGetMidX(self.bottomPanel.frame) - PXEditorCollapsedHandleWidth / 2.0,
-        CGRectGetMinY(self.bottomPanel.frame));
+    if (!self.hasRememberedHandleOrigin) {
+        // 首次收起（本会话未拖过且无历史位置）才从面板顶部中央出现；此后沿用记忆位。
+        self.collapsedHandleOrigin = CGPointMake(
+            CGRectGetMidX(self.bottomPanel.frame) - PXEditorCollapsedHandleWidth / 2.0,
+            CGRectGetMinY(self.bottomPanel.frame));
+        self.hasRememberedHandleOrigin = YES;
+    }
     self.panelCollapsed = YES;
     [self.view setNeedsLayout];
 }
@@ -1201,6 +1215,77 @@ typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
     [self.view setNeedsLayout];
 }
 
+#pragma mark - 收起把手：位置记忆与边缘流光
+
+/// 把手位置跨会话落盘，与选区记忆同域同口径（NSStringFromCGPoint + 同步写）。
+- (void)pxPersistHandleOrigin {
+    if (!self.hasRememberedHandleOrigin) return;
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeyMarkupHandleOrigin,
+                             (__bridge CFTypeRef)NSStringFromCGPoint(self.collapsedHandleOrigin),
+                             (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
+/// 编辑器每次进入都是新实例：创建时恢复上次拖放位置，未存过或非法值忽略。
+- (void)pxRestoreHandleOrigin {
+    NSString *saved = CFBridgingRelease(CFPreferencesCopyAppValue(
+        (__bridge CFStringRef)PXKeyMarkupHandleOrigin,
+        (__bridge CFStringRef)PXPreferencesDomain));
+    if (![saved isKindOfClass:NSString.class]) return;
+    if (saved.length == 0) return;
+    CGPoint origin = CGPointFromString(saved);
+    if (!isfinite(origin.x) || !isfinite(origin.y)) return;
+    // {0,0} 作哨兵：钳制后 origin 恒 ≥ 12pt，不可能出现合法的零点（见 viewDidLayoutSubviews 允许域）。
+    if (origin.x == 0.0 && origin.y == 0.0) return;
+    self.collapsedHandleOrigin = origin;
+    self.hasRememberedHandleOrigin = YES;
+    PXLogInfo(@"markup handle origin restored (%.0f, %.0f)", origin.x, origin.y);
+}
+
+/// 把手边缘流光：锥形渐变被 2pt 圆环遮罩裁成一圈，绕中心匀速旋转即成流光。
+/// 把手尺寸恒定（48x48），渐变层与遮罩路径在创建时一次性定型，无需随布局重算。
+- (void)pxBuildHandleGlow {
+    CAGradientLayer *glow = [CAGradientLayer layer];
+    CGFloat side = PXEditorCollapsedHandleWidth;
+    glow.frame = CGRectMake(0, 0, side, PXEditorCollapsedHandleHeight);
+    glow.type = kCAGradientLayerConic;
+    glow.startPoint = CGPointMake(0.5, 0.5);
+    glow.endPoint = CGPointMake(0.5, 0.0);
+    UIColor *dim = [[PXPanelAppearance tintColor] colorWithAlphaComponent:0.30];
+    UIColor *bright = [UIColor colorWithWhite:1.0 alpha:0.95];
+    glow.colors = @[(__bridge id)dim.CGColor, (__bridge id)dim.CGColor,
+                    (__bridge id)bright.CGColor, (__bridge id)dim.CGColor,
+                    (__bridge id)dim.CGColor];
+    glow.locations = @[@0.0, @0.40, @0.50, @0.60, @1.0];
+    UIBezierPath *ring = [UIBezierPath bezierPathWithArcCenter:CGPointMake(side / 2.0, PXEditorCollapsedHandleHeight / 2.0)
+                                                        radius:side / 2.0 - 1.0
+                                                    startAngle:0.0 endAngle:2.0 * M_PI clockwise:YES];
+    CAShapeLayer *ringMask = [CAShapeLayer layer];
+    ringMask.path = ring.CGPath;
+    ringMask.fillColor = NULL;
+    ringMask.strokeColor = [UIColor whiteColor].CGColor;
+    ringMask.lineWidth = 2.0;
+    glow.mask = ringMask;
+    [self.collapsedHandle.layer addSublayer:glow];
+    self.handleGlowLayer = glow;
+}
+
+/// 流光启停只跟随把手可见性；判等避免每次布局重放动画。
+- (void)pxSetHandleGlowRunning:(BOOL)running {
+    if (running == self.handleGlowRunning || !self.handleGlowLayer) return;
+    self.handleGlowRunning = running;
+    if (running) {
+        CABasicAnimation *flow = [CABasicAnimation animationWithKeyPath:@"transform.rotation.z"];
+        flow.fromValue = @0.0;
+        flow.toValue = @(2.0 * M_PI);
+        flow.duration = 2.4;
+        flow.repeatCount = HUGE_VALF;
+        [self.handleGlowLayer addAnimation:flow forKey:@"pxHandleGlowFlow"];
+    } else {
+        [self.handleGlowLayer removeAnimationForKey:@"pxHandleGlowFlow"];
+    }
+}
+
 - (void)pxPanelPan:(UIPanGestureRecognizer *)gesture {
     if (self.isExporting || self.isCropMode || !self.fullscreenMarkup) return;
     if (gesture.state == UIGestureRecognizerStateBegan) {
@@ -1211,6 +1296,7 @@ typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
                                         self.panStartOrigin.y + offset.y);
         if (self.panelCollapsed) {
             self.collapsedHandleOrigin = requested;
+            self.hasRememberedHandleOrigin = YES;
         } else {
             self.panelOrigin = requested;
             self.hasPanelPosition = YES;
@@ -1218,6 +1304,10 @@ typedef NS_ENUM(NSInteger, PXZoomInitialMode) {
         }
         [self.view setNeedsLayout];
         [self.view layoutIfNeeded];
+    } else if (gesture.state == UIGestureRecognizerStateEnded ||
+               gesture.state == UIGestureRecognizerStateCancelled) {
+        // 取消同样落盘：口径与“记住上次选区”一致，拖到哪算哪。
+        if (self.panelCollapsed) [self pxPersistHandleOrigin];
     }
 }
 

@@ -70,6 +70,7 @@ FOUNDATION_EXPORT NSString * const PXKeySelectionButtonIcons;
 FOUNDATION_EXPORT NSString * const PXKeySelectionButtonIconStyle;
 FOUNDATION_EXPORT NSString * const PXKeyAreaRememberLastRect;
 FOUNDATION_EXPORT NSString * const PXKeyAreaLastSelectionRect;
+FOUNDATION_EXPORT NSString * const PXKeyMarkupHandleOrigin;
 
 // MARK: - 默认值
 

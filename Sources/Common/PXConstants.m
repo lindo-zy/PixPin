@@ -53,6 +53,8 @@ NSString * const PXKeySelectionButtonIconStyle = @"SelectionButtonIconStyle";
 NSString * const PXKeyAreaRememberLastRect = @"AreaRememberLastRect";
 // 选区矩形以 NSStringFromCGRect 存储；与开关独立，关开关时清除。
 NSString * const PXKeyAreaLastSelectionRect = @"AreaLastSelectionRect";
+// 全屏标记收起把手位置以 NSStringFromCGPoint 存储；无开关，始终记忆。
+NSString * const PXKeyMarkupHandleOrigin = @"MarkupHandleOrigin";
 
 const NSInteger PXDefaultResultAction = 0;
 const CGFloat PXDefaultEditorLineWidth = 4.0;
