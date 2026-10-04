@@ -449,8 +449,8 @@ static void testEditorOverrides(void) {
 static void testSelectionOrder(void) {
     printf("[selection order]\n");
     NSArray<NSString *> *defaults = [PXEditorOrder defaultSelectionIdentifiers];
-    PXCheckInt(defaults.count, 13, "selection catalog count");
-    PXCheckInt([NSSet setWithArray:defaults].count, 13, "selection ids unique");
+    PXCheckInt(defaults.count, 12, "selection catalog count");
+    PXCheckInt([NSSet setWithArray:defaults].count, 12, "selection ids unique");
     // SHELLX 扩展组是目录的子集：工具栏按运行时可用性整体增删，目录解析无需特判。
     NSArray<NSString *> *shellx = [PXEditorOrder shellxSelectionIdentifiers];
     PXCheckInt(shellx.count, 5, "shellx group count");

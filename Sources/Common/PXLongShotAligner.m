@@ -1,5 +1,6 @@
 #import "PXLongShotAligner.h"
 #import <math.h>
+#import <stdlib.h>
 const NSInteger PXLongShotSigWidth = 64;
 
 void PXLongShotComputeRowSignature(const uint8_t *buffer,
@@ -61,29 +62,34 @@ static CGFloat PXShiftCost(const uint8_t *prev, const uint8_t *cur, NSInteger ro
 }
 
 static NSInteger PXFindShift(const uint8_t *prev, const uint8_t *cur, NSInteger rows, CGFloat *cost) {
+    CGFloat *costs = malloc((size_t)rows * sizeof(CGFloat));
+    if (!costs) return 0;
     NSInteger bestDelta = 0;
     CGFloat best = CGFLOAT_MAX;
     for (NSInteger d = 3; d <= rows - 64; d++) {
-        CGFloat v = PXShiftCost(prev, cur, rows, d);
+        costs[d] = CGFLOAT_MAX;
+        if (PXShiftCost(prev, cur, rows, d) > 8.0) continue;
+        // 稀疏页上多个粗候选可能全部落在白底；先密集验证每个候选，再比较独立匹配峰。
+        CGFloat sum = 0;
+        NSInteger overlap = rows - d, count = (overlap + 3) / 4;
+        for (NSInteger r = 0; r < overlap; r += 4) {
+            sum += PXRowDifference(prev + (r + d) * PXLongShotSigWidth,
+                                   cur + r * PXLongShotSigWidth);
+            if (sum > 8.0 * count) break;
+        }
+        CGFloat v = sum / count;
+        if (v > 8.0) continue;
+        costs[d] = v;
         if (v < best) { best = v; bestDelta = d; }
     }
-    if (!bestDelta || best > 8.0) return 0;
     CGFloat second = CGFLOAT_MAX;
     for (NSInteger d = 3; d <= rows - 64; d++) {
         if (labs(d - bestDelta) <= 3) continue;
-        second = MIN(second, PXShiftCost(prev, cur, rows, d));
+        second = MIN(second, costs[d]);
     }
-    if (second - best < 1.5) return 0;
-    // 候选再用密集行验证，防稀疏采样恰好落在白底造成假匹配。
-    CGFloat sum = 0;
-    NSInteger count = 0, overlap = rows - bestDelta;
-    for (NSInteger r = 0; r < overlap; r += 4) {
-        sum += PXRowDifference(prev + (r + bestDelta) * PXLongShotSigWidth,
-                               cur + r * PXLongShotSigWidth);
-        count++;
-    }
-    if (count == 0 || sum / count > 8.0) return 0;
-    *cost = sum / count;
+    free(costs);
+    if (!bestDelta || second - best < 1.5) return 0;
+    *cost = best;
     return bestDelta;
 }
 
