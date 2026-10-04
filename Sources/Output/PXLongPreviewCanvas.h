@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import "../Common/PXLongShotControl.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -14,7 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)initWithWidthPixels:(NSInteger)widthPixels
                           maxPixels:(NSInteger)maxPixels
-                            uiScale:(CGFloat)uiScale;
+                            uiScale:(CGFloat)uiScale
+                       cancellation:(PXLongShotCancellation *)cancellation;
 
 /// 追加一片（已落盘 JPEG）。返回更新后的整幅预览；失败/饱和返回 nil。
 /// overlapRows：与上一片的重叠行数（首片传 0；会话侧已用 PXLongShotSearchOverlap 算好）。

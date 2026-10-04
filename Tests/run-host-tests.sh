@@ -20,6 +20,7 @@ clang \
     "$ROOT_DIR/Sources/Common/PXExternalRequest.m" \
     "$ROOT_DIR/Sources/Common/PXClaimSet.m" \
     "$ROOT_DIR/Sources/Common/PXLongShotAligner.m" \
+    "$ROOT_DIR/Sources/Common/PXLongShotControl.m" \
     "$ROOT_DIR/Sources/Editor/PXEditorLayout.m" \
     "$ROOT_DIR/Tests/Unit/PXHostTests.m"
 

@@ -4,7 +4,6 @@ const CGFloat PXLongShotHUDPreviewWidthPt = 88.0;
 
 typedef NS_ENUM(NSInteger, PXLongShotHUDButton) {
     PXLongShotHUDButtonCancel = 0,
-    PXLongShotHUDButtonCapture = 1,
     PXLongShotHUDButtonFinish = 2,
 };
 
@@ -15,9 +14,8 @@ static const CGFloat PXLongShotHUDPreviewHeight = 176.0;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UILabel *counterLabel;
 @property (nonatomic, strong) UIButton *cancelButton;
-@property (nonatomic, strong) UIButton *captureButton;
 @property (nonatomic, strong) UIButton *finishButton;
-@property (nonatomic, assign) BOOL hasSlices;
+@property (nonatomic, assign) BOOL scrolling;
 // 实时预览浮窗
 @property (nonatomic, strong) UIView *previewPanel;
 @property (nonatomic, strong) UIScrollView *previewScroll;
@@ -47,7 +45,7 @@ static const CGFloat PXLongShotHUDPreviewHeight = 176.0;
         _statusLabel.font = [UIFont systemFontOfSize:12.0];
         _statusLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.75];
         _statusLabel.textAlignment = NSTextAlignmentCenter;
-        _statusLabel.text = @"滚动页面后点「截取」逐段采集";
+        _statusLabel.text = @"自动滚动截取中，点「完成」停止";
         [_bar addSubview:_statusLabel];
 
         _counterLabel = [[UILabel alloc] init];
@@ -58,12 +56,10 @@ static const CGFloat PXLongShotHUDPreviewHeight = 176.0;
         [_bar addSubview:_counterLabel];
 
         _cancelButton = [self pxButton:@"取消" tag:PXLongShotHUDButtonCancel];
-        _captureButton = [self pxButton:@"截取" tag:PXLongShotHUDButtonCapture];
-        _captureButton.backgroundColor = [UIColor systemBlueColor];
-        _captureButton.layer.cornerRadius = 10.0;
         _finishButton = [self pxButton:@"完成" tag:PXLongShotHUDButtonFinish];
+        _finishButton.backgroundColor = UIColor.systemBlueColor;
+        _finishButton.layer.cornerRadius = 10.0;
         [_bar addSubview:_cancelButton];
-        [_bar addSubview:_captureButton];
         [_bar addSubview:_finishButton];
         [self setSliceCount:0];
 
@@ -119,9 +115,6 @@ static const CGFloat PXLongShotHUDPreviewHeight = 176.0;
         case PXLongShotHUDButtonCancel:
             [self.delegate longShotHUDDidTapCancel:self];
             break;
-        case PXLongShotHUDButtonCapture:
-            [self.delegate longShotHUDDidTapCapture:self];
-            break;
         case PXLongShotHUDButtonFinish:
             [self.delegate longShotHUDDidTapFinish:self];
             break;
@@ -134,7 +127,8 @@ static const CGFloat PXLongShotHUDPreviewHeight = 176.0;
 }
 
 - (void)pxApplyPreviewVisibility {
-    self.previewPanel.hidden = !(self.previewHasContent && self.previewVisible);
+    self.previewPanel.hidden = self.scrolling || !(self.previewHasContent && self.previewVisible);
+    self.previewToggle.hidden = self.scrolling || !self.previewHasContent;
     UIImage *icon = [UIImage systemImageNamed:self.previewVisible ? @"eye.slash" : @"eye"];
     [self.previewToggle setImage:icon forState:UIControlStateNormal];
 }
@@ -155,12 +149,9 @@ static const CGFloat PXLongShotHUDPreviewHeight = 176.0;
 
     CGFloat buttonTop = 34.0;
     CGFloat buttonHeight = 40.0;
-    CGFloat captureWidth = 84.0;
-    CGFloat sideWidth = 64.0;
+    CGFloat sideWidth = 90.0;
     self.cancelButton.frame = CGRectMake(barWidth - pad - sideWidth, buttonTop, sideWidth, buttonHeight);
-    self.captureButton.frame = CGRectMake(CGRectGetMinX(self.cancelButton.frame) - 8.0 - captureWidth,
-                                          buttonTop, captureWidth, buttonHeight);
-    self.finishButton.frame = CGRectMake(CGRectGetMinX(self.captureButton.frame) - 8.0 - sideWidth,
+    self.finishButton.frame = CGRectMake(CGRectGetMinX(self.cancelButton.frame) - 8.0 - sideWidth,
                                          buttonTop, sideWidth, buttonHeight);
     self.counterLabel.frame = CGRectMake(pad, buttonTop + 10.0,
                                          CGRectGetMinX(self.finishButton.frame) - pad - 8.0, 20.0);
@@ -177,11 +168,18 @@ static const CGFloat PXLongShotHUDPreviewHeight = 176.0;
 
 #pragma mark - 状态
 
-- (void)setBusy:(BOOL)busy statusText:(NSString *)statusText {
-    self.captureButton.enabled = !busy;
-    // 取消键忙时保持可用：截取/拼接任何阶段用户都能立即退出。
-    self.finishButton.enabled = !busy && self.hasSlices;
-    if (statusText) self.statusLabel.text = statusText;
+- (void)setFinishing:(BOOL)finishing {
+    self.finishButton.enabled = !finishing;
+}
+
+- (void)setScrolling:(BOOL)scrolling {
+    _scrolling = scrolling;
+    [self pxApplyPreviewVisibility];
+}
+
+- (CGFloat)scrollProtectedBottomY {
+    [self layoutIfNeeded];
+    return CGRectGetMinY(self.bar.frame);
 }
 
 - (void)setStatusText:(NSString *)statusText {
@@ -189,8 +187,6 @@ static const CGFloat PXLongShotHUDPreviewHeight = 176.0;
 }
 
 - (void)setSliceCount:(NSInteger)count {
-    self.hasSlices = count > 0;
-    self.finishButton.enabled = self.hasSlices && self.captureButton.enabled;
     self.counterLabel.text = [NSString stringWithFormat:@"已截 %ld 段", (long)count];
 }
 

@@ -3,7 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-// MARK: - 手动长截图重叠对齐（纯逻辑层，宿主单测覆盖；禁止依赖 UIKit）
+// MARK: - 长截图重叠对齐（纯逻辑层，宿主单测覆盖；禁止依赖 UIKit）
 
 /// 行签名宽度：每行采样 64 个亮度值。
 FOUNDATION_EXPORT const NSInteger PXLongShotSigWidth;
@@ -26,5 +26,8 @@ NSInteger PXLongShotSearchOverlap(const uint8_t *prevSigs, NSInteger prevRows,
 
 /// 重叠行数达到“几乎整片重复”即视为未滚动的重复截取。
 BOOL PXLongShotIsDuplicateOverlap(NSInteger overlapRows, NSInteger sliceHeight);
+/// 同尺寸整片签名比较；静止文字/纯色页也可去重，不依赖顶部匹配带是否有纹理。
+BOOL PXLongShotSignaturesAreDuplicate(const uint8_t *prevSigs, NSInteger prevRows,
+                                     const uint8_t *curSigs, NSInteger curRows);
 
 NS_ASSUME_NONNULL_END

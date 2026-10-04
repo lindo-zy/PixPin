@@ -15,9 +15,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)longShotSessionDidFail:(PXLongShotSession *)session message:(NSString *)message;
 @end
 
-/// 手动滚动长截图会话：用户在前台 App 自己滚动，逐段点「截取」，点「完成」后台拼接。
+/// 自动滚动长截图会话：确认选区后自动滚动采集，用户点「完成」停止并后台拼接。
 /// 线程模型与协调器一致：全部流程推进在主线程，后台只做图像处理；
-/// 每个异步回调都复查任务状态，取消后到达的回调一律丢弃。
+/// 每个异步回调复查任务状态；取消标记同时停止后续后台位图工作。
 /// 分片 JPEG 落任务临时目录，内存中只驻留行签名；拼接画布受像素预算约束。
 @interface PXLongShotSession : NSObject
 

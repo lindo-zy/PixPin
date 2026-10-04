@@ -47,7 +47,9 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
 + (nullable PXLongShotSlice *)sliceFromScreenImage:(UIImage *)screenImage
                                          pixelRect:(CGRect)pixelRect
                                           filePath:(NSString *)filePath
+                                      cancellation:(PXLongShotCancellation *)cancellation
                                              error:(NSError **)error {
+    if (cancellation.cancelled || !screenImage.CGImage || filePath.length == 0) return nil;
     CGImageRef source = screenImage.CGImage;
     NSInteger srcW = (NSInteger)CGImageGetWidth(source);
     NSInteger srcH = (NSInteger)CGImageGetHeight(source);
@@ -92,6 +94,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
         return nil;
     }
 
+    if (cancellation.cancelled) { CGImageRelease(cropped); return nil; }
     BOOL written = PXLongShotWriteJPEG(cropped, [NSURL fileURLWithPath:filePath],
                                        PXLongShotSliceJPEGQuality);
     CGImageRelease(cropped);
@@ -113,30 +116,30 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
 + (nullable UIImage *)composedImageWithSlices:(NSArray<PXLongShotSlice *> *)slices
                                   screenScale:(CGFloat)screenScale
                                     outputURL:(NSURL *)outputURL
+                                 cancellation:(PXLongShotCancellation *)cancellation
                                 progressBlock:(nullable void (^)(NSInteger done, NSInteger total))progressBlock
                                  outPixelSize:(CGSize *)outPixelSize
                                         error:(NSError **)error {
+    if (cancellation.cancelled) return nil;
     if (slices.count == 0) {
         if (error) *error = PXLongShotError(@"没有可拼接的分片");
         return nil;
     }
 
     NSInteger sliceCount = (NSInteger)slices.count;
-    // 进度口径 2n：前 n 步是对齐搜索（签名比对的耗时大头），后 n 步是逐片解码绘制。
+    // 进度口径 2n：前 n 步累计已确认偏移，后 n 步逐片解码绘制。
     if (progressBlock) progressBlock(0, sliceCount * 2);
 
-    // 逐片计算重叠并累计总高：offset 相对首片顶部（顶部原点像素）。
+    // 采用入列时已确认的重叠累计总高：offset 为顶部原点的原始像素。
     NSInteger totalHeight = 0;
     NSMutableArray<NSNumber *> *offsets = [NSMutableArray arrayWithCapacity:slices.count];
     for (NSInteger i = 0; i < sliceCount; i++) {
+        if (cancellation.cancelled) return nil;
         PXLongShotSlice *slice = slices[i];
         NSInteger offset = totalHeight;
         if (i > 0) {
             PXLongShotSlice *prev = slices[i - 1];
-            NSInteger overlap = PXLongShotSearchOverlap(
-                prev.rowSignatures.bytes, prev.pixelHeight,
-                slice.rowSignatures.bytes, slice.pixelHeight,
-                MIN(slice.pixelHeight, 128));
+            NSInteger overlap = MIN(MAX(slice.overlapRows, 0), MIN(prev.pixelHeight, slice.pixelHeight));
             offset = totalHeight - overlap;
         }
         [offsets addObject:@(offset)];
@@ -166,6 +169,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
         return nil;
     }
 
+    if (cancellation.cancelled) return nil;
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     CGContextRef canvas = CGBitmapContextCreate(NULL, (NSUInteger)canvasW, (NSUInteger)canvasH, 8, 0,
                                                 colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
@@ -180,6 +184,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
 
     BOOL drewAll = YES;
     for (NSInteger i = 0; i < sliceCount; i++) {
+        if (cancellation.cancelled) { CGContextRelease(canvas); return nil; }
         // 绘制进度在循环体头部上报：单片解码失败 continue 时进度仍单调推进。
         if (progressBlock) progressBlock(sliceCount + i, sliceCount * 2);
         @autoreleasepool {
@@ -187,18 +192,21 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
             CGImageSourceRef source = CGImageSourceCreateWithURL(
                 (__bridge CFURLRef)[NSURL fileURLWithPath:slice.filePath], NULL);
             if (!source) { drewAll = NO; continue; }
-            CGImageRef tile = CGImageSourceCreateImageAtIndex(
-                source, 0,
-                (__bridge CFDictionaryRef)@{(__bridge NSString *)kCGImageSourceShouldCache: @NO});
+            // 超长图已经缩放时直接按目标尺寸解码，避免逐片仍分配整屏大小位图。
+            CGImageRef tile = scale < 1.0
+                ? CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)@{
+                    (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+                    (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize:
+                        @(MAX(1, (NSInteger)ceil(MAX(slice.pixelWidth, slice.pixelHeight) * scale))),
+                    (__bridge NSString *)kCGImageSourceShouldCacheImmediately: @YES})
+                : CGImageSourceCreateImageAtIndex(source, 0,
+                    (__bridge CFDictionaryRef)@{(__bridge NSString *)kCGImageSourceShouldCache: @NO});
             CFRelease(source);
             if (!tile) { drewAll = NO; continue; }
 
             NSInteger offset = offsets[i].integerValue;
-            CGFloat destW = slice.pixelWidth * scale;
-            CGFloat destH = slice.pixelHeight * scale;
-            // 顶部原点 → CG 底部原点：y = canvasH - (offset + sliceH) * scale。
-            CGFloat destY = (CGFloat)canvasH - ((CGFloat)offset + destH);
-            CGContextDrawImage(canvas, CGRectMake(0, destY, destW, destH), tile);
+            CGContextDrawImage(canvas, PXLongShotTileRect(canvasH, offset, slice.pixelWidth,
+                                                         slice.pixelHeight, scale), tile);
             CGImageRelease(tile);
         }
     }
@@ -213,6 +221,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
         return nil;
     }
 
+    if (cancellation.cancelled) { CGImageRelease(composed); return nil; }
     BOOL written = PXLongShotWriteJPEG(composed, outputURL, PXLongShotOutputJPEGQuality);
     if (outPixelSize) *outPixelSize = CGSizeMake(canvasW, canvasH);
     CGImageRelease(composed);
@@ -222,6 +231,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
     }
 
     // 文件回读：resultImage 以磁盘为后端，拼接画布立即释放不驻留。
+    if (cancellation.cancelled) return nil;
     CGImageSourceRef outSource = CGImageSourceCreateWithURL((__bridge CFURLRef)outputURL, NULL);
     CGImageRef outImage = outSource
         ? CGImageSourceCreateImageAtIndex(outSource, 0,

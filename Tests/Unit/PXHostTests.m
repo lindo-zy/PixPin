@@ -8,6 +8,7 @@
 #import "../../Sources/Common/PXEditorOrder.h"
 #import "../../Sources/Common/PXExternalRequest.h"
 #import "../../Sources/Common/PXLongShotAligner.h"
+#import "../../Sources/Common/PXLongShotControl.h"
 #import "../../Sources/Editor/PXEditorLayout.h"
 
 static NSInteger PXTestFailures = 0;
@@ -633,7 +634,7 @@ static void testFloatingOriginalRect(void) {
     PXCheck(CGRectEqualToRect(PXConstrainFloatingRect(selection, CGRectZero), CGRectZero), "empty host geometry is rejected");
 }
 
-#pragma mark - 手动长截图对齐
+#pragma mark - 长截图对齐
 
 // 合成“页面”签名：整数哈希（雪崩）生成高熵内容，等价真实屏幕的判别力，
 // 避免代数函数在模数组合下出现近似周期混染导致的多解歧义。
@@ -734,6 +735,70 @@ static void testLongShotAligner(void) {
     free(cur);
 }
 
+static void PXFillTextPageSigs(uint8_t *sigs, NSInteger rows, NSInteger offset) {
+    for (NSInteger r = 0; r < rows; r++) {
+        NSInteger absolute = offset + r, line = absolute / 48, local = absolute % 48;
+        uint8_t pattern = PXTestPageHash((NSUInteger)line + 97);
+        for (NSInteger c = 0; c < PXLongShotSigWidth; c++) {
+            BOOL ink = local >= 16 && local < 32 && c >= 8 && c < 24 + pattern % 30 && ((pattern >> (c % 8)) & 1);
+            sigs[r * PXLongShotSigWidth + c] = ink ? 55 : 245;
+        }
+    }
+}
+
+static void testAutomaticLongShot(void) {
+    printf("[automatic long shot]\n");
+    PXLongShotScrollPlan plan;
+    CGRect bounds = CGRectMake(0, 0, 390, 844);
+    CGRect viewport = CGRectMake(24, 120, 340, 640);
+    PXCheck(PXLongShotBuildScrollPlan(viewport, bounds, 708, &plan), "portrait auto scroll has usable path");
+    PXCheck(CGRectContainsPoint(viewport, plan.start) && CGRectContainsPoint(viewport, plan.end), "swipe stays in capture viewport");
+    PXCheck(plan.start.y < 708 - 12 && plan.end.y > CGRectGetMinY(viewport), "swipe avoids HUD and viewport top");
+    PXCheck(plan.start.y > plan.end.y && plan.start.y - plan.end.y <= 320, "upward drag is bounded to preserve overlap");
+    PXCheck(!PXLongShotBuildScrollPlan(CGRectMake(10, 770, 200, 60), bounds, 708, &plan), "viewport behind HUD is rejected");
+    PXCheck(!PXLongShotBuildScrollPlan(CGRectMake(24, 120, 300, 44), bounds, 708, &plan), "short viewport is rejected");
+    PXCheck(!PXLongShotBuildScrollPlan(CGRectNull, bounds, 708, &plan), "null viewport is rejected");
+    PXCheck(!PXLongShotBuildScrollPlan(viewport, bounds, 708, NULL), "null plan is rejected");
+    PXCheck(PXLongShotBuildScrollPlan(CGRectMake(50, 60, 700, 250), CGRectMake(0, 0, 844, 390), 280, &plan), "landscape path stays above HUD");
+
+    const NSInteger rows = 2000;
+    uint8_t *prev = calloc((size_t)rows * PXLongShotSigWidth, 1);
+    uint8_t *cur = calloc((size_t)rows * PXLongShotSigWidth, 1);
+    PXFillTextPageSigs(prev, rows, 0);
+    PXFillTextPageSigs(cur, rows, 800);
+    PXCheckInt(PXLongShotSearchOverlap(prev, rows, cur, rows, 128), 1200, "sparse text overlap ignores adjacent-pixel peak ambiguity");
+    PXCheck(!PXLongShotSignaturesAreDuplicate(prev, rows, cur, rows), "scrolled text is not dropped as duplicate");
+    PXFillTextPageSigs(cur, rows, 0);
+    PXCheck(PXLongShotSignaturesAreDuplicate(prev, rows, cur, rows), "unchanged sparse text is detected independently of overlap search");
+    memset(prev, 245, (size_t)rows * PXLongShotSigWidth);
+    memset(cur, 245, (size_t)rows * PXLongShotSigWidth);
+    PXCheck(PXLongShotSignaturesAreDuplicate(prev, rows, cur, rows), "unchanged plain page is detected");
+    memset(cur, 55, (size_t)rows * PXLongShotSigWidth);
+    PXCheck(!PXLongShotSignaturesAreDuplicate(prev, rows, cur, rows), "changed plain page is not duplicate");
+    PXCheck(!PXLongShotSignaturesAreDuplicate(NULL, rows, cur, rows), "missing signature is rejected");
+    free(prev); free(cur);
+
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(NULL, 958, 16384, 8, 0, space, kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    PXCheck(context != NULL, "long image native bitmap created");
+    if (context) {
+        CGContextSetRGBFillColor(context, 0, 0, 0, 1);
+        CGContextFillRect(context, CGRectMake(0, 0, 958, 16384));
+        CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+        CGFloat p = 16384.0 / 20000.0;
+        for (NSInteger i = 0; i < 10; i++) CGContextFillRect(context, PXLongShotTileRect(16384, i * 2000, 1170, 2000, p));
+        uint8_t *bytes = CGBitmapContextGetData(context);
+        size_t stride = CGBitmapContextGetBytesPerRow(context), black = 0;
+        for (NSInteger r = 0; r < 16384; r++) if (bytes[r * stride + 400 * 4] == 0) black++;
+        PXCheck(black == 0, "scaled long image has no black gaps or missing tail tile");
+        CGContextRelease(context);
+    }
+    CGFloat p = 264.0 / 1170.0;
+    CGRect tile = PXLongShotTileRect(7575, 1200, 1170, 2000, p);
+    PXCheck(fabs(7575 - CGRectGetMaxY(tile) - 1200 * p) < 0.001, "preview offset uses the same scale as tile dimensions");
+}
+
 #pragma mark - 长截图模式与外部路由
 
 static void testLongCaptureRouting(void) {
@@ -766,6 +831,7 @@ int main(int argc, const char **argv) {
         testFloatingOriginalRect();
         testLongShotAligner();
         testLongCaptureRouting();
+        testAutomaticLongShot();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }

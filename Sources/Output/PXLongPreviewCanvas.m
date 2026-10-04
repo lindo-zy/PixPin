@@ -19,11 +19,13 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 // 已收分片回放清单：path/w/h/offset（offset 为顶部原点累计像素，追加时即定，重建直接重放）。
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *items;
 @property (nonatomic, assign) NSInteger totalHeight;
+@property (nonatomic, strong) PXLongShotCancellation *cancellation;
 @end
 
 @implementation PXLongPreviewCanvas
 
-- (instancetype)initWithWidthPixels:(NSInteger)widthPixels maxPixels:(NSInteger)maxPixels uiScale:(CGFloat)uiScale {
+- (instancetype)initWithWidthPixels:(NSInteger)widthPixels maxPixels:(NSInteger)maxPixels uiScale:(CGFloat)uiScale
+                       cancellation:(PXLongShotCancellation *)cancellation {
     if (self = [super init]) {
         _canvasWidth = MAX(widthPixels, PXLongPreviewMinWidthPixels);
         _maxPixels = MAX(maxPixels, (NSInteger)_canvasWidth * 256);
@@ -31,6 +33,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
         _drawScale = 1.0;   // 首片追加时按分片宽校正
         _uiScale = uiScale > 0 ? uiScale : 1.0;
         _items = [[NSMutableArray alloc] init];
+        _cancellation = cancellation;
     }
     return self;
 }
@@ -46,6 +49,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 // MARK: - 画布维护
 
 - (BOOL)pxCreateContextWithWidth:(NSInteger)width heightAlloc:(NSInteger)heightAlloc {
+    if (self.cancellation.cancelled) return NO;
     if (_context) CGContextRelease(_context);
     self.canvasWidth = width;
     self.canvasHeightAlloc = heightAlloc;
@@ -53,7 +57,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
     _context = CGBitmapContextCreate(NULL, (NSUInteger)width, (NSUInteger)heightAlloc, 8, 0,
                                          colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(colorSpace);
-    if (!_context) return NO;
+    if (!_context || self.cancellation.cancelled) return NO;
     CGContextSetFillColorWithColor(_context, [UIColor blackColor].CGColor);
     CGContextFillRect(_context, CGRectMake(0, 0, width, heightAlloc));
     CGContextSetInterpolationQuality(_context, kCGInterpolationLow);
@@ -64,17 +68,18 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
               pixelWidth:(NSInteger)w
              pixelHeight:(NSInteger)h
                  offset:(NSInteger)offset {
-    if (!_context) return NO;
+    if (!_context || self.cancellation.cancelled) return NO;
     CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], NULL);
     if (!source) return NO;
-    CGImageRef tile = CGImageSourceCreateImageAtIndex(
-        source, 0, (__bridge CFDictionaryRef)@{(__bridge NSString *)kCGImageSourceShouldCache: @NO});
+    // 直接解码到预览所需尺寸；禁止先解码整片再缩绘，自动循环会放大内存与 CPU 峰值。
+    NSInteger maxDimension = MAX(1, (NSInteger)ceil(MAX(w, h) * self.drawScale));
+    CGImageRef tile = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)@{
+        (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+        (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @(maxDimension),
+        (__bridge NSString *)kCGImageSourceShouldCacheImmediately: @YES});
     CFRelease(source);
     if (!tile) return NO;
-    CGFloat p = self.drawScale;
-    // 顶部原点累计坐标 → CG 底部原点画布：分配高固定，旧片位置不随追加移动。
-    CGFloat destY = (CGFloat)self.canvasHeightAlloc - ((CGFloat)offset + h * p);
-    CGContextDrawImage(_context, CGRectMake(0, destY, w * p, h * p), tile);
+    CGContextDrawImage(_context, PXLongShotTileRect(self.canvasHeightAlloc, offset, w, h, self.drawScale), tile);
     CGImageRelease(tile);
     return YES;
 }
@@ -92,6 +97,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
     self.drawScale = scale;
     // 重放即重建：任何一片绘失败都判放弃，宁可停更也不留一幅缺段预览。
     for (NSDictionary *item in self.items) {
+        if (self.cancellation.cancelled) return NO;
         if (![self pxDrawSliceFile:item[@"path"]
                         pixelWidth:[item[@"w"] integerValue]
                        pixelHeight:[item[@"h"] integerValue]
@@ -108,7 +114,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
                             pixelWidth:(NSInteger)pixelWidth
                            pixelHeight:(NSInteger)pixelHeight
                             overlapRows:(NSInteger)overlapRows {
-    if (self.saturated || pixelWidth < 1 || pixelHeight < 1) return nil;
+    if (self.cancellation.cancelled || self.saturated || pixelWidth < 1 || pixelHeight < 1) return nil;
 
     NSInteger offset = self.totalHeight - MAX(overlapRows, 0);
     NSInteger totalNew = offset + pixelHeight;
@@ -119,6 +125,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
         // 首片：画布宽取目标预览宽，分配高由像素预算反推。
         self.drawScale = (CGFloat)self.canvasWidth / (CGFloat)pixelWidth;
         if (![self pxCreateContextWithWidth:self.canvasWidth heightAlloc:self.canvasHeightAlloc]) {
+            [self pxAbandon];
             return nil;
         }
     } else if ((CGFloat)totalNew * self.drawScale > (CGFloat)self.canvasHeightAlloc) {
@@ -133,15 +140,29 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
             [self.items removeAllObjects];
             return nil;
         }
-        return [self pxSnapshotImage];
+        return [self pxSnapshotOrAbandon];
     }
 
     if (![self pxDrawSliceFile:filePath pixelWidth:pixelWidth pixelHeight:pixelHeight offset:offset]) {
+        [self pxAbandon];
         return nil;
     }
     [self.items addObject:item];
     self.totalHeight = totalNew;
-    return [self pxSnapshotImage];
+    return [self pxSnapshotOrAbandon];
+}
+
+- (void)pxAbandon {
+    if (_context) CGContextRelease(_context);
+    _context = NULL;
+    _gaveUp = YES;
+    [self.items removeAllObjects];
+}
+
+- (UIImage *)pxSnapshotOrAbandon {
+    UIImage *image = [self pxSnapshotImage];
+    if (!image) [self pxAbandon];
+    return image;
 }
 
 - (NSInteger)usedPixelHeight {

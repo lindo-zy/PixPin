@@ -35,7 +35,7 @@ static NSString *_Nullable pxDarwinSelfPostArmedName = nil;
 @property (nonatomic, strong, nullable) PXCaptureWindow *captureWindow;
 @property (nonatomic, strong, nullable) PXSelectionView *selectionView;
 @property (nonatomic, strong, nullable) PXResultBubble *resultBubble;
-@property (nonatomic, strong, nullable) PXLongShotSession *longShotSession;   // 手动长截图会话（主线程）
+@property (nonatomic, strong, nullable) PXLongShotSession *longShotSession;   // 自动长截图会话（主线程）
 @property (nonatomic, strong) NSMutableArray<PXFloatingSnap *> *floatingSnaps; // 主线程，多图独立保留
 @property (nonatomic, strong, nullable) PXFloatingSnap *editingFloatingSnap;
 @property (nonatomic, strong, nullable) PXCaptureWindow *editorWindow;
@@ -318,7 +318,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }];
 }
 
-#pragma mark - 手动长截图会话
+#pragma mark - 自动长截图会话
 
 - (void)pxStartLongShotForTask:(PXCaptureTask *)task displayRect:(CGRect)displayRect {
     if (![self pxIsTaskCurrent:task] || task.state != PXCaptureStatePresenting) return;
