@@ -155,7 +155,13 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
     }
     NSInteger canvasW = MAX((NSInteger)(slices[0].pixelWidth * scale + 0.5), 1);
     NSInteger canvasH = MAX((NSInteger)(totalHeight * scale + 0.5), 1);
-    if (canvasW <= 0 || canvasH <= 0 || (uint64_t)canvasW * (uint64_t)canvasH > (uint64_t)PXLongShotMaxCanvasPixels) {
+    // 两维独立 +0.5 舍入可把乘积顶过预算零点几像素（实数域 sqrt 恰好压线），
+    // 宽幅设备特定高度下会确定性触发。降宽消化舍入误差而非报错：绘制按 scale
+    // 裁剪，损失 <1px。乘积随宽线性增长，循环至多两三次。
+    while (canvasW > 1 && (uint64_t)canvasW * (uint64_t)canvasH > (uint64_t)PXLongShotMaxCanvasPixels) {
+        canvasW--;
+    }
+    if (canvasW <= 0 || canvasH <= 0) {
         if (error) *error = PXLongShotError(@"拼接画布尺寸异常");
         return nil;
     }
@@ -173,7 +179,9 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
     CGContextSetInterpolationQuality(canvas, kCGInterpolationMedium);
 
     BOOL drewAll = YES;
-    for (NSInteger i = 0; i < (NSInteger)slices.count; i++) {
+    for (NSInteger i = 0; i < sliceCount; i++) {
+        // 绘制进度在循环体头部上报：单片解码失败 continue 时进度仍单调推进。
+        if (progressBlock) progressBlock(sliceCount + i, sliceCount * 2);
         @autoreleasepool {
             PXLongShotSlice *slice = slices[i];
             CGImageSourceRef source = CGImageSourceCreateWithURL(
@@ -193,7 +201,6 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
             CGContextDrawImage(canvas, CGRectMake(0, destY, destW, destH), tile);
             CGImageRelease(tile);
         }
-        if (progressBlock) progressBlock(sliceCount + i + 1, sliceCount * 2);
     }
 
     if (progressBlock) progressBlock(sliceCount * 2, sliceCount * 2);   // 进入编码阶段

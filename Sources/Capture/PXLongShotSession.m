@@ -123,7 +123,7 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
     if (self.busy || self.finished) return;
     if (![self pxIsTaskPresenting]) return;
     if (self.slices.count >= PXLongShotMaxSlices) {
-        self.hud.statusText = @"已达最大段数，点「完成」拼接";
+        self.hud.statusText = [self pxIdleStatusText];
         return;
     }
 
@@ -189,17 +189,20 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (![self pxIsTaskPresenting]) return;
-                self.busy = NO;
                 if (!slice) {
+                    self.busy = NO;
                     [self.hud setBusy:NO statusText:@"截取失败，请重试"];
                     PXLogWarn(@"long shot slice failed: %@ (task %@)",
                               error.localizedDescription ?: @"nil", task.taskID);
                     return;
                 }
                 if (duplicate) {
+                    self.busy = NO;
                     [self.hud setBusy:NO statusText:@"未检测到新内容，请继续滚动后再截取"];
                     return;
                 }
+                // 成功路径：busy 保持 YES 覆盖到预览绘制完成——预览画布无锁，
+                // 依赖会话 busy 串行化（画布头文件线程约定），不能提前解除。
                 [self pxAppendSlice:slice overlapRows:overlapRows];
             });
         }
@@ -215,7 +218,8 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
               (long)slice.pixelWidth, (long)slice.pixelHeight, (long)overlapRows);
 }
 
-/// 实时预览：入列后在后台把新片绘入增量画布，完成才解除 busy（期间截取/完成保持禁用）。
+/// 实时预览：入列后在后台把新片绘入增量画布，完成才解除 busy（期间截取/完成保持禁用，
+/// 同时保证无锁的画布实例严格串行访问）。
 - (void)pxUpdatePreviewWithSlice:(PXLongShotSlice *)slice overlapRows:(NSInteger)overlapRows {
     if (!self.previewCanvas) {
         CGFloat uiScale = self.task.capturedScreenScale > 0 ? self.task.capturedScreenScale : 1.0;
@@ -225,6 +229,12 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
                         uiScale:uiScale];
     }
     PXLongPreviewCanvas *canvas = self.previewCanvas;
+    if (canvas.saturated) {
+        // 预览已放弃：直接解除 busy，不再派发后台绘制（也不逐分片刷 warn 日志）。
+        self.busy = NO;
+        [self.hud setBusy:NO statusText:[self pxIdleStatusText]];
+        return;
+    }
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         @autoreleasepool {
             UIImage *image = [canvas appendSliceFile:slice.filePath
@@ -234,18 +244,23 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
             NSInteger usedPixelHeight = canvas.usedPixelHeight;
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (![self pxIsTaskPresenting]) return;
+                self.busy = NO;
                 if (image) {
                     [self.hud setPreviewImage:image usedPixelHeight:usedPixelHeight];
                 } else {
-                    PXLogWarn(@"long shot preview stopped (saturated or decode failed, task %@)", self.task.taskID);
+                    PXLogWarn(@"long shot preview stopped (saturated / canvas or draw failure, task %@)", self.task.taskID);
                 }
-                NSString *status = self.slices.count >= PXLongShotMaxSlices
-                    ? @"已达最大段数，点「完成」拼接"
-                    : @"继续滚动，或点「完成」拼接";
-                [self.hud setBusy:NO statusText:status];
+                [self.hud setBusy:NO statusText:[self pxIdleStatusText]];
             });
         }
     });
+}
+
+/// 采集间隙的状态文案：段满与未满是两个固定口径。
+- (NSString *)pxIdleStatusText {
+    return self.slices.count >= PXLongShotMaxSlices
+        ? @"已达最大段数，点「完成」拼接"
+        : @"继续滚动，或点「完成」拼接";
 }
 
 #pragma mark - 拼接
@@ -272,11 +287,19 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
                                                                 outputURL:outputURL
                                                             progressBlock:^(NSInteger done, NSInteger total) {
                 // 拼接是秒级后台操作，进度逐段上屏避免「按钮没反应」的卡死观感。
+                // 口径 2n：前 n 步对齐搜索、后 n 步逐片绘制，文案区分两个阶段。
                 dispatch_async(dispatch_get_main_queue(), ^{
                     if (![self pxIsTaskPresenting]) return;
-                    self.hud.statusText = done >= total
-                        ? @"长图编码中…"
-                        : [NSString stringWithFormat:@"拼接中 %ld/%ld 段…", (long)done, (long)total];
+                    NSInteger half = total / 2;
+                    if (done >= total) {
+                        self.hud.statusText = @"长图编码中…";
+                    } else if (done <= half) {
+                        self.hud.statusText = [NSString stringWithFormat:@"内容对齐中 %ld/%ld 段…",
+                                               (long)done, (long)half];
+                    } else {
+                        self.hud.statusText = [NSString stringWithFormat:@"拼接中 %ld/%ld 段…",
+                                               (long)(done - half), (long)half];
+                    }
                 });
             }
                                                              outPixelSize:&pixelSize
