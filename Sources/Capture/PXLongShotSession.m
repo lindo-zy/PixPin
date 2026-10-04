@@ -165,6 +165,8 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
     NSString *filePath = [directory stringByAppendingPathComponent:
                           [NSString stringWithFormat:@"longslice_%03ld.jpg", (long)self.slices.count]];
     PXCaptureTask *task = self.task;
+    // 上一片签名的主线程快照：搜索在后台执行期间 busy 闸门保证 slices 不再变化。
+    PXLongShotSlice *prev = self.slices.lastObject;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         @autoreleasepool {
             NSError *error = nil;
@@ -172,6 +174,19 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
                                                                      pixelRect:pixelRect
                                                                       filePath:filePath
                                                                          error:&error];
+            // 重叠搜索最坏 ~20ms 级（数百候选 × 128 行 × 64 列字节比对），
+            // 必须留在后台：SpringBoard 主线程只做 UI 状态推进。
+            NSInteger overlapRows = 0;
+            BOOL duplicate = NO;
+            if (slice && prev) {
+                overlapRows = PXLongShotSearchOverlap(prev.rowSignatures.bytes, prev.pixelHeight,
+                                                      slice.rowSignatures.bytes, slice.pixelHeight,
+                                                      MIN(slice.pixelHeight, 128));
+                duplicate = PXLongShotIsDuplicateOverlap(overlapRows, slice.pixelHeight);
+                if (duplicate) {
+                    [NSFileManager.defaultManager removeItemAtPath:slice.filePath error:nil];
+                }
+            }
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (![self pxIsTaskPresenting]) return;
                 self.busy = NO;
@@ -181,25 +196,17 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
                               error.localizedDescription ?: @"nil", task.taskID);
                     return;
                 }
-                [self pxAppendSlice:slice];
+                if (duplicate) {
+                    [self.hud setBusy:NO statusText:@"未检测到新内容，请继续滚动后再截取"];
+                    return;
+                }
+                [self pxAppendSlice:slice overlapRows:overlapRows];
             });
         }
     });
 }
 
-- (void)pxAppendSlice:(PXLongShotSlice *)slice {
-    NSInteger overlapRows = 0;
-    if (self.slices.count > 0) {
-        PXLongShotSlice *prev = self.slices.lastObject;
-        overlapRows = PXLongShotSearchOverlap(prev.rowSignatures.bytes, prev.pixelHeight,
-                                              slice.rowSignatures.bytes, slice.pixelHeight,
-                                              MIN(slice.pixelHeight, 128));
-        if (PXLongShotIsDuplicateOverlap(overlapRows, slice.pixelHeight)) {
-            [NSFileManager.defaultManager removeItemAtPath:slice.filePath error:nil];
-            [self.hud setBusy:NO statusText:@"未检测到新内容，请继续滚动后再截取"];
-            return;
-        }
-    }
+- (void)pxAppendSlice:(PXLongShotSlice *)slice overlapRows:(NSInteger)overlapRows {
     [self.slices addObject:slice];
     [self.hud setSliceCount:(NSInteger)self.slices.count];
     [self pxUpdatePreviewWithSlice:slice overlapRows:overlapRows];
@@ -263,6 +270,15 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
             UIImage *image = [PXLongImageComposer composedImageWithSlices:slices
                                                               screenScale:screenScale
                                                                 outputURL:outputURL
+                                                            progressBlock:^(NSInteger done, NSInteger total) {
+                // 拼接是秒级后台操作，进度逐段上屏避免「按钮没反应」的卡死观感。
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (![self pxIsTaskPresenting]) return;
+                    self.hud.statusText = done >= total
+                        ? @"长图编码中…"
+                        : [NSString stringWithFormat:@"拼接中 %ld/%ld 段…", (long)done, (long)total];
+                });
+            }
                                                              outPixelSize:&pixelSize
                                                                     error:&error];
             dispatch_async(dispatch_get_main_queue(), ^{

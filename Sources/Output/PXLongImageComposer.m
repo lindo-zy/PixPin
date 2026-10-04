@@ -2,9 +2,13 @@
 #import "../Common/PXLog.h"
 #import "../Common/PXLongShotAligner.h"
 #import <ImageIO/ImageIO.h>
+#import <math.h>
 
 const NSInteger PXLongShotMaxSlices = 50;
 const NSInteger PXLongShotMaxCanvasHeight = 16384;
+// 24M 像素 ≈ 96MB 位图：手机全宽（~1320px）× 16384 高 ≈ 21.6M，在预算内不受影响；
+// 宽幅设备（iPad 等）超预算后按比例二次缩宽，保证 CreateImage 复制瞬态可控。
+const NSInteger PXLongShotMaxCanvasPixels = 24 * 1000 * 1000;
 const CGFloat PXLongShotSliceJPEGQuality = 0.95;
 const CGFloat PXLongShotOutputJPEGQuality = 0.9;
 const NSInteger PXLongShotCopyMaxPixelHeight = 8192;
@@ -109,6 +113,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
 + (nullable UIImage *)composedImageWithSlices:(NSArray<PXLongShotSlice *> *)slices
                                   screenScale:(CGFloat)screenScale
                                     outputURL:(NSURL *)outputURL
+                                progressBlock:(nullable void (^)(NSInteger done, NSInteger total))progressBlock
                                  outPixelSize:(CGSize *)outPixelSize
                                         error:(NSError **)error {
     if (slices.count == 0) {
@@ -116,10 +121,14 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
         return nil;
     }
 
+    NSInteger sliceCount = (NSInteger)slices.count;
+    // 进度口径 2n：前 n 步是对齐搜索（签名比对的耗时大头），后 n 步是逐片解码绘制。
+    if (progressBlock) progressBlock(0, sliceCount * 2);
+
     // 逐片计算重叠并累计总高：offset 相对首片顶部（顶部原点像素）。
     NSInteger totalHeight = 0;
     NSMutableArray<NSNumber *> *offsets = [NSMutableArray arrayWithCapacity:slices.count];
-    for (NSInteger i = 0; i < (NSInteger)slices.count; i++) {
+    for (NSInteger i = 0; i < sliceCount; i++) {
         PXLongShotSlice *slice = slices[i];
         NSInteger offset = totalHeight;
         if (i > 0) {
@@ -132,14 +141,21 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
         }
         [offsets addObject:@(offset)];
         totalHeight = offset + slice.pixelHeight;
+        if (progressBlock) progressBlock(i + 1, sliceCount * 2);
     }
 
     CGFloat scale = totalHeight > PXLongShotMaxCanvasHeight
         ? (CGFloat)PXLongShotMaxCanvasHeight / (CGFloat)totalHeight
         : 1.0;
+    // 像素总量二次缩放：高度封顶后宽幅设备仍可能超预算（如 iPad 全宽 × 16384）。
+    CGFloat scaledW = (CGFloat)slices[0].pixelWidth * scale;
+    CGFloat scaledH = (CGFloat)totalHeight * scale;
+    if (scaledW * scaledH > (CGFloat)PXLongShotMaxCanvasPixels) {
+        scale *= sqrt((CGFloat)PXLongShotMaxCanvasPixels / (scaledW * scaledH));
+    }
     NSInteger canvasW = MAX((NSInteger)(slices[0].pixelWidth * scale + 0.5), 1);
     NSInteger canvasH = MAX((NSInteger)(totalHeight * scale + 0.5), 1);
-    if (canvasW <= 0 || canvasH <= 0 || (uint64_t)canvasW * (uint64_t)canvasH > 400ull * 1000ull * 1000ull) {
+    if (canvasW <= 0 || canvasH <= 0 || (uint64_t)canvasW * (uint64_t)canvasH > (uint64_t)PXLongShotMaxCanvasPixels) {
         if (error) *error = PXLongShotError(@"拼接画布尺寸异常");
         return nil;
     }
@@ -177,7 +193,10 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
             CGContextDrawImage(canvas, CGRectMake(0, destY, destW, destH), tile);
             CGImageRelease(tile);
         }
+        if (progressBlock) progressBlock(sliceCount + i + 1, sliceCount * 2);
     }
+
+    if (progressBlock) progressBlock(sliceCount * 2, sliceCount * 2);   // 进入编码阶段
 
     CGImageRef composed = CGBitmapContextCreateImage(canvas);
     CGContextRelease(canvas);

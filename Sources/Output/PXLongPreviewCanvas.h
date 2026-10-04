@@ -7,7 +7,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// 返回的 UIImage 高度为画布分配高，有效内容只占上部 usedPixelHeight——
 /// 展示侧按 usedPixelHeight 裁切显示（contentModeTop + clipsToBounds）。
 /// 线程约定：调用方（会话）以 busy 串行化，实例方法只在单一后台队列调用；
-/// 画布占用像素超 maxPixels 时自动缩画布宽全量重放，缩到下限即判饱和停止更新。
+/// 画布占用像素超 maxPixels 时自动缩画布宽全量重放（预留半量预算做几何退避，
+/// 重放次数从 O(n) 降到对数级）；缩到像素下限或建画布/重放失败即判放弃，
+/// 停止更新预览（正式拼接不受影响）。
 @interface PXLongPreviewCanvas : NSObject
 
 - (instancetype)initWithWidthPixels:(NSInteger)widthPixels
@@ -25,7 +27,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign, readonly) NSInteger usedPixelHeight;
 /// 画布像素宽（展示侧换算点宽用：width / uiScale）。
 @property (nonatomic, assign, readonly) NSInteger canvasWidth;
-/// 已到像素下限，后续追加不再更新预览（正式拼接不受影响）。
+/// 已放弃后续预览更新（预算缩到下限 / 画布创建失败 / 重放绘制失败）。
+/// 注意首片到达前本值必为 NO——饱和只代表“曾经放弃”，不代表“尚未开始”。
 @property (nonatomic, assign, readonly) BOOL saturated;
 
 @end

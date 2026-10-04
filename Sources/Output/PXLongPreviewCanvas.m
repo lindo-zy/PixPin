@@ -7,6 +7,9 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 
 @interface PXLongPreviewCanvas () {
     CGContextRef _context;
+    // 放弃标志：与 _context==NULL 语义分离——首片到达前 _context 本就是 NULL，
+    // 不能把“未开始”当成“已饱和”，否则 appendSliceFile 顶部闸门会吞掉第一片。
+    BOOL _gaveUp;
 }
 @property (nonatomic, assign) NSInteger canvasWidth;       // 当前画布像素宽
 @property (nonatomic, assign) NSInteger canvasHeightAlloc; // 画布分配高（px）= maxPixels / canvasWidth
@@ -37,7 +40,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 }
 
 - (BOOL)saturated {
-    return _context == NULL;
+    return _gaveUp;
 }
 
 // MARK: - 画布维护
@@ -76,20 +79,25 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
     return YES;
 }
 
-/// 像素预算超限：缩画布宽并全量重放（低频；重放后预算内位置重新固定）。
+/// 像素预算超限：缩画布宽并全量重放。
+/// 目标宽按半量预算反推（几何退避）：缩放后有效高只占分配高一半，下次触发要等
+/// 内容再翻倍——重放次数从线性降到对数级，避免长会话后期每截一段就整幅重放。
 - (BOOL)pxRescaleForTotalHeight:(NSInteger)totalHeight firstSliceWidth:(NSInteger)sliceWidth {
-    CGFloat newWidth = floor(sqrt((CGFloat)self.maxPixels * (CGFloat)sliceWidth / (CGFloat)totalHeight));
-    if (newWidth < (CGFloat)PXLongPreviewMinWidthPixels) return NO;   // 判饱和
+    CGFloat newWidth = floor(sqrt(0.5 * (CGFloat)self.maxPixels * (CGFloat)sliceWidth / (CGFloat)totalHeight));
+    if (newWidth < (CGFloat)PXLongPreviewMinWidthPixels) return NO;   // 缩到下限，判放弃
     NSInteger width = (NSInteger)newWidth;
     CGFloat scale = (CGFloat)width / (CGFloat)sliceWidth;
     NSInteger heightAlloc = MAX(self.maxPixels / width, 256);
     if (![self pxCreateContextWithWidth:width heightAlloc:heightAlloc]) return NO;
     self.drawScale = scale;
+    // 重放即重建：任何一片绘失败都判放弃，宁可停更也不留一幅缺段预览。
     for (NSDictionary *item in self.items) {
-        [self pxDrawSliceFile:item[@"path"]
-                   pixelWidth:[item[@"w"] integerValue]
-                  pixelHeight:[item[@"h"] integerValue]
-                       offset:[item[@"offset"] integerValue]];
+        if (![self pxDrawSliceFile:item[@"path"]
+                        pixelWidth:[item[@"w"] integerValue]
+                       pixelHeight:[item[@"h"] integerValue]
+                            offset:[item[@"offset"] integerValue]]) {
+            return NO;
+        }
     }
     return YES;
 }
@@ -114,12 +122,14 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
             return nil;
         }
     } else if ((CGFloat)totalNew * self.drawScale > (CGFloat)self.canvasHeightAlloc) {
-        // 预算超限：整幅缩放重放；缩无可缩即判饱和（正式拼接不受影响）。
+        // 预算超限：整幅缩放重放；缩无可缩/建画布失败/重放缺段都判放弃（正式拼接不受影响）。
         [self.items addObject:item];
         self.totalHeight = totalNew;
         if (![self pxRescaleForTotalHeight:totalNew firstSliceWidth:pixelWidth]) {
-            CGContextRelease(_context);
-            _context = NULL;   // 置饱和，放弃预览
+            // pxCreateContextWithWidth 失败时旧上下文已在内部释放（_context 已是 NULL），判空防重复释放。
+            if (_context) CGContextRelease(_context);
+            _context = NULL;
+            _gaveUp = YES;
             [self.items removeAllObjects];
             return nil;
         }
