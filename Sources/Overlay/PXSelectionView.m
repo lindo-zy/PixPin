@@ -218,7 +218,9 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     CGRect labelFrame = _sizeLabel.frame;
     labelFrame.origin.x = selection.origin.x + selection.size.width / 2 - labelFrame.size.width / 2 - 8;
     labelFrame.origin.y = selection.origin.y + selection.size.height + 10;
-    if (labelFrame.origin.y + labelFrame.size.height > self.bounds.size.height - 70) {
+    CGFloat labelBottomLimit = CGRectIsEmpty(self.toolbar.frame) ? self.bounds.size.height - 70.0
+                                                               : CGRectGetMinY(self.toolbar.frame) - 10.0;
+    if (labelFrame.origin.y + labelFrame.size.height > labelBottomLimit) {
         labelFrame.origin.y = selection.origin.y - labelFrame.size.height - 10;
     }
     labelFrame.size.width += 16;
@@ -232,7 +234,7 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     CGFloat safeBottom = self.safeAreaInsets.bottom;
     CGFloat availableWidth = MAX(0.0, self.bounds.size.width - 24.0);
     CGFloat toolbarWidth = [self.toolbar preferredWidthForAvailableWidth:availableWidth];
-    CGFloat toolbarHeight = self.toolbar.preferredHeight;
+    CGFloat toolbarHeight = [self.toolbar preferredHeightForAvailableWidth:toolbarWidth];
     _toolbar.frame = CGRectMake((self.bounds.size.width - toolbarWidth) / 2.0,
                                 self.bounds.size.height - safeBottom - 12.0 - toolbarHeight,
                                 toolbarWidth, toolbarHeight);
