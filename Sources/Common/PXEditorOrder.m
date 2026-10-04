@@ -44,7 +44,19 @@
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         identifiers = @[@"cancel", @"selectall", @"editor", @"float", @"long",
-                        @"save", @"copy", @"confirm"];
+                        @"save", @"copy", @"confirm",
+                        @"shellxarea", @"shellxinstant", @"shellxfreeze",
+                        @"shellxshot", @"shellxclose"];
+    });
+    return identifiers;
+}
+
++ (NSArray<NSString *> *)shellxSelectionIdentifiers {
+    static NSArray<NSString *> *identifiers;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        identifiers = @[@"shellxarea", @"shellxinstant", @"shellxfreeze",
+                        @"shellxshot", @"shellxclose"];
     });
     return identifiers;
 }
@@ -105,7 +117,12 @@
                   @"long": @"长截图",
                   @"save": @"保存",
                   @"copy": @"复制",
-                  @"confirm": @"完成"};
+                  @"confirm": @"完成",
+                  @"shellxarea": @"ShellX 区域",
+                  @"shellxinstant": @"ShellX 即时",
+                  @"shellxfreeze": @"ShellX 冻结",
+                  @"shellxshot": @"ShellX 套壳",
+                  @"shellxclose": @"ShellX 关闭"};
     });
     return names;
 }
@@ -199,7 +216,12 @@
                   @"long": @"arrow.down.to.line.compact",
                   @"save": @"square.and.arrow.down",
                   @"copy": @"doc.on.doc",
-                  @"confirm": @"checkmark.circle"};
+                  @"confirm": @"checkmark.circle",
+                  @"shellxarea": @"camera.viewfinder",
+                  @"shellxinstant": @"timer",
+                  @"shellxfreeze": @"snowflake",
+                  @"shellxshot": @"smartphone",
+                  @"shellxclose": @"xmark.app"};
     });
     return icons;
 }

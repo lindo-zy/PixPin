@@ -25,6 +25,12 @@ CFStringRef const PXDarwinShellXOpenInstant = CFSTR("com.iosdump.screenshotshell
 CFStringRef const PXDarwinShellXOpenFreeze = CFSTR("com.iosdump.screenshotshell.open.freeze");
 CFStringRef const PXDarwinShellXClose = CFSTR("com.iosdump.screenshotshell.close");
 
+CFStringRef const PXShellXTriggerArea = CFSTR("com.jontelang.snapper3.force.open");
+CFStringRef const PXShellXTriggerInstant = CFSTR("com.jontelang.snapper3.forceinstant.open");
+CFStringRef const PXShellXTriggerFreeze = CFSTR("com.jontelang.snapper3.forcefreeze.open");
+CFStringRef const PXShellXTriggerClose = CFSTR("com.jontelang.snapper3.close.all");
+CFStringRef const PXShellXTriggerAssistive = CFSTR("com.iosdump.screenshotshell/AssistiveScreenshot");
+
 NSString * const PXNotificationResultUpdated = @"com.pixpin.screenshot/result/updated";
 
 NSString * const PXKeyEnabled = @"Enabled";

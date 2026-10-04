@@ -39,6 +39,16 @@ FOUNDATION_EXPORT CFStringRef const PXDarwinShellXOpenInstant; // com.iosdump.sc
 FOUNDATION_EXPORT CFStringRef const PXDarwinShellXOpenFreeze;  // com.iosdump.screenshotshell.open.freeze → 冻结截图
 FOUNDATION_EXPORT CFStringRef const PXDarwinShellXClose;       // com.iosdump.screenshotshell.close → 取消当前任务
 
+// MARK: - SHELLX 出向触发名（SHELLX 自己注册的观察者，PixPin 工具栏按钮 notify_post 外调用。
+// 与上方兼容别名相反：别名只有 PixPin 监听，这些名在 SHELLX 二进制中逐字存在，
+// 名字写错即静默无效，改前必须用 ShellX 二进制字符串表核对）
+
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerArea;      // com.jontelang.snapper3.force.open → SHELLX 区域画板
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerInstant;   // com.jontelang.snapper3.forceinstant.open → 即时模式
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerFreeze;    // com.jontelang.snapper3.forcefreeze.open → 冻结画板
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerClose;     // com.jontelang.snapper3.close.all → 关闭 SHELLX 画板
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerAssistive; // com.iosdump.screenshotshell/AssistiveScreenshot → 套壳截图
+
 // MARK: - 进程内通知名（同样不携带图片对象，只提示协调器刷新）
 
 FOUNDATION_EXPORT NSString * const PXNotificationResultUpdated; // com.pixpin.screenshot/result/updated

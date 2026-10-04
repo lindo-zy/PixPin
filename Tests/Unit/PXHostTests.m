@@ -288,6 +288,26 @@ static void testShellXAliases(void) {
     }
 }
 
+static void testShellXTriggers(void) {
+    printf("[shellx triggers]\n");
+    // 出向触发名必须与 SHELLX 二进制内注册的观察者名逐字一致（ShellX 3.1.1 cstring 核对）；
+    // 写错则 notify_post 静默无效——没有接收方，也没有任何报错。
+    NSDictionary<NSString *, NSString *> *triggers = @{
+        @"com.jontelang.snapper3.force.open": (__bridge NSString *)PXShellXTriggerArea,
+        @"com.jontelang.snapper3.forceinstant.open": (__bridge NSString *)PXShellXTriggerInstant,
+        @"com.jontelang.snapper3.forcefreeze.open": (__bridge NSString *)PXShellXTriggerFreeze,
+        @"com.jontelang.snapper3.close.all": (__bridge NSString *)PXShellXTriggerClose,
+        @"com.iosdump.screenshotshell/AssistiveScreenshot": (__bridge NSString *)PXShellXTriggerAssistive,
+    };
+    for (NSString *expected in triggers) {
+        PXCheck([triggers[expected] isEqualToString:expected], expected.UTF8String);
+    }
+    // 区域/即时/冻结/关闭四个触发名与本方 Snapper3 兼容别名同名：自发通知会被自己的
+    // 观察者收到，外调方必须做自发自收抑制（协调器按名武装一次）；这条检查钉住该前提。
+    PXCheck([(__bridge NSString *)PXShellXTriggerArea isEqualToString:(__bridge NSString *)PXDarwinSnapperForceOpen],
+            "area trigger shares snapper3 alias name, self-post suppression required");
+}
+
 static void testEditorOrder(void) {
     printf("[editor order]\n");
     NSArray<NSString *> *actionDefaults = [PXEditorOrder defaultActionIdentifiers];
@@ -428,8 +448,16 @@ static void testEditorOverrides(void) {
 static void testSelectionOrder(void) {
     printf("[selection order]\n");
     NSArray<NSString *> *defaults = [PXEditorOrder defaultSelectionIdentifiers];
-    PXCheckInt(defaults.count, 8, "selection catalog count");
-    PXCheckInt([NSSet setWithArray:defaults].count, 8, "selection ids unique");
+    PXCheckInt(defaults.count, 13, "selection catalog count");
+    PXCheckInt([NSSet setWithArray:defaults].count, 13, "selection ids unique");
+    // SHELLX 扩展组是目录的子集：工具栏按运行时可用性整体增删，目录解析无需特判。
+    NSArray<NSString *> *shellx = [PXEditorOrder shellxSelectionIdentifiers];
+    PXCheckInt(shellx.count, 5, "shellx group count");
+    for (NSString *identifier in shellx) {
+        PXCheck([defaults containsObject:identifier], "shellx id inside selection catalog");
+        PXCheck([PXEditorOrder displayNameForSelectionIdentifier:identifier].length > 0, "selection display name");
+        PXCheck([PXEditorOrder iconNameForSelectionIdentifier:identifier].length > 0, "selection icon name");
+    }
     for (NSString *identifier in defaults) {
         PXCheck([PXEditorOrder displayNameForSelectionIdentifier:identifier].length > 0, "selection display name");
         PXCheck([PXEditorOrder iconNameForSelectionIdentifier:identifier].length > 0, "selection icon name");
@@ -440,12 +468,18 @@ static void testSelectionOrder(void) {
             "selection reorder preserved, missing appended");
 
     // 区域/冻结：自定义顺序 + 出口兜底（取消/完成不可隐藏，保持配置位置）。
+    // SHELLX 扩展组按目录规则补尾在 confirm 之后，出口不再必然是末位。
     NSArray<NSString *> *visible = [PXEditorOrder visibleSelectionOrderForOrder:reordered
                                                                         hidden:@[@"float", @"cancel", @"confirm"]
                                                                        instant:NO];
     PXCheck(![visible containsObject:@"float"], "float hidable");
     PXCheck([visible indexOfObject:@"cancel"] == 1, "cancel stays at configured position");
-    PXCheck([visible.lastObject isEqualToString:@"confirm"], "confirm stays at configured position");
+    // confirm 的配置位次 = 完整顺序去掉被隐藏的 float 后的原位（ShellX 组只补尾不插队）。
+    NSMutableArray<NSString *> *expectedOrder = [reordered mutableCopy];
+    [expectedOrder removeObject:@"float"];
+    PXCheck([visible indexOfObject:@"confirm"] == [expectedOrder indexOfObject:@"confirm"],
+            "confirm stays at configured position");
+    PXCheck([visible.lastObject isEqualToString:@"shellxclose"], "shellx group appended at tail");
 
     // 即时模式：固定快速三键。
     NSArray<NSString *> *instant = [PXEditorOrder visibleSelectionOrderForOrder:defaults hidden:nil instant:YES];
@@ -723,6 +757,7 @@ int main(int argc, const char **argv) {
         testExternalRequests();
         testSnapper3Aliases();
         testShellXAliases();
+        testShellXTriggers();
         testEditorOrder();
         testSelectionOrder();
         testSelectionOverrides();
