@@ -118,6 +118,12 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     NSArray<NSString *> *order = [PXEditorOrder visibleSelectionOrderForOrder:[PXEditorOrder currentSelectionOrder]
                                                                       hidden:[PXEditorOrder currentSelectionHidden]
                                                                      instant:_isInstantMode];
+    // 模式过滤：滚动截图按钮只在区域模式出现；冻结的基础图是静态快照、即时走最快路径，均与实时滚动语义冲突。
+    if (self.mode != PXCaptureModeArea) {
+        NSMutableArray<NSString *> *filtered = [order mutableCopy];
+        [filtered removeObject:@"long"];
+        order = filtered;
+    }
     if (![PXShellXBridge toolbarAvailable]) {
         NSMutableArray<NSString *> *withoutShellX = [order mutableCopy];
         [withoutShellX removeObjectsInArray:[PXEditorOrder shellxSelectionIdentifiers]];
@@ -389,6 +395,16 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         }
         if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestFloat:displayRect:)]) {
             [self.delegate selectionViewDidRequestFloat:self displayRect:self.selectionRect];
+        }
+        return;
+    }
+    if ([identifier isEqualToString:@"long"]) {
+        // 滚动截图同样要求合法选区：细条/零矩形作为采集裁片与滑动视口无意义。
+        if (CGRectIsEmpty(PXClampSelectionRect(self.selectionRect, self.bounds.size, PXSelectionMinimumSize))) {
+            return;
+        }
+        if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestLong:displayRect:)]) {
+            [self.delegate selectionViewDidRequestLong:self displayRect:self.selectionRect];
         }
         return;
     }

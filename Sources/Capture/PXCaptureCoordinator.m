@@ -224,7 +224,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
                     return;
                 }
                 if (![task transitionToState:PXCaptureStatePresenting]) return;
-                [self pxStartLongShotForTask:task];
+                [self pxStartLongShotForTask:task autoScroll:NO displayRect:CGRectNull];
             } else if (task.mode == PXCaptureModeFull) {
                 [self pxHandleFullscreenResult:task];
             } else {
@@ -315,15 +315,25 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 
 #pragma mark - 全屏手动滚动采集会话
 
-- (void)pxStartLongShotForTask:(PXCaptureTask *)task {
+- (void)pxStartLongShotForTask:(PXCaptureTask *)task autoScroll:(BOOL)autoScroll displayRect:(CGRect)displayRect {
     if (![self pxIsTaskCurrent:task] || task.state != PXCaptureStatePresenting) return;
     [self pxTeardownLongShotSession];
     [self pxDestroyCaptureWindow];
     self.longShotSession = [PXLongShotSession startWithTask:task
+                                                 autoScroll:autoScroll
+                                                 displayRect:displayRect
                                                    delegate:self];
     if (!self.longShotSession) {
         [self pxFailTask:task code:@"longshot" message:@"长截图会话创建失败"];
     }
+}
+
+// 选区工具栏「滚动截图」：选区即采集裁片与滑动视口，插件自动滚动到底部或等用户停止。
+- (void)selectionViewDidRequestLong:(PXSelectionView *)view displayRect:(CGRect)displayRect {
+    PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
+    if (!task || view != self.selectionView) return;
+    [self pxPersistSelectionRect:displayRect config:task.configSnapshot];
+    [self pxStartLongShotForTask:task autoScroll:YES displayRect:displayRect];
 }
 
 /// 外部取消/失败路径的会话清理：会话自毁不回调，任务状态由调用方推进。

@@ -90,6 +90,7 @@ const CGFloat PXLongShotHUDPreviewWidthPt = 88.0;
     }
 }
 - (BOOL)isPreviewInteracting { return self.previewDragging || self.preview.decelerating; }
+- (CGRect)panelFrame { return self.panel.frame; }
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView { self.previewDragging = YES; }
 - (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate { self.previewDragging = NO; }
 @end
