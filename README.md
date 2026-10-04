@@ -39,6 +39,7 @@
 | 冻结截图 | `pixpin://capture/freeze` | `com.pixpin.screenshot/capture/freeze` |
 | 即时区域截图 | `pixpin://capture/instant` | `com.pixpin.screenshot/capture/instant` |
 | 全屏标记 | `pixpin://capture/markup` | `com.pixpin.screenshot/capture/markup` |
+| 滚动截图（手动滚动、自动采集） | `pixpin://capture/long` | `com.pixpin.screenshot/capture/long` |
 | 取消当前任务 | `pixpin://cancel` | `com.pixpin.screenshot/capture/cancel` |
 
 兼容 Snapper3 调用形式（1.5.5+）：`com.jontelang.snapper3.force.open` / `forceinstant.open` / `forcefreeze.open` 分别触发区域 / 即时区域 / 冻结截图，`close.all`、`closecrop` 取消当前任务；`openlast`、`history` 无对应功能。
