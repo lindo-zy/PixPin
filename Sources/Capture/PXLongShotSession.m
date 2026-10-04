@@ -4,6 +4,7 @@
 #import "../Common/PXLog.h"
 #import "../Common/PXLongShotAligner.h"
 #import "../Output/PXLongImageComposer.h"
+#import "../Output/PXLongPreviewCanvas.h"
 #import "../Overlay/PXCaptureWindow.h"
 #import "../Overlay/PXLongShotHUD.h"
 
@@ -15,6 +16,7 @@
 @property (nonatomic, strong) PXLongShotHUD *hud;
 @property (nonatomic, assign) CGRect displayRect;
 @property (nonatomic, strong) NSMutableArray<PXLongShotSlice *> *slices;
+@property (nonatomic, strong, nullable) PXLongPreviewCanvas *previewCanvas;
 @property (nonatomic, assign) BOOL busy;
 @property (nonatomic, assign) BOOL finished;
 - (void)handleLockStateChanged;
@@ -186,12 +188,13 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
 }
 
 - (void)pxAppendSlice:(PXLongShotSlice *)slice {
+    NSInteger overlapRows = 0;
     if (self.slices.count > 0) {
         PXLongShotSlice *prev = self.slices.lastObject;
-        NSInteger overlap = PXLongShotSearchOverlap(prev.rowSignatures.bytes, prev.pixelHeight,
-                                                    slice.rowSignatures.bytes, slice.pixelHeight,
-                                                    MIN(slice.pixelHeight, 128));
-        if (PXLongShotIsDuplicateOverlap(overlap, slice.pixelHeight)) {
+        overlapRows = PXLongShotSearchOverlap(prev.rowSignatures.bytes, prev.pixelHeight,
+                                              slice.rowSignatures.bytes, slice.pixelHeight,
+                                              MIN(slice.pixelHeight, 128));
+        if (PXLongShotIsDuplicateOverlap(overlapRows, slice.pixelHeight)) {
             [NSFileManager.defaultManager removeItemAtPath:slice.filePath error:nil];
             [self.hud setBusy:NO statusText:@"未检测到新内容，请继续滚动后再截取"];
             return;
@@ -199,13 +202,43 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
     }
     [self.slices addObject:slice];
     [self.hud setSliceCount:(NSInteger)self.slices.count];
-    NSString *status = self.slices.count >= PXLongShotMaxSlices
-        ? @"已达最大段数，点「完成」拼接"
-        : @"继续滚动，或点「完成」拼接";
-    [self.hud setBusy:NO statusText:status];
-    PXLogInfo(@"long shot slice appended (task %@, count %lu, %ldx%ld)",
+    [self pxUpdatePreviewWithSlice:slice overlapRows:overlapRows];
+    PXLogInfo(@"long shot slice appended (task %@, count %lu, %ldx%ld, overlap %ld)",
               self.task.taskID, (unsigned long)self.slices.count,
-              (long)slice.pixelWidth, (long)slice.pixelHeight);
+              (long)slice.pixelWidth, (long)slice.pixelHeight, (long)overlapRows);
+}
+
+/// 实时预览：入列后在后台把新片绘入增量画布，完成才解除 busy（期间截取/完成保持禁用）。
+- (void)pxUpdatePreviewWithSlice:(PXLongShotSlice *)slice overlapRows:(NSInteger)overlapRows {
+    if (!self.previewCanvas) {
+        CGFloat uiScale = self.task.capturedScreenScale > 0 ? self.task.capturedScreenScale : 1.0;
+        self.previewCanvas = [[PXLongPreviewCanvas alloc]
+            initWithWidthPixels:(NSInteger)(PXLongShotHUDPreviewWidthPt * uiScale)
+                      maxPixels:2000000
+                        uiScale:uiScale];
+    }
+    PXLongPreviewCanvas *canvas = self.previewCanvas;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        @autoreleasepool {
+            UIImage *image = [canvas appendSliceFile:slice.filePath
+                                          pixelWidth:slice.pixelWidth
+                                         pixelHeight:slice.pixelHeight
+                                          overlapRows:overlapRows];
+            NSInteger usedPixelHeight = canvas.usedPixelHeight;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (![self pxIsTaskPresenting]) return;
+                if (image) {
+                    [self.hud setPreviewImage:image usedPixelHeight:usedPixelHeight];
+                } else {
+                    PXLogWarn(@"long shot preview stopped (saturated or decode failed, task %@)", self.task.taskID);
+                }
+                NSString *status = self.slices.count >= PXLongShotMaxSlices
+                    ? @"已达最大段数，点「完成」拼接"
+                    : @"继续滚动，或点「完成」拼接";
+                [self.hud setBusy:NO statusText:status];
+            });
+        }
+    });
 }
 
 #pragma mark - 拼接
@@ -279,6 +312,7 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
     self.window = nil;
     // 分片文件随任务临时目录统一回收（成功/失败/取消路径都已挂 removeTaskDirectory）。
     self.slices = nil;
+    self.previewCanvas = nil;
     self.task = nil;
     self.delegate = nil;
     PXLogInfo(@"long shot session finished");

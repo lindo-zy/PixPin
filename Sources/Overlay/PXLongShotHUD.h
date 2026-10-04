@@ -2,6 +2,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// 预览浮窗点宽（会话侧按它 × 屏幕缩放初始化预览画布）。
+FOUNDATION_EXPORT const CGFloat PXLongShotHUDPreviewWidthPt;
+
 @protocol PXLongShotHUDDelegate <NSObject>
 - (void)longShotHUDDidTapCapture:(UIView *)hud;
 - (void)longShotHUDDidTapFinish:(UIView *)hud;
@@ -21,6 +24,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setStatusText:(nullable NSString *)statusText;
 /// 已有分片数决定完成键可用性，并刷新计数文案。
 - (void)setSliceCount:(NSInteger)count;
+/// 实时预览：image 为整幅增量长图（高度含画布分配余量），usedPixelHeight 为有效内容高。
+/// 首次调用后显示预览浮窗；image 为 nil 保持现状。用户可点浮窗上方眼睛键收起/展开。
+- (void)setPreviewImage:(nullable UIImage *)image usedPixelHeight:(NSInteger)usedPixelHeight;
 
 @end
 
