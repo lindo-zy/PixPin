@@ -449,8 +449,8 @@ static void testEditorOverrides(void) {
 static void testSelectionOrder(void) {
     printf("[selection order]\n");
     NSArray<NSString *> *defaults = [PXEditorOrder defaultSelectionIdentifiers];
-    PXCheckInt(defaults.count, 12, "selection catalog count");
-    PXCheckInt([NSSet setWithArray:defaults].count, 12, "selection ids unique");
+    PXCheckInt(defaults.count, 13, "selection catalog count");
+    PXCheckInt([NSSet setWithArray:defaults].count, 13, "selection ids unique");
     // SHELLX 扩展组是目录的子集：工具栏按运行时可用性整体增删，目录解析无需特判。
     NSArray<NSString *> *shellx = [PXEditorOrder shellxSelectionIdentifiers];
     PXCheckInt(shellx.count, 5, "shellx group count");
@@ -813,14 +813,41 @@ static void testManualLongShot(void) {
 
 #pragma mark - 长截图模式与外部路由
 
+static void testLongShotScrollPlan(void) {
+    printf("[long shot scroll plan]\n");
+    CGRect bounds = CGRectMake(0, 0, 390, 844);
+    CGRect panel = CGRectMake(274, 10, 104, 242);   // 右上 HUD 小窗
+    PXLongShotScrollPlan plan;
+    PXCheck(PXLongShotBuildScrollPlan(bounds, bounds, panel, &plan), "portrait fullscreen has usable band");
+    PXCheck(CGRectContainsPoint(bounds, plan.start) && CGRectContainsPoint(bounds, plan.end),
+            "swipe stays on screen");
+    PXCheck(plan.start.y >= CGRectGetMaxY(panel) + 12, "swipe starts below HUD panel");
+    PXCheck(plan.end.y > CGRectGetMaxY(panel), "swipe never crosses HUD panel");
+    PXCheck(plan.start.y > plan.end.y && plan.start.y - plan.end.y <= 320, "upward drag is bounded");
+    PXCheck(plan.start.y - plan.end.y >= 80, "drag distance is meaningful");
+
+    CGRect viewport = CGRectMake(24, 120, 340, 640);
+    PXCheck(PXLongShotBuildScrollPlan(viewport, bounds, panel, &plan), "selection viewport plans a swipe");
+    PXCheck(CGRectContainsPoint(viewport, plan.start) && plan.start.x == CGRectGetMidX(viewport),
+            "swipe centered inside selection viewport");
+
+    PXCheck(!PXLongShotBuildScrollPlan(CGRectMake(280, 20, 90, 150), bounds, panel, &plan),
+            "viewport hidden behind HUD panel is rejected");
+    PXCheck(PXLongShotBuildScrollPlan(bounds, bounds, CGRectZero, &plan), "no protected rect uses full band");
+    PXCheck(!PXLongShotBuildScrollPlan(CGRectNull, bounds, panel, &plan), "null viewport is rejected");
+    PXCheck(!PXLongShotBuildScrollPlan(viewport, bounds, panel, NULL), "null plan is rejected");
+    PXCheck(PXLongShotBuildScrollPlan(CGRectMake(20, 40, 700, 700), CGRectMake(0, 0, 844, 390), panel, &plan),
+            "landscape path stays below HUD panel");
+}
+
 static void testLongCaptureRouting(void) {
     printf("[long capture routing]\n");
     PXCheck([PXStringFromCaptureMode(PXCaptureModeLong) isEqualToString:@"long"], "long mode string");
     PXCheck(PXCaptureStateIsBusy(PXCaptureStatePresenting), "presenting blocks new tasks during session");
-    PXCheck(![[PXEditorOrder defaultSelectionIdentifiers] containsObject:@"long"],
-            "area toolbar no longer offers rolling capture");
-    PXCheck(![[PXEditorOrder resolvedSelectionOrderFromString:@"long,cancel,copy"] containsObject:@"long"],
-            "legacy saved area-long action is filtered");
+    PXCheck([[PXEditorOrder defaultSelectionIdentifiers] containsObject:@"long"],
+            "area toolbar offers rolling capture button");
+    PXCheck([[PXEditorOrder resolvedSelectionOrderFromString:@"long,cancel,copy"] containsObject:@"long"],
+            "area-long legacy saved order resolves with rolling capture");
     NSURL *darwin = [NSURL URLWithString:@"pixpin://capture/long"];
     PXCheck([(__bridge NSString *)PXDarwinCaptureLong isEqualToString:(PXNotificationNameForExternalURL(darwin) ?: @"")],
             "pixpin://capture/long routed to darwin notification");
@@ -847,6 +874,7 @@ int main(int argc, const char **argv) {
         testFloatingOriginalRect();
         testLongShotAligner();
         testLongCaptureRouting();
+        testLongShotScrollPlan();
         testManualLongShot();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;

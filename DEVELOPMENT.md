@@ -389,15 +389,23 @@ isLocked
 - 默认结果动作
 - 是否显示中间提示
 
-### 5.5 全屏滚动截图（用户手动滚动、自动采集）
+### 5.5 全屏滚动截图（区域自动滚动 / 全屏手动滚动）
 
-长截图通知/URL 在首次完整抓屏后直接进入 PXLongShotSession，复用首帧；
-不创建选区，不读写选区偏好，也不允许从区域工具栏进入滚动截图。
+外部 URL/通知在首次完整抓屏后直接进入 PXLongShotSession，复用首帧；
+autoScroll=NO（手动模式）不创建选区，不读写选区偏好。
+区域工具栏「滚动截图」按钮（仅区域模式，目录 id=long）走同一条会话但 autoScroll=YES：
+选区经 PXConvertDisplayRectToPixel 成为采集裁片，PXLongShotBuildScrollPlan 在
+选区∩安全区内、HUD 小窗（hud.panelFrame）下缘以下规划竖直上滑路径；
+PXLongShotScroller 经 dlsym 的 IOHIDEventSystemClient 合成单指上滑（两端零速度，
+按住 0.62s），可用性缺失或前台 App 变化时安全拒绝。
+自动模式循环 = 滑动 → 0.45s 静置 → 抓取 → 对齐追加 → pxCompleteFrame 再滑动；
+连续两帧内容未变化（sameCount≥2）判定页面底部，自动走完成路径收尾；
+完成键在滑动中先 cancel 抬指，静置后收末段。手动模式不注入 HID，不修改前台 App 滚动位置。
+
 右上 PXLongShotHUD 集中显示累计长图预览、段数、状态、完成/取消；
-窗口不抢 key，面板外触摸穿透。会话不注入 HID，不修改前台 App 的滚动位置。
-
-采样 tick 在主线程 CommonModes 运行，busy 覆盖抓屏、后台对齐和预览。
-活动时处理完成后至少间隔 0.12s；连续相同帧降至 0.5s，空闲约 6s 自动完成。
+窗口不抢 key，面板外触摸穿透。手动模式采样 tick 在主线程 CommonModes 运行，
+busy 覆盖抓屏、后台对齐和预览；活动时处理完成后至少间隔 0.12s；
+连续相同帧降至 0.5s，空闲约 6s 自动完成。
 前台 App、锁屏、旋转和内存状态均检查；首帧不完整直接失败。
 PXCaptureProvider 检查 _snapshotExcludingWindows:withRect: 的方法签名；
 不可用时隐藏传入窗口、等待合成器，再抓取并在 finally 中恢复，后台归一化前恢复。

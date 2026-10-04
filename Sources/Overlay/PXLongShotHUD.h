@@ -9,6 +9,8 @@ FOUNDATION_EXPORT const CGFloat PXLongShotHUDPreviewWidthPt;
 @interface PXLongShotHUD : UIView
 @property (nonatomic, weak, nullable) id<PXLongShotHUDDelegate> delegate;
 @property (nonatomic, assign, readonly) BOOL isPreviewInteracting;
+/// 状态面板当前实际布局矩形（屏幕坐标）；自动滚动用它避让滑动路径。
+@property (nonatomic, assign, readonly) CGRect panelFrame;
 - (void)setFinishing:(BOOL)finishing;
 - (void)setStatusText:(nullable NSString *)statusText;
 - (void)setSliceCount:(NSInteger)count;
