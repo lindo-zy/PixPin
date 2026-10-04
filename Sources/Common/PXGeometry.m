@@ -101,6 +101,7 @@ NSString *PXStringFromCaptureMode(PXCaptureMode mode) {
         case PXCaptureModeFreeze: return @"freeze";
         case PXCaptureModeMarkup: return @"markup";
         case PXCaptureModeInstant: return @"instant";
+        case PXCaptureModeLong: return @"long";
     }
     return @"unknown";
 }

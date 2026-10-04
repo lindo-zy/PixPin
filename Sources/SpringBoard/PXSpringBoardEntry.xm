@@ -132,6 +132,7 @@ static void PXInstallURLHook(Class cls, NSString *selectorName, IMP replacement,
                 PXDarwinCaptureFreeze,
                 PXDarwinCaptureInstant,
                 PXDarwinCaptureMarkup,
+                PXDarwinCaptureLong,
                 PXDarwinCaptureCancel,
                 PXDarwinPreferencesReload,
                 // Snapper3 兼容别名：第三方按 Snapper3 公开约定发通知即可驱动 PixPin。

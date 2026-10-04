@@ -15,6 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)selectionViewDidRequestEditor:(PXSelectionView *)view displayRect:(CGRect)displayRect;
 /// 工具栏“悬浮”按钮：把选区裁剪结果以可拖动悬浮窗常驻屏幕（不执行输出动作）。
 - (void)selectionViewDidRequestFloat:(PXSelectionView *)view displayRect:(CGRect)displayRect;
+/// 工具栏“长截图”按钮（仅区域模式出现）：以当前选区为采集视口进入手动长截图会话。
+- (void)selectionViewDidRequestLong:(PXSelectionView *)view displayRect:(CGRect)displayRect;
 @end
 
 /// 区域/冻结/即时模式共用的选区交互层。

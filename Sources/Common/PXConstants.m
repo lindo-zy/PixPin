@@ -10,6 +10,7 @@ CFStringRef const PXDarwinCaptureArea = CFSTR("com.pixpin.screenshot/capture/are
 CFStringRef const PXDarwinCaptureFreeze = CFSTR("com.pixpin.screenshot/capture/freeze");
 CFStringRef const PXDarwinCaptureInstant = CFSTR("com.pixpin.screenshot/capture/instant");
 CFStringRef const PXDarwinCaptureMarkup = CFSTR("com.pixpin.screenshot/capture/markup");
+CFStringRef const PXDarwinCaptureLong = CFSTR("com.pixpin.screenshot/capture/long");
 CFStringRef const PXDarwinCaptureCancel = CFSTR("com.pixpin.screenshot/capture/cancel");
 CFStringRef const PXDarwinPreferencesReload = CFSTR("com.pixpin.screenshot/preferences/reload");
 

@@ -1,10 +1,12 @@
 #import "PXCaptureCoordinator.h"
 #import "PXCaptureTask.h"
 #import "PXCaptureProvider.h"
+#import "PXLongShotSession.h"
 #import "../Common/PXConstants.h"
 #import "../Common/PXLog.h"
 #import "../Common/PXPreferences.h"
 #import "../Output/PXOutputPipeline.h"
+#import "../Output/PXLongImageComposer.h"
 #import "../Output/PXTemporaryFileStore.h"
 #import "../Overlay/PXCaptureWindow.h"
 #import "../Overlay/PXSelectionView.h"
@@ -18,6 +20,7 @@ static const CGFloat PXSelectionMinimumSize = 44.0;
 
 @interface PXCaptureCoordinator () <PXSelectionViewDelegate, PXResultBubbleDelegate,
                                     PXFloatingSnapDelegate,
+                                    PXLongShotSessionDelegate,
                                     PXEditorViewControllerDelegate>
 @property (nonatomic, strong) NSLock *taskLock;
 @property (nonatomic, strong, nullable) PXCaptureTask *activeTask;      // taskLock 保护
@@ -27,6 +30,7 @@ static const CGFloat PXSelectionMinimumSize = 44.0;
 @property (nonatomic, strong, nullable) PXCaptureWindow *captureWindow;
 @property (nonatomic, strong, nullable) PXSelectionView *selectionView;
 @property (nonatomic, strong, nullable) PXResultBubble *resultBubble;
+@property (nonatomic, strong, nullable) PXLongShotSession *longShotSession;   // 手动长截图会话（主线程）
 @property (nonatomic, strong) NSMutableArray<PXFloatingSnap *> *floatingSnaps; // 主线程，多图独立保留
 @property (nonatomic, strong, nullable) PXFloatingSnap *editingFloatingSnap;
 @property (nonatomic, strong, nullable) PXCaptureWindow *editorWindow;
@@ -96,8 +100,9 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureArea]) mode = PXCaptureModeArea;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureFreeze]) mode = PXCaptureModeFreeze;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureInstant]) mode = PXCaptureModeInstant;
-    else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureMarkup] ||
-             [name isEqualToString:(__bridge NSString *)PXDarwinActivate]) mode = PXCaptureModeMarkup;
+    else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureMarkup]) mode = PXCaptureModeMarkup;
+    else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureLong]) mode = PXCaptureModeLong;
+    else if ([name isEqualToString:(__bridge NSString *)PXDarwinActivate]) mode = PXCaptureModeMarkup;
     // Snapper3 兼容别名：force.open 是 Snapper3 的框选流程，对应区域截图。
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinSnapperForceOpen]) mode = PXCaptureModeArea;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinSnapperForceInstantOpen]) mode = PXCaptureModeInstant;
@@ -107,7 +112,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinShellXOpenInstant]) mode = PXCaptureModeInstant;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinShellXOpenFreeze]) mode = PXCaptureModeFreeze;
 
-    if (mode >= PXCaptureModeFull && mode <= PXCaptureModeMarkup) {
+    if (mode >= PXCaptureModeFull && mode <= PXCaptureModeLong) {
         [self requestCapture:mode];
     }
 }
@@ -155,6 +160,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         PXLogWarn(@"cancel ignored for state %@", PXStringFromCaptureState(task.state));
         return;
     }
+    [self pxTeardownLongShotSession];
     [self pxDestroyCaptureWindow];
     [self pxDestroyEditorWindow];
     self.editingFloatingSnap = nil;
@@ -243,7 +249,19 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
     if (!task) return;
     [self pxPersistSelectionRect:displayRect config:task.configSnapshot];
+    if (task.mode == PXCaptureModeLong) {
+        // 长截图模式：确认选区即进入会话，动作参数不参与（输出走默认动作）。
+        [self pxStartLongShotForTask:task displayRect:displayRect];
+        return;
+    }
     [self pxCropAndOutput:task displayRect:displayRect overrideAction:action];
+}
+
+- (void)selectionViewDidRequestLong:(PXSelectionView *)view displayRect:(CGRect)displayRect {
+    PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
+    if (!task || view != self.selectionView) return;
+    [self pxPersistSelectionRect:displayRect config:task.configSnapshot];
+    [self pxStartLongShotForTask:task displayRect:displayRect];
 }
 
 - (void)selectionViewDidCancel:(PXSelectionView *)view {
@@ -288,6 +306,57 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         [self pxDestroyCaptureWindow];
         [self pxPresentFloatingSnapForTask:task screenRect:screenRect];
     }];
+}
+
+#pragma mark - 手动长截图会话
+
+- (void)pxStartLongShotForTask:(PXCaptureTask *)task displayRect:(CGRect)displayRect {
+    if (![self pxIsTaskCurrent:task] || task.state != PXCaptureStatePresenting) return;
+    [self pxTeardownLongShotSession];
+    [self pxDestroyCaptureWindow];
+    self.longShotSession = [PXLongShotSession startWithTask:task
+                                                displayRect:displayRect
+                                                   delegate:self];
+    if (!self.longShotSession) {
+        [self pxFailTask:task code:@"longshot" message:@"长截图会话创建失败"];
+    }
+}
+
+/// 外部取消/失败路径的会话清理：会话自毁不回调，任务状态由调用方推进。
+- (void)pxTeardownLongShotSession {
+    if (!self.longShotSession) return;
+    [self.longShotSession teardownForExternalCancel];
+    self.longShotSession = nil;
+}
+
+- (void)longShotSessionDidFinish:(PXLongShotSession *)session resultImage:(UIImage *)image {
+    PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
+    if (self.longShotSession == session) self.longShotSession = nil;
+    if (!task || !image) return;
+
+    task.resultImage = image;
+    CGFloat pixelHeight = image.size.height * image.scale;
+    PXOutputAction action = task.configSnapshot.defaultResultAction;
+    // 巨型长图写入剪贴板会在 SpringBoard 内触发 PNG 编码尖峰，降级为保存（诊断优先）。
+    if (pixelHeight > (CGFloat)PXLongShotCopyMaxPixelHeight &&
+        (action == PXOutputActionCopy || action == PXOutputActionSaveAndCopy)) {
+        PXLogWarn(@"long shot %.0f px exceeds copy limit, downgraded to save (task %@)",
+                  pixelHeight, task.taskID);
+        action = PXOutputActionSave;
+    }
+    [self pxExecuteOutput:action forTask:task presentingWindow:nil];
+}
+
+- (void)longShotSessionDidCancel:(PXLongShotSession *)session {
+    if (self.longShotSession == session) self.longShotSession = nil;
+    [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
+}
+
+- (void)longShotSessionDidFail:(PXLongShotSession *)session message:(NSString *)message {
+    PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
+    if (self.longShotSession == session) self.longShotSession = nil;
+    if (!task) return;
+    [self pxFailTask:task code:@"longshot" message:(message ?: @"长图拼接失败")];
 }
 
 #pragma mark - 选区记忆（AreaRememberLastRect，默认关）
@@ -677,11 +746,17 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         }
         return;
     }
+    // 长截图会话中旋转：采集视口坐标失效，同样直接取消。
+    if (self.longShotSession) {
+        PXLogWarn(@"orientation changed during long shot, cancelling task");
+        [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
+    }
 }
 
 - (void)pxFailTask:(PXCaptureTask *)task code:(NSString *)code message:(NSString *)message {
     task.errorCode = code;
     task.errorMessage = message;
+    [self pxTeardownLongShotSession];
     [self pxDestroyCaptureWindow];
     [task transitionToState:PXCaptureStateFailed];
     [PXTemporaryFileStore removeTaskDirectory:task.taskID];

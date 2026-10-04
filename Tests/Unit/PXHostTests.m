@@ -7,6 +7,7 @@
 #import "../../Sources/Common/PXConstants.h"
 #import "../../Sources/Common/PXEditorOrder.h"
 #import "../../Sources/Common/PXExternalRequest.h"
+#import "../../Sources/Common/PXLongShotAligner.h"
 #import "../../Sources/Editor/PXEditorLayout.h"
 
 static NSInteger PXTestFailures = 0;
@@ -427,8 +428,8 @@ static void testEditorOverrides(void) {
 static void testSelectionOrder(void) {
     printf("[selection order]\n");
     NSArray<NSString *> *defaults = [PXEditorOrder defaultSelectionIdentifiers];
-    PXCheckInt(defaults.count, 7, "selection catalog count");
-    PXCheckInt([NSSet setWithArray:defaults].count, 7, "selection ids unique");
+    PXCheckInt(defaults.count, 8, "selection catalog count");
+    PXCheckInt([NSSet setWithArray:defaults].count, 8, "selection ids unique");
     for (NSString *identifier in defaults) {
         PXCheck([PXEditorOrder displayNameForSelectionIdentifier:identifier].length > 0, "selection display name");
         PXCheck([PXEditorOrder iconNameForSelectionIdentifier:identifier].length > 0, "selection icon name");
@@ -598,6 +599,120 @@ static void testFloatingOriginalRect(void) {
     PXCheck(CGRectEqualToRect(PXConstrainFloatingRect(selection, CGRectZero), CGRectZero), "empty host geometry is rejected");
 }
 
+#pragma mark - 手动长截图对齐
+
+// 合成“页面”签名：整数哈希（雪崩）生成高熵内容，等价真实屏幕的判别力，
+// 避免代数函数在模数组合下出现近似周期混染导致的多解歧义。
+static uint8_t PXTestPageHash(NSUInteger x) {
+    x = (x ^ 61u) ^ (x >> 16);
+    x *= 9u;
+    x ^= x >> 4;
+    x *= 0x27d4eb2du;
+    x ^= x >> 15;
+    return (uint8_t)(x & 0xFF);
+}
+
+static void PXFillPageSigs(uint8_t *sigs, NSInteger rows, NSInteger pageOffset) {
+    for (NSInteger r = 0; r < rows; r++) {
+        for (NSInteger c = 0; c < PXLongShotSigWidth; c++) {
+            sigs[r * PXLongShotSigWidth + c] = PXTestPageHash((NSUInteger)(pageOffset + r) * 131u + (NSUInteger)c);
+        }
+    }
+}
+
+static uint8_t *PXAllocSigs(NSInteger rows) {
+    return (uint8_t *)calloc((size_t)rows * PXLongShotSigWidth, 1);
+}
+
+static void testLongShotAligner(void) {
+    printf("[long shot aligner]\n");
+    NSInteger rows = 2000;
+    uint8_t *prev = PXAllocSigs(rows);
+    uint8_t *cur = PXAllocSigs(rows);
+    PXFillPageSigs(prev, rows, 0);
+
+    // 大重叠：滚动 800 行 → 重叠 1200 行。
+    PXFillPageSigs(cur, rows, 800);
+    NSInteger overlap = PXLongShotSearchOverlap(prev, rows, cur, rows, 128);
+    PXCheckInt(overlap, 1200, "large overlap resolved exactly");
+
+    // 小重叠：滚动 1960 行 → 重叠 40 行（走变长短窗第二段）。
+    PXFillPageSigs(cur, rows, 1960);
+    overlap = PXLongShotSearchOverlap(prev, rows, cur, rows, 128);
+    PXCheckInt(overlap, 40, "small overlap resolved by short-window pass");
+
+    // 未滚动的重复截取：滚动 4 行 → 重叠 1996 行，判重复。
+    PXFillPageSigs(cur, rows, 4);
+    overlap = PXLongShotSearchOverlap(prev, rows, cur, rows, 128);
+    PXCheck(PXLongShotIsDuplicateOverlap(overlap, rows), "barely-scrolled capture flagged duplicate");
+
+    // 微小真实滚动：滚动 10 行 → 重叠 1990 行，不足重复阈值，正常追加 10 行。
+    PXFillPageSigs(cur, rows, 10);
+    overlap = PXLongShotSearchOverlap(prev, rows, cur, rows, 128);
+    PXCheckInt(overlap, 1990, "10-row scroll appends with exact overlap");
+    PXCheck(!PXLongShotIsDuplicateOverlap(overlap, rows), "10-row scroll is not duplicate");
+
+    // 无纹理内容：签名全平 → 不做匹配，按无重叠追加。
+    memset(cur, 42, (size_t)rows * PXLongShotSigWidth);
+    PXCheckInt(PXLongShotSearchOverlap(prev, rows, cur, rows, 128), 0, "uniform band returns zero overlap");
+
+    // 内容突变：整片噪声与 prev 无关 → 拒绝匹配。
+    for (NSInteger r = 0; r < rows; r++) {
+        for (NSInteger c = 0; c < PXLongShotSigWidth; c++) {
+            cur[r * PXLongShotSigWidth + c] = (uint8_t)((r * 31 + c * 17) % 253);
+        }
+    }
+    PXCheckInt(PXLongShotSearchOverlap(prev, rows, cur, rows, 128), 0, "unrelated content returns zero overlap");
+
+    // 周期内容：每行完全相同 → 最优/次优无差值，判歧义返回 0。
+    for (NSInteger r = 0; r < rows; r++) {
+        for (NSInteger c = 0; c < PXLongShotSigWidth; c++) {
+            prev[r * PXLongShotSigWidth + c] = (uint8_t)(100 + c % 20);
+            cur[r * PXLongShotSigWidth + c] = (uint8_t)(100 + c % 20);
+        }
+    }
+    PXCheckInt(PXLongShotSearchOverlap(prev, rows, cur, rows, 128), 0, "periodic content treated ambiguous");
+
+    // 重复判定阈值本身。
+    PXCheck(PXLongShotIsDuplicateOverlap(992, 1000), "near-full overlap is duplicate");
+    PXCheck(!PXLongShotIsDuplicateOverlap(500, 1000), "half overlap is not duplicate");
+    PXCheck(!PXLongShotIsDuplicateOverlap(0, 1000), "zero overlap is not duplicate");
+
+    // 行签名：单行已知 RGBA 缓冲按列宽采样求亮度。
+    NSInteger width = 256;
+    uint8_t *rgba = (uint8_t *)calloc((size_t)width * 4, 1);
+    for (NSInteger x = 0; x < width; x++) {
+        rgba[x * 4 + 0] = 100;   // R
+        rgba[x * 4 + 1] = 200;   // G
+        rgba[x * 4 + 2] = 50;    // B
+        rgba[x * 4 + 3] = 255;
+    }
+    uint8_t sig[PXLongShotSigWidth];
+    PXLongShotComputeRowSignature(rgba, width, width * 4, 0, sig);
+    uint8_t expected = (uint8_t)((77 * 100 + 150 * 200 + 29 * 50) >> 8);
+    BOOL allMatch = YES;
+    for (NSInteger c = 0; c < PXLongShotSigWidth; c++) {
+        if (sig[c] != expected) { allMatch = NO; break; }
+    }
+    PXCheck(allMatch, "row signature samples constant-color luma");
+    free(rgba);
+    free(prev);
+    free(cur);
+}
+
+#pragma mark - 长截图模式与外部路由
+
+static void testLongCaptureRouting(void) {
+    printf("[long capture routing]\n");
+    PXCheck([PXStringFromCaptureMode(PXCaptureModeLong) isEqualToString:@"long"], "long mode string");
+    PXCheck(PXCaptureStateIsBusy(PXCaptureStatePresenting), "presenting blocks new tasks during session");
+    NSURL *darwin = [NSURL URLWithString:@"pixpin://capture/long"];
+    PXCheck([(__bridge NSString *)PXDarwinCaptureLong isEqualToString:(PXNotificationNameForExternalURL(darwin) ?: @"")],
+            "pixpin://capture/long routed to darwin notification");
+    PXCheck(PXNotificationNameForExternalURL([NSURL URLWithString:@"pixpin://capture/longx"]) == nil,
+            "unknown long path rejected");
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
@@ -614,6 +729,8 @@ int main(int argc, const char **argv) {
         testEditorOverrides();
         testIndependentButtonPreferences();
         testFloatingOriginalRect();
+        testLongShotAligner();
+        testLongCaptureRouting();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }

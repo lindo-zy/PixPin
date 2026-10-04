@@ -31,6 +31,7 @@ NSString *PXNotificationNameForExternalURL(NSURL *url) {
         @"/freeze": (__bridge NSString *)PXDarwinCaptureFreeze,
         @"/instant": (__bridge NSString *)PXDarwinCaptureInstant,
         @"/markup": (__bridge NSString *)PXDarwinCaptureMarkup,
+        @"/long": (__bridge NSString *)PXDarwinCaptureLong,
         @"/cancel": (__bridge NSString *)PXDarwinCaptureCancel,
     };
     return routes[path];

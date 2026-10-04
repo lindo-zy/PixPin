@@ -50,6 +50,7 @@ PixPin 在 SpringBoard 内运行。安装后需注销并确保注入成功；“
 | 冻结截图 | `pixpin://capture/freeze` | `com.pixpin.screenshot/capture/freeze` |
 | 即时区域截图 | `pixpin://capture/instant` | `com.pixpin.screenshot/capture/instant` |
 | 全屏标记 | `pixpin://capture/markup` | `com.pixpin.screenshot/capture/markup` |
+| 长截图（手动滚动） | `pixpin://capture/long` | `com.pixpin.screenshot/capture/long` |
 | 取消当前任务 | `pixpin://cancel` 或 `pixpin://capture/cancel` | `com.pixpin.screenshot/capture/cancel` |
 
 设备上可从 设置 → PixPin → 外部入口 点击任意条目，复制该行地址并立即触发对应功能，无需手动输入。反馈“已发送请求”不表示截图成功；模式开关和任务忙碌限制仍生效。
@@ -151,6 +152,12 @@ dispatch_async(dispatch_get_main_queue(), ^{
   上一次调整的选区大小与位置作为初始选区（跨旋转/分辨率变化时自动钳制回屏幕内）。
 - **冻结截图**：与区域相同的选区交互，基础图在打开选区前抓取（内容静止）。
 - **即时区域截图**：预置居中 70% 选区 + 取消/全屏/完成三个按钮，最快路径。
+- **长截图（手动滚动，1.8.6 起）**：区域工具条新增「长截图」按钮（仅区域模式出现），或发送
+  `pixpin://capture/long` 先框选采集视口；确认后屏幕底部出现悬浮控制条（空白区域触摸穿透，
+  可直接滚动前台 App）。手动滚动页面后点「截取」逐段采集（重复内容自动跳过并提示），
+  点「完成」自动按内容对齐拼接；页高超出 16384px 时整图等比缩到预算内。结果走默认输出动作，
+  超过 8192px 高的长图复制动作自动降级为保存。滚动期间锁屏、旋转、来电切走会话自动取消；
+  单段抓取失败可原地重试。
 
 ### 4.1 图片编辑器
 

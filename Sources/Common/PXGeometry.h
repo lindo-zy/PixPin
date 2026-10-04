@@ -18,6 +18,8 @@ typedef NS_ENUM(NSInteger, PXCaptureMode) {
     PXCaptureModeFreeze = 2,
     PXCaptureModeInstant = 3,
     PXCaptureModeMarkup = 4,
+    /// 手动滚动长截图：与区域模式共用选区交互，确认后进入 PXLongShotSession。
+    PXCaptureModeLong = 5,
 };
 
 typedef NS_ENUM(NSInteger, PXCaptureState) {
