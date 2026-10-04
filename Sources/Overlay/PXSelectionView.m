@@ -114,9 +114,15 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     [self addSubview:_modeLabel];
 
     // 顺序、显隐、外观在打开时取快照；与设置预览共用同一工具栏布局。
+    // SHELLX 扩展键只在 SHELLX 在场且总开关打开时出现（即时模式本就不含这些键）。
     NSArray<NSString *> *order = [PXEditorOrder visibleSelectionOrderForOrder:[PXEditorOrder currentSelectionOrder]
                                                                       hidden:[PXEditorOrder currentSelectionHidden]
                                                                      instant:_isInstantMode];
+    if (![PXShellXBridge toolbarAvailable]) {
+        NSMutableArray<NSString *> *withoutShellX = [order mutableCopy];
+        [withoutShellX removeObjectsInArray:[PXEditorOrder shellxSelectionIdentifiers]];
+        order = withoutShellX;
+    }
     PXSelectionButtonStyle style = [PXEditorOrder selectionButtonStyle];
     CGFloat iconPointSize = [PXEditorOrder buttonIconPointSize];
     _toolbar = [[PXSelectionToolbar alloc] initWithIdentifiers:order style:style iconPointSize:iconPointSize];
@@ -386,6 +392,19 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     }
     if ([identifier isEqualToString:@"selectall"]) {
         [self pxSetSelectionRect:self.bounds];
+        return;
+    }
+
+    // SHELLX 扩展键：交给协调器外调，不走本方输出动作。
+    if ([[PXEditorOrder shellxSelectionIdentifiers] containsObject:identifier]) {
+        PXShellXAction action = PXShellXActionArea;
+        if ([identifier isEqualToString:@"shellxinstant"]) action = PXShellXActionInstant;
+        else if ([identifier isEqualToString:@"shellxfreeze"]) action = PXShellXActionFreeze;
+        else if ([identifier isEqualToString:@"shellxshot"]) action = PXShellXActionAssistive;
+        else if ([identifier isEqualToString:@"shellxclose"]) action = PXShellXActionClose;
+        if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestShellXAction:action:)]) {
+            [self.delegate selectionViewDidRequestShellXAction:self action:action];
+        }
         return;
     }
 

@@ -4,6 +4,7 @@
 #import "../Common/PXConstants.h"
 #import "../Common/PXLog.h"
 #import "../Common/PXPreferences.h"
+#import "../Common/PXShellXBridge.h"
 #import "../Output/PXOutputPipeline.h"
 #import "../Output/PXTemporaryFileStore.h"
 #import "../Overlay/PXCaptureWindow.h"
@@ -15,6 +16,10 @@
 static const CGFloat PXFramesToWaitBeforeCapture = 2.0;
 /// 与 PXSelectionView 的选区下限一致；恢复上次选区时钳制用。
 static const CGFloat PXSelectionMinimumSize = 44.0;
+// 自发自收抑制（主线程读写）：工具栏外调 SHELLX 的触发名与上方 Snapper3 兼容别名同名，
+// Darwin 中心会把自发通知也投递回本进程，外调前按名武装一次，回环到达时吞掉，
+// 否则画板会双开（PixPin 一块、SHELLX 一块）。
+static NSString *_Nullable pxDarwinSelfPostArmedName = nil;
 
 @interface PXCaptureCoordinator () <PXSelectionViewDelegate, PXResultBubbleDelegate,
                                     PXFloatingSnapDelegate,
@@ -77,6 +82,11 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 - (void)handleDarwinNotificationName:(NSString *)name {
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{ [self handleDarwinNotificationName:name]; });
+        return;
+    }
+    if (pxDarwinSelfPostArmedName && [name isEqualToString:pxDarwinSelfPostArmedName]) {
+        PXLogInfo(@"darwin notification self-post suppressed: %@", name);
+        pxDarwinSelfPostArmedName = nil;
         return;
     }
     if ([name isEqualToString:(__bridge NSString *)PXDarwinPreferencesReload]) {
@@ -288,6 +298,26 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         [self pxDestroyCaptureWindow];
         [self pxPresentFloatingSnapForTask:task screenRect:screenRect];
     }];
+}
+
+- (void)selectionViewDidRequestShellXAction:(PXSelectionView *)view action:(PXShellXAction)action {
+    // SHELLX 收到通知后会重新抓屏：先把本方选区窗口收掉，避免截进 SHELLX 画板。
+    // 悬浮图是用户主动常驻的内容，与「取消」同口径保留；关闭动作不涉及重抓屏，本方会话不动。
+    if (action != PXShellXActionClose) {
+        [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
+    }
+    // 套壳截图名本方未监听无需武装；其余四个触发名都撞本方兼容别名，武装防双开。
+    switch (action) {
+        case PXShellXActionArea:
+        case PXShellXActionInstant:
+        case PXShellXActionFreeze:
+        case PXShellXActionClose:
+            pxDarwinSelfPostArmedName = [PXShellXBridge notificationNameForAction:action];
+            break;
+        case PXShellXActionAssistive:
+            break;
+    }
+    [PXShellXBridge notifyAction:action];
 }
 
 #pragma mark - 选区记忆（AreaRememberLastRect，默认关）

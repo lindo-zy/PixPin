@@ -24,8 +24,11 @@ typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
 + (NSArray<NSString *> *)fixedActionIdentifiers;
 /// 全部工具按钮 id：画笔/平移/方框/椭圆/箭头/放大镜/直线/马赛克/文字/实心方/实心圆/聚光/荧光/贴纸/序号图章。
 + (NSArray<NSString *> *)defaultToolIdentifiers;
-/// 区域选区工具栏按钮 id：取消/全屏/编辑/悬浮/保存/复制/完成。
+/// 区域选区工具栏按钮 id：取消/全屏/编辑/悬浮/保存/复制/完成，外加 SHELLX 扩展组。
 + (NSArray<NSString *> *)defaultSelectionIdentifiers;
+/// SHELLX 扩展按钮 id 子集（区域/即时/冻结/套壳/关闭）：仅在 SHELLX 在场且总开关
+/// 打开时由调用方保留在工具栏，其余场合从顺序中整体剔除（设置页不受此限制）。
++ (NSArray<NSString *> *)shellxSelectionIdentifiers;
 
 + (NSString *)displayNameForActionIdentifier:(NSString *)identifier;
 + (NSString *)displayNameForToolIdentifier:(NSString *)identifier;

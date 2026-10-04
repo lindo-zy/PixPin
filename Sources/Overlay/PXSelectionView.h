@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import "../Common/PXGeometry.h"
+#import "../Common/PXShellXBridge.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -15,6 +16,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)selectionViewDidRequestEditor:(PXSelectionView *)view displayRect:(CGRect)displayRect;
 /// 工具栏“悬浮”按钮：把选区裁剪结果以可拖动悬浮窗常驻屏幕（不执行输出动作）。
 - (void)selectionViewDidRequestFloat:(PXSelectionView *)view displayRect:(CGRect)displayRect;
+/// 工具栏 SHELLX 按钮：把流程外调给 SHELLX（通知发送由协调器负责，本视图不感知可用性）。
+- (void)selectionViewDidRequestShellXAction:(PXSelectionView *)view action:(PXShellXAction)action;
 @end
 
 /// 区域/冻结/即时模式共用的选区交互层。
