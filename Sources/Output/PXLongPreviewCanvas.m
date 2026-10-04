@@ -1,5 +1,5 @@
 #import "PXLongPreviewCanvas.h"
-#import "../Common/PXLongShotAligner.h"
+#import "PXLongImageComposer.h"
 #import <ImageIO/ImageIO.h>
 
 /// 分辨率下限：预览宽低于该像素数后判饱和（再缩就看不清了）。
@@ -8,7 +8,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 @interface PXLongPreviewCanvas () {
     CGContextRef _context;
     // 放弃标志：与 _context==NULL 语义分离——首片到达前 _context 本就是 NULL，
-    // 不能把“未开始”当成“已饱和”，否则 appendSliceFile 顶部闸门会吞掉第一片。
+    // 不能把“未开始”当成“已饱和”，否则更新闸门会吞掉第一片。
     BOOL _gaveUp;
 }
 @property (nonatomic, assign) NSInteger canvasWidth;       // 当前画布像素宽
@@ -67,7 +67,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 - (BOOL)pxDrawSliceFile:(NSString *)path
               pixelWidth:(NSInteger)w
              pixelHeight:(NSInteger)h
-                 offset:(NSInteger)offset {
+                 offset:(NSInteger)offset cropTop:(NSInteger)top cropBottom:(NSInteger)bottom {
     if (!_context || self.cancellation.cancelled) return NO;
     CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], NULL);
     if (!source) return NO;
@@ -79,7 +79,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
         (__bridge NSString *)kCGImageSourceShouldCacheImmediately: @YES});
     CFRelease(source);
     if (!tile) return NO;
-    CGContextDrawImage(_context, PXLongShotTileRect(self.canvasHeightAlloc, offset, w, h, self.drawScale), tile);
+    PXLongShotDrawTile(_context, tile, self.canvasHeightAlloc, offset, w, h, top, bottom, self.drawScale);
     CGImageRelease(tile);
     return YES;
 }
@@ -101,7 +101,8 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
         if (![self pxDrawSliceFile:item[@"path"]
                         pixelWidth:[item[@"w"] integerValue]
                        pixelHeight:[item[@"h"] integerValue]
-                            offset:[item[@"offset"] integerValue]]) {
+                            offset:[item[@"offset"] integerValue]
+                           cropTop:[item[@"top"] integerValue] cropBottom:[item[@"bottom"] integerValue]]) {
             return NO;
         }
     }
@@ -110,45 +111,50 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 
 // MARK: - API
 
-- (nullable UIImage *)appendSliceFile:(NSString *)filePath
-                            pixelWidth:(NSInteger)pixelWidth
-                           pixelHeight:(NSInteger)pixelHeight
-                            overlapRows:(NSInteger)overlapRows {
-    if (self.cancellation.cancelled || self.saturated || pixelWidth < 1 || pixelHeight < 1) return nil;
-
-    NSInteger offset = self.totalHeight - MAX(overlapRows, 0);
-    NSInteger totalNew = offset + pixelHeight;
-    NSDictionary *item = @{@"path": filePath, @"w": @(pixelWidth),
-                           @"h": @(pixelHeight), @"offset": @(offset)};
-
-    if (!_context) {
-        // 首片：画布宽取目标预览宽，分配高由像素预算反推。
-        self.drawScale = (CGFloat)self.canvasWidth / (CGFloat)pixelWidth;
+- (nullable UIImage *)updateWithSlices:(NSArray<PXLongShotSlice *> *)slices {
+    if (self.cancellation.cancelled || self.saturated || slices.count == 0) return nil;
+    NSMutableArray *next = [NSMutableArray array];
+    NSInteger total = 0;
+    for (PXLongShotSlice *slice in slices) {
+        if (slice.renderedPixelHeight <= 0) return nil;
+        [next addObject:@{@"path": slice.filePath, @"w": @(slice.pixelWidth), @"h": @(slice.pixelHeight),
+                          @"top": @(slice.cropTopRows), @"bottom": @(slice.cropBottomRows), @"offset": @(total)}];
+        total += slice.renderedPixelHeight;
+    }
+    BOOL incremental = _context && next.count == self.items.count + 1;
+    for (NSUInteger i = 0; incremental && i < self.items.count; i++) {
+        NSDictionary *old = self.items[i], *item = next[i];
+        if (i + 1 == self.items.count) {
+            NSMutableDictionary *adjusted = [old mutableCopy];
+            adjusted[@"bottom"] = item[@"bottom"]; // 旧末帧现在不再保留页脚。
+            incremental = [adjusted isEqual:item];
+        } else incremental = [old isEqual:item];
+    }
+    NSInteger width = slices.firstObject.pixelWidth;
+    self.items = next;
+    self.totalHeight = total;
+    if (_context && total * self.drawScale > self.canvasHeightAlloc) {
+        if (![self pxRescaleForTotalHeight:total firstSliceWidth:width]) { [self pxAbandon]; return nil; }
+    } else if (incremental) {
+        NSDictionary *item = next.lastObject;
+        if (![self pxDrawSliceFile:item[@"path"] pixelWidth:width pixelHeight:[item[@"h"] integerValue]
+                           offset:[item[@"offset"] integerValue]
+                          cropTop:[item[@"top"] integerValue] cropBottom:[item[@"bottom"] integerValue]]) {
+            [self pxAbandon]; return nil;
+        }
+    } else {
+        self.drawScale = (CGFloat)self.canvasWidth / width;
         if (![self pxCreateContextWithWidth:self.canvasWidth heightAlloc:self.canvasHeightAlloc]) {
-            [self pxAbandon];
-            return nil;
+            [self pxAbandon]; return nil;
         }
-    } else if ((CGFloat)totalNew * self.drawScale > (CGFloat)self.canvasHeightAlloc) {
-        // 预算超限：整幅缩放重放；缩无可缩/建画布失败/重放缺段都判放弃（正式拼接不受影响）。
-        [self.items addObject:item];
-        self.totalHeight = totalNew;
-        if (![self pxRescaleForTotalHeight:totalNew firstSliceWidth:pixelWidth]) {
-            // pxCreateContextWithWidth 失败时旧上下文已在内部释放（_context 已是 NULL），判空防重复释放。
-            if (_context) CGContextRelease(_context);
-            _context = NULL;
-            _gaveUp = YES;
-            [self.items removeAllObjects];
-            return nil;
+        for (NSDictionary *item in next) {
+            if (![self pxDrawSliceFile:item[@"path"] pixelWidth:width pixelHeight:[item[@"h"] integerValue]
+                               offset:[item[@"offset"] integerValue]
+                              cropTop:[item[@"top"] integerValue] cropBottom:[item[@"bottom"] integerValue]]) {
+                [self pxAbandon]; return nil;
+            }
         }
-        return [self pxSnapshotOrAbandon];
     }
-
-    if (![self pxDrawSliceFile:filePath pixelWidth:pixelWidth pixelHeight:pixelHeight offset:offset]) {
-        [self pxAbandon];
-        return nil;
-    }
-    [self.items addObject:item];
-    self.totalHeight = totalNew;
     return [self pxSnapshotOrAbandon];
 }
 
@@ -175,8 +181,11 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
     if (!_context) return nil;
     CGImageRef image = CGBitmapContextCreateImage(_context);
     if (!image) return nil;
-    UIImage *result = [UIImage imageWithCGImage:image scale:self.uiScale orientation:UIImageOrientationUp];
+    CGImageRef cropped = CGImageCreateWithImageInRect(image, CGRectMake(0, 0, self.canvasWidth, self.usedPixelHeight));
     CGImageRelease(image);
+    if (!cropped) return nil;
+    UIImage *result = [UIImage imageWithCGImage:cropped scale:self.uiScale orientation:UIImageOrientationUp];
+    CGImageRelease(cropped);
     return result;
 }
 

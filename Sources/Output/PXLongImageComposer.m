@@ -4,7 +4,7 @@
 #import <ImageIO/ImageIO.h>
 #import <math.h>
 
-const NSInteger PXLongShotMaxSlices = 50;
+const NSInteger PXLongShotMaxSlices = 200;
 const NSInteger PXLongShotMaxCanvasHeight = 16384;
 // 24M 像素 ≈ 96MB 位图：手机全宽（~1320px）× 16384 高 ≈ 21.6M，在预算内不受影响；
 // 宽幅设备（iPad 等）超预算后按比例二次缩宽，保证 CreateImage 复制瞬态可控。
@@ -23,6 +23,8 @@ const NSInteger PXLongShotCopyMaxPixelHeight = 8192;
 @end
 
 @implementation PXLongShotSlice
+- (void)discardAlignmentSignature { self.rowSignatures = [NSData data]; }
+- (NSInteger)renderedPixelHeight { return MAX(0, self.pixelHeight - self.cropTopRows - self.cropBottomRows); }
 @end
 
 static NSError *PXLongShotError(NSString *message) {
@@ -136,14 +138,13 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
     for (NSInteger i = 0; i < sliceCount; i++) {
         if (cancellation.cancelled) return nil;
         PXLongShotSlice *slice = slices[i];
-        NSInteger offset = totalHeight;
-        if (i > 0) {
-            PXLongShotSlice *prev = slices[i - 1];
-            NSInteger overlap = MIN(MAX(slice.overlapRows, 0), MIN(prev.pixelHeight, slice.pixelHeight));
-            offset = totalHeight - overlap;
+        if (slice.cropTopRows < 0 || slice.cropBottomRows < 0 || slice.renderedPixelHeight <= 0 ||
+            slice.pixelWidth != slices[0].pixelWidth) {
+            if (error) *error = PXLongShotError(@"分片裁切位置无效");
+            return nil;
         }
-        [offsets addObject:@(offset)];
-        totalHeight = offset + slice.pixelHeight;
+        [offsets addObject:@(totalHeight)];
+        totalHeight += slice.renderedPixelHeight;
         if (progressBlock) progressBlock(i + 1, sliceCount * 2);
     }
 
@@ -205,8 +206,8 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
             if (!tile) { drewAll = NO; continue; }
 
             NSInteger offset = offsets[i].integerValue;
-            CGContextDrawImage(canvas, PXLongShotTileRect(canvasH, offset, slice.pixelWidth,
-                                                         slice.pixelHeight, scale), tile);
+            PXLongShotDrawTile(canvas, tile, canvasH, offset, slice.pixelWidth, slice.pixelHeight,
+                               slice.cropTopRows, slice.cropBottomRows, scale);
             CGImageRelease(tile);
         }
     }

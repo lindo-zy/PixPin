@@ -108,7 +108,6 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     switch (self.mode) {
         case PXCaptureModeFreeze: _modeLabel.text = @"  冻结截图  "; break;
         case PXCaptureModeInstant: _modeLabel.text = @"  即时区域  "; break;
-        case PXCaptureModeLong: _modeLabel.text = @"  长截图  "; break;
         default: _modeLabel.text = @"  区域截图  "; break;
     }
     [_modeLabel sizeToFit];
@@ -119,22 +118,6 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     NSArray<NSString *> *order = [PXEditorOrder visibleSelectionOrderForOrder:[PXEditorOrder currentSelectionOrder]
                                                                       hidden:[PXEditorOrder currentSelectionHidden]
                                                                      instant:_isInstantMode];
-    // 模式过滤：长截图按钮只在区域模式出现；长截图模式本身只留 区域/取消/完成 三个出口。
-    if (self.mode == PXCaptureModeLong) {
-        NSSet<NSString *> *allowed = [NSSet setWithArray:@[@"cancel", @"selectall", @"confirm"]];
-        NSMutableArray<NSString *> *filtered = [NSMutableArray array];
-        for (NSString *identifier in order) {
-            if ([allowed containsObject:identifier]) [filtered addObject:identifier];
-        }
-        order = [filtered copy];
-    } else if (self.mode != PXCaptureModeArea) {
-        // 冻结模式的基础图是静态快照，长截图会话采集的是实时画面，语义冲突，不展示入口。
-        NSMutableArray<NSString *> *filtered = [NSMutableArray array];
-        for (NSString *identifier in order) {
-            if (![identifier isEqualToString:@"long"]) [filtered addObject:identifier];
-        }
-        order = [filtered copy];
-    }
     if (![PXShellXBridge toolbarAvailable]) {
         NSMutableArray<NSString *> *withoutShellX = [order mutableCopy];
         [withoutShellX removeObjectsInArray:[PXEditorOrder shellxSelectionIdentifiers]];
@@ -413,17 +396,6 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         [self pxSetSelectionRect:self.bounds];
         return;
     }
-    if ([identifier isEqualToString:@"long"]) {
-        // 长截图与悬浮同样要求合法选区：细条/零矩形采集视口无意义。
-        if (CGRectIsEmpty(PXClampSelectionRect(self.selectionRect, self.bounds.size, PXSelectionMinimumSize))) {
-            return;
-        }
-        if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestLong:displayRect:)]) {
-            [self.delegate selectionViewDidRequestLong:self displayRect:self.selectionRect];
-        }
-        return;
-    }
-
     // SHELLX 扩展键：交给协调器外调，不走本方输出动作。
     if ([[PXEditorOrder shellxSelectionIdentifiers] containsObject:identifier]) {
         PXShellXAction action = PXShellXActionArea;

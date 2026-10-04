@@ -1,13 +1,6 @@
 #import "PXLongShotAligner.h"
-
+#import <math.h>
 const NSInteger PXLongShotSigWidth = 64;
-
-// 重叠搜索判定阈值：均为“每字节平均亮度差”（0-255 尺度）。
-static const CGFloat PXLongShotAcceptAvgDiff = 10.0;   // 平均差超过该值视为内容变化，不认重叠
-static const CGFloat PXLongShotMarginAvgDiff = 4.0;    // 最优与次优差值需超过该值才认为匹配唯一
-static const NSInteger PXLongShotMinOverlapRows = 16;  // 少于该行数的重叠不可信，按无重叠处理
-static const NSInteger PXLongShotDuplicateSlackRows = 8;
-static const uint8_t PXLongShotUniformBandRange = 8;   // 顶部带亮度极差小于该值视为无纹理
 
 void PXLongShotComputeRowSignature(const uint8_t *buffer,
                                    NSInteger pixelWidth,
@@ -31,55 +24,6 @@ void PXLongShotComputeRowSignature(const uint8_t *buffer,
     }
 }
 
-static CGFloat PXLongShotBandCost(const uint8_t *prevSigs, NSInteger prevRows,
-                                   const uint8_t *curSigs, NSInteger bandRows, NSInteger anchorTop) {
-    if (anchorTop < 0 || bandRows <= 0 || anchorTop + bandRows > prevRows) return CGFLOAT_MAX;
-    const uint8_t *p = prevSigs + (size_t)anchorTop * PXLongShotSigWidth;
-    size_t count = (size_t)bandRows * PXLongShotSigWidth;
-    uint64_t total = 0;
-    for (size_t i = 0; i < count; i++) total += p[i] > curSigs[i] ? p[i] - curSigs[i] : curSigs[i] - p[i];
-    return (CGFloat)total / (CGFloat)count;
-}
-
-static NSInteger PXLongShotFindPeak(const uint8_t *prevSigs, NSInteger prevRows,
-                                    const uint8_t *curSigs, NSInteger minOverlap,
-                                    NSInteger maxOverlap, NSInteger fixedBand) {
-    CGFloat best = CGFLOAT_MAX;
-    NSInteger bestOverlap = 0;
-    for (NSInteger o = minOverlap; o <= maxOverlap; o++) {
-        CGFloat cost = PXLongShotBandCost(prevSigs, prevRows, curSigs, fixedBand > 0 ? fixedBand : o, prevRows - o);
-        if (cost < best) { best = cost; bestOverlap = o; }
-    }
-    if (!bestOverlap || best > PXLongShotAcceptAvgDiff) return 0;
-    // 相邻像素候选属于同一个匹配峰。文字边缘相邻行高度相关，不能把 ±1px 当成
-    // 第二个独立匹配，否则精确文字匹配也会被误判歧义。周期/远处峰仍必须拒绝。
-    NSInteger radius = MAX(2, (fixedBand > 0 ? fixedBand : bestOverlap) / 8);
-    CGFloat second = CGFLOAT_MAX;
-    for (NSInteger o = minOverlap; o <= maxOverlap; o++) {
-        if (labs(o - bestOverlap) <= radius) continue;
-        CGFloat cost = PXLongShotBandCost(prevSigs, prevRows, curSigs, fixedBand > 0 ? fixedBand : o, prevRows - o);
-        second = MIN(second, cost);
-    }
-    return second - best >= PXLongShotMarginAvgDiff ? bestOverlap : 0;
-}
-
-NSInteger PXLongShotSearchOverlap(const uint8_t *prevSigs, NSInteger prevRows,
-                                  const uint8_t *curSigs, NSInteger curRows, NSInteger bandRows) {
-    if (!prevSigs || !curSigs || prevRows <= 0 || curRows <= 0) return 0;
-    NSInteger fullBand = MIN(bandRows, MIN(prevRows, curRows));
-    if (fullBand < PXLongShotMinOverlapRows) return 0;
-    uint8_t lo = 255, hi = 0;
-    for (NSInteger r = 0; r < fullBand; r++) {
-        const uint8_t *line = curSigs + r * PXLongShotSigWidth;
-        for (NSInteger c = 0; c < PXLongShotSigWidth; c++) { lo = MIN(lo, line[c]); hi = MAX(hi, line[c]); }
-    }
-    if (hi - lo < PXLongShotUniformBandRange) return 0;
-    NSInteger maxOverlap = MIN(curRows, prevRows);
-    NSInteger overlap = PXLongShotFindPeak(prevSigs, prevRows, curSigs, fullBand, maxOverlap, fullBand);
-    if (overlap) return overlap;
-    return PXLongShotFindPeak(prevSigs, prevRows, curSigs, PXLongShotMinOverlapRows, fullBand - 1, 0);
-}
-
 BOOL PXLongShotSignaturesAreDuplicate(const uint8_t *prevSigs, NSInteger prevRows,
                                      const uint8_t *curSigs, NSInteger curRows) {
     if (!prevSigs || !curSigs || prevRows <= 0 || prevRows != curRows) return NO;
@@ -94,6 +38,90 @@ BOOL PXLongShotSignaturesAreDuplicate(const uint8_t *prevSigs, NSInteger prevRow
     return (CGFloat)total / (CGFloat)count <= 0.75 && (CGFloat)changed / (CGFloat)count <= 0.02;
 }
 
-BOOL PXLongShotIsDuplicateOverlap(NSInteger overlapRows, NSInteger sliceHeight) {
-    return sliceHeight > 0 && overlapRows >= sliceHeight - PXLongShotDuplicateSlackRows;
+
+// 中部列用于运动估计，减小边缘时钟、滚动条和视频角标的干扰。
+static CGFloat PXRowDifference(const uint8_t *a, const uint8_t *b) {
+    NSUInteger sum = 0;
+    for (NSInteger c = 8; c < 56; c++) sum += abs((int)a[c] - (int)b[c]);
+    return (CGFloat)sum / 48.0;
+}
+
+static CGFloat PXShiftCost(const uint8_t *prev, const uint8_t *cur, NSInteger rows, NSInteger delta) {
+    NSInteger overlap = rows - delta;
+    if (overlap < 64) return CGFLOAT_MAX;
+    uint64_t total = 0;
+    // 全重叠带分布采样，不能仅拿固定页头或顶部白底作为锚点。
+    for (NSInteger s = 0; s < 32; s++) {
+        NSInteger r = (2 * s + 1) * overlap / 64;
+        const uint8_t *a = prev + (r + delta) * PXLongShotSigWidth;
+        const uint8_t *b = cur + r * PXLongShotSigWidth;
+        for (NSInteger c = 8; c < 56; c += 3) total += abs((int)a[c] - (int)b[c]);
+    }
+    return (CGFloat)total / (32.0 * 16.0);
+}
+
+static NSInteger PXFindShift(const uint8_t *prev, const uint8_t *cur, NSInteger rows, CGFloat *cost) {
+    NSInteger bestDelta = 0;
+    CGFloat best = CGFLOAT_MAX;
+    for (NSInteger d = 3; d <= rows - 64; d++) {
+        CGFloat v = PXShiftCost(prev, cur, rows, d);
+        if (v < best) { best = v; bestDelta = d; }
+    }
+    if (!bestDelta || best > 8.0) return 0;
+    CGFloat second = CGFLOAT_MAX;
+    for (NSInteger d = 3; d <= rows - 64; d++) {
+        if (labs(d - bestDelta) <= 3) continue;
+        second = MIN(second, PXShiftCost(prev, cur, rows, d));
+    }
+    if (second - best < 1.5) return 0;
+    // 候选再用密集行验证，防稀疏采样恰好落在白底造成假匹配。
+    CGFloat sum = 0;
+    NSInteger count = 0, overlap = rows - bestDelta;
+    for (NSInteger r = 0; r < overlap; r += 4) {
+        sum += PXRowDifference(prev + (r + bestDelta) * PXLongShotSigWidth,
+                               cur + r * PXLongShotSigWidth);
+        count++;
+    }
+    if (count == 0 || sum / count > 8.0) return 0;
+    *cost = sum / count;
+    return bestDelta;
+}
+
+PXLongShotFrameMatch PXLongShotMatchFrames(const uint8_t *prev, const uint8_t *cur,
+                                          NSInteger rows, NSInteger fixedTop, NSInteger fixedBottom) {
+    PXLongShotFrameMatch result = {PXLongShotMatchUncertain, 0, 0, 0};
+    if (!prev || !cur || rows < 128) return result;
+    NSInteger top = MAX(0, fixedTop), bottom = MAX(0, fixedBottom);
+    if (fixedTop < 0 || fixedBottom < 0) {
+        // 仅固定的连续首尾条带可排除；超过上限说明静止或无法辨认正文。
+        if (PXLongShotSignaturesAreDuplicate(prev, rows, cur, rows)) {
+            result.kind = PXLongShotMatchDuplicate;
+            return result;
+        }
+        if (fixedTop < 0)
+            while (top < rows / 3 && PXRowDifference(prev + top * 64, cur + top * 64) <= 2.0) top++;
+        if (fixedBottom < 0)
+            while (bottom < rows / 4 &&
+                   PXRowDifference(prev + (rows - bottom - 1) * 64, cur + (rows - bottom - 1) * 64) <= 2.0) bottom++;
+    }
+    if (top > rows / 3 || bottom > rows / 4 || rows - top - bottom < 128) return result;
+    result.fixedTopRows = top;
+    result.fixedBottomRows = bottom;
+    const uint8_t *a = prev + top * 64, *b = cur + top * 64;
+    NSInteger bodyRows = rows - top - bottom;
+    if (PXLongShotSignaturesAreDuplicate(a, bodyRows, b, bodyRows)) {
+        result.kind = PXLongShotMatchDuplicate;
+        return result;
+    }
+    CGFloat forwardCost = CGFLOAT_MAX, reverseCost = CGFLOAT_MAX;
+    NSInteger forward = PXFindShift(a, b, bodyRows, &forwardCost);
+    NSInteger reverse = PXFindShift(b, a, bodyRows, &reverseCost);
+    if (forward && (!reverse || forwardCost + 1.5 < reverseCost)) {
+        result.kind = PXLongShotMatchForward;
+        result.shiftRows = forward;
+    } else if (reverse && (!forward || reverseCost + 1.5 < forwardCost)) {
+        result.kind = PXLongShotMatchReverse;
+        result.shiftRows = reverse;
+    }
+    return result;
 }

@@ -19,7 +19,7 @@ FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureArea;        // com.pixpin.sc
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureFreeze;      // com.pixpin.screenshot/capture/freeze
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureInstant;     // com.pixpin.screenshot/capture/instant
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureMarkup;      // com.pixpin.screenshot/capture/markup
-FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureLong;        // com.pixpin.screenshot/capture/long（自动滚动长截图）
+FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureLong;        // com.pixpin.screenshot/capture/long（全屏手动滚动、自动采集）
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureCancel;      // com.pixpin.screenshot/capture/cancel
 FOUNDATION_EXPORT CFStringRef const PXDarwinPreferencesReload;  // com.pixpin.screenshot/preferences/reload
 

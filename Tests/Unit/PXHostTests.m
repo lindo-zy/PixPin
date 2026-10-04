@@ -666,52 +666,50 @@ static void testLongShotAligner(void) {
     uint8_t *cur = PXAllocSigs(rows);
     PXFillPageSigs(prev, rows, 0);
 
-    // 大重叠：滚动 800 行 → 重叠 1200 行。
     PXFillPageSigs(cur, rows, 800);
-    NSInteger overlap = PXLongShotSearchOverlap(prev, rows, cur, rows, 128);
-    PXCheckInt(overlap, 1200, "large overlap resolved exactly");
-
-    // 小重叠：滚动 1960 行 → 重叠 40 行（走变长短窗第二段）。
-    PXFillPageSigs(cur, rows, 1960);
-    overlap = PXLongShotSearchOverlap(prev, rows, cur, rows, 128);
-    PXCheckInt(overlap, 40, "small overlap resolved by short-window pass");
-
-    // 未滚动的重复截取：滚动 4 行 → 重叠 1996 行，判重复。
-    PXFillPageSigs(cur, rows, 4);
-    overlap = PXLongShotSearchOverlap(prev, rows, cur, rows, 128);
-    PXCheck(PXLongShotIsDuplicateOverlap(overlap, rows), "barely-scrolled capture flagged duplicate");
-
-    // 微小真实滚动：滚动 10 行 → 重叠 1990 行，不足重复阈值，正常追加 10 行。
+    PXLongShotFrameMatch match = PXLongShotMatchFrames(prev, cur, rows, -1, -1);
+    PXCheckInt(match.kind, PXLongShotMatchForward, "forward frame recognized");
+    PXCheckInt(match.shiftRows, 800, "forward displacement resolved exactly");
+    PXFillPageSigs(cur, rows, 1936);
+    match = PXLongShotMatchFrames(prev, cur, rows, 0, 0);
+    PXCheckInt(match.shiftRows, 1936, "64-row overlap remains usable");
     PXFillPageSigs(cur, rows, 10);
-    overlap = PXLongShotSearchOverlap(prev, rows, cur, rows, 128);
-    PXCheckInt(overlap, 1990, "10-row scroll appends with exact overlap");
-    PXCheck(!PXLongShotIsDuplicateOverlap(overlap, rows), "10-row scroll is not duplicate");
-
-    // 无纹理内容：签名全平 → 不做匹配，按无重叠追加。
+    match = PXLongShotMatchFrames(prev, cur, rows, 0, 0);
+    PXCheckInt(match.shiftRows, 10, "small real displacement retained");
     memset(cur, 42, (size_t)rows * PXLongShotSigWidth);
-    PXCheckInt(PXLongShotSearchOverlap(prev, rows, cur, rows, 128), 0, "uniform band returns zero overlap");
-
-    // 内容突变：整片噪声与 prev 无关 → 拒绝匹配。
-    for (NSInteger r = 0; r < rows; r++) {
-        for (NSInteger c = 0; c < PXLongShotSigWidth; c++) {
+    PXCheckInt(PXLongShotMatchFrames(prev, cur, rows, 0, 0).kind,
+               PXLongShotMatchUncertain, "changed uniform content is never appended whole");
+    for (NSInteger r = 0; r < rows; r++)
+        for (NSInteger c = 0; c < PXLongShotSigWidth; c++)
             cur[r * PXLongShotSigWidth + c] = (uint8_t)((r * 31 + c * 17) % 253);
-        }
-    }
-    PXCheckInt(PXLongShotSearchOverlap(prev, rows, cur, rows, 128), 0, "unrelated content returns zero overlap");
-
-    // 周期内容：每行完全相同 → 最优/次优无差值，判歧义返回 0。
-    for (NSInteger r = 0; r < rows; r++) {
+    PXCheckInt(PXLongShotMatchFrames(prev, cur, rows, 0, 0).kind,
+               PXLongShotMatchUncertain, "page replacement stops stitching");
+    // 周期页即使有纹理也不能选择任意一个等价位移。
+    for (NSInteger r = 0; r < rows; r++)
         for (NSInteger c = 0; c < PXLongShotSigWidth; c++) {
-            prev[r * PXLongShotSigWidth + c] = (uint8_t)(100 + c % 20);
-            cur[r * PXLongShotSigWidth + c] = (uint8_t)(100 + c % 20);
+            prev[r * PXLongShotSigWidth + c] = (uint8_t)((r % 80) * 3 + c % 8);
+            cur[r * PXLongShotSigWidth + c] = (uint8_t)(((r + 20) % 80) * 3 + c % 8);
         }
-    }
-    PXCheckInt(PXLongShotSearchOverlap(prev, rows, cur, rows, 128), 0, "periodic content treated ambiguous");
-
-    // 重复判定阈值本身。
-    PXCheck(PXLongShotIsDuplicateOverlap(992, 1000), "near-full overlap is duplicate");
-    PXCheck(!PXLongShotIsDuplicateOverlap(500, 1000), "half overlap is not duplicate");
-    PXCheck(!PXLongShotIsDuplicateOverlap(0, 1000), "zero overlap is not duplicate");
+    PXCheckInt(PXLongShotMatchFrames(prev, cur, rows, 0, 0).kind,
+               PXLongShotMatchUncertain, "periodic displacement is rejected");
+    PXCheckInt(PXLongShotMatchFrames(NULL, cur, rows, 0, 0).kind,
+               PXLongShotMatchUncertain, "missing frame is rejected");
+    PXFillPageSigs(prev, rows, 0);
+    PXFillPageSigs(cur, rows, 600);
+    const NSInteger top = 150, bottom = 120;
+    memcpy(cur, prev, (size_t)top * PXLongShotSigWidth);
+    memcpy(cur + (rows-bottom)*64, prev + (rows-bottom)*64, (size_t)bottom*64);
+    match = PXLongShotMatchFrames(prev, cur, rows, -1, -1);
+    PXCheckInt(match.kind, PXLongShotMatchForward, "fixed header/footer do not block motion");
+    PXCheckInt(match.fixedTopRows, top, "fixed header identified");
+    PXCheckInt(match.fixedBottomRows, bottom, "fixed footer identified");
+    PXCheckInt(match.shiftRows, 600, "body displacement ignores fixed bars");
+    match = PXLongShotMatchFrames(cur, prev, rows, top, bottom);
+    PXCheckInt(match.kind, PXLongShotMatchReverse, "reverse scroll does not append");
+    PXCheckInt(PXLongShotMatchFrames(prev, prev, rows, top, bottom).kind,
+               PXLongShotMatchDuplicate, "stationary full-screen frame does not append");
+    PXCheckInt(PXLongShotMatchFrames(prev, cur, rows, rows, bottom).kind,
+               PXLongShotMatchUncertain, "invalid body bounds rejected");
 
     // 行签名：单行已知 RGBA 缓冲按列宽采样求亮度。
     NSInteger width = 256;
@@ -746,27 +744,15 @@ static void PXFillTextPageSigs(uint8_t *sigs, NSInteger rows, NSInteger offset) 
     }
 }
 
-static void testAutomaticLongShot(void) {
-    printf("[automatic long shot]\n");
-    PXLongShotScrollPlan plan;
-    CGRect bounds = CGRectMake(0, 0, 390, 844);
-    CGRect viewport = CGRectMake(24, 120, 340, 640);
-    PXCheck(PXLongShotBuildScrollPlan(viewport, bounds, 708, &plan), "portrait auto scroll has usable path");
-    PXCheck(CGRectContainsPoint(viewport, plan.start) && CGRectContainsPoint(viewport, plan.end), "swipe stays in capture viewport");
-    PXCheck(plan.start.y < 708 - 12 && plan.end.y > CGRectGetMinY(viewport), "swipe avoids HUD and viewport top");
-    PXCheck(plan.start.y > plan.end.y && plan.start.y - plan.end.y <= 320, "upward drag is bounded to preserve overlap");
-    PXCheck(!PXLongShotBuildScrollPlan(CGRectMake(10, 770, 200, 60), bounds, 708, &plan), "viewport behind HUD is rejected");
-    PXCheck(!PXLongShotBuildScrollPlan(CGRectMake(24, 120, 300, 44), bounds, 708, &plan), "short viewport is rejected");
-    PXCheck(!PXLongShotBuildScrollPlan(CGRectNull, bounds, 708, &plan), "null viewport is rejected");
-    PXCheck(!PXLongShotBuildScrollPlan(viewport, bounds, 708, NULL), "null plan is rejected");
-    PXCheck(PXLongShotBuildScrollPlan(CGRectMake(50, 60, 700, 250), CGRectMake(0, 0, 844, 390), 280, &plan), "landscape path stays above HUD");
-
+static void testManualLongShot(void) {
+    printf("[manual fullscreen long shot]\n");
     const NSInteger rows = 2000;
     uint8_t *prev = calloc((size_t)rows * PXLongShotSigWidth, 1);
     uint8_t *cur = calloc((size_t)rows * PXLongShotSigWidth, 1);
     PXFillTextPageSigs(prev, rows, 0);
     PXFillTextPageSigs(cur, rows, 800);
-    PXCheckInt(PXLongShotSearchOverlap(prev, rows, cur, rows, 128), 1200, "sparse text overlap ignores adjacent-pixel peak ambiguity");
+    PXCheckInt(PXLongShotMatchFrames(prev, cur, rows, 0, 0).shiftRows, 800,
+               "distributed matching finds sparse-text displacement");
     PXCheck(!PXLongShotSignaturesAreDuplicate(prev, rows, cur, rows), "scrolled text is not dropped as duplicate");
     PXFillTextPageSigs(cur, rows, 0);
     PXCheck(PXLongShotSignaturesAreDuplicate(prev, rows, cur, rows), "unchanged sparse text is detected independently of overlap search");
@@ -777,6 +763,32 @@ static void testAutomaticLongShot(void) {
     PXCheck(!PXLongShotSignaturesAreDuplicate(prev, rows, cur, rows), "changed plain page is not duplicate");
     PXCheck(!PXLongShotSignaturesAreDuplicate(NULL, rows, cur, rows), "missing signature is rejected");
     free(prev); free(cur);
+
+    CGColorSpaceRef tileSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef tileContext = CGBitmapContextCreate(NULL, 8, 10, 8, 0, tileSpace, kCGImageAlphaPremultipliedLast);
+    CGContextRef output = CGBitmapContextCreate(NULL, 8, 16, 8, 0, tileSpace, kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(tileSpace);
+    if (tileContext && output) {
+        for (NSInteger row = 0; row < 10; row++) {
+            CGContextSetRGBFillColor(tileContext, (row + 1) / 16.0, 0, 0, 1);
+            CGContextFillRect(tileContext, CGRectMake(0, 9 - row, 8, 1));
+        }
+        CGImageRef fullFrame = CGBitmapContextCreateImage(tileContext);
+        // 首帧去掉两行页脚；新帧只追加末尾六行；页脚只保留一次。
+        PXLongShotDrawTile(output, fullFrame, 16, 0, 8, 10, 0, 2, 1);
+        PXLongShotDrawTile(output, fullFrame, 16, 8, 8, 10, 4, 0, 1);
+        uint8_t *data = CGBitmapContextGetData(output);
+        BOOL correct = YES;
+        for (NSInteger row = 0; row < 14; row++) {
+            NSInteger sourceRow = row < 8 ? row : row - 4;
+            NSInteger expectedRed = (NSInteger)lround((sourceRow + 1) * 255.0 / 16.0);
+            if (labs(data[row * CGBitmapContextGetBytesPerRow(output)] - expectedRed) > 1) correct = NO;
+        }
+        PXCheck(correct, "shared crop drawing preserves exact source rows without repeated footer");
+        CGImageRelease(fullFrame);
+    } else PXCheck(NO, "cropped renderer contexts available");
+    if (tileContext) CGContextRelease(tileContext);
+    if (output) CGContextRelease(output);
 
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
     CGContextRef context = CGBitmapContextCreate(NULL, 958, 16384, 8, 0, space, kCGImageAlphaPremultipliedLast);
@@ -805,6 +817,10 @@ static void testLongCaptureRouting(void) {
     printf("[long capture routing]\n");
     PXCheck([PXStringFromCaptureMode(PXCaptureModeLong) isEqualToString:@"long"], "long mode string");
     PXCheck(PXCaptureStateIsBusy(PXCaptureStatePresenting), "presenting blocks new tasks during session");
+    PXCheck(![[PXEditorOrder defaultSelectionIdentifiers] containsObject:@"long"],
+            "area toolbar no longer offers rolling capture");
+    PXCheck(![[PXEditorOrder resolvedSelectionOrderFromString:@"long,cancel,copy"] containsObject:@"long"],
+            "legacy saved area-long action is filtered");
     NSURL *darwin = [NSURL URLWithString:@"pixpin://capture/long"];
     PXCheck([(__bridge NSString *)PXDarwinCaptureLong isEqualToString:(PXNotificationNameForExternalURL(darwin) ?: @"")],
             "pixpin://capture/long routed to darwin notification");
@@ -831,7 +847,7 @@ int main(int argc, const char **argv) {
         testFloatingOriginalRect();
         testLongShotAligner();
         testLongCaptureRouting();
-        testAutomaticLongShot();
+        testManualLongShot();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }

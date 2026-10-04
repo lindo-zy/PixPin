@@ -11,18 +11,14 @@ NS_ASSUME_NONNULL_BEGIN
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef struct {
-    CGPoint start;
-    CGPoint end;
-} PXLongShotScrollPlan;
-
-/// 拖动路径限制在选区和屏幕内，避开底部 HUD/系统手势区域；过小视口拒绝自动滚动。
-BOOL PXLongShotBuildScrollPlan(CGRect viewport, CGRect screenBounds, CGFloat protectedBottomY,
-                              PXLongShotScrollPlan *plan);
 /// 原始像素坐标统一缩放后转换到 CG 底部原点，预览与最终拼接共用。
 CGRect PXLongShotTileRect(CGFloat canvasHeight, NSInteger offset, NSInteger width,
                          NSInteger height, CGFloat scale);
 
+/// 全帧只绘制 [cropTop, height-cropBottom)，与预览和导出共用裁切几何。
+void PXLongShotDrawTile(CGContextRef context, CGImageRef image, CGFloat canvasHeight,
+                       NSInteger offset, NSInteger width, NSInteger height,
+                       NSInteger cropTop, NSInteger cropBottom, CGFloat scale);
 #ifdef __cplusplus
 }
 #endif

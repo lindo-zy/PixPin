@@ -30,6 +30,11 @@ typedef NS_ENUM(NSInteger, PXCaptureError) {
                                         NSString *captureMethod,
                                         NSError *error))completion;
 
+/// 长截图专用：优先运行期检查 _snapshotExcludingWindows:withRect:；
+/// 不可用时只在原始抓屏阶段短暂隐藏传入窗口，归一化前恢复。
+- (void)captureExcludingWindows:(NSArray<UIWindow *> *)windows
+                    completion:(void (^)(UIImage *image, BOOL isPartial,
+                                          NSString *captureMethod, NSError *error))completion;
 @end
 
 NS_ASSUME_NONNULL_END

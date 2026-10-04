@@ -35,7 +35,7 @@ static NSString *_Nullable pxDarwinSelfPostArmedName = nil;
 @property (nonatomic, strong, nullable) PXCaptureWindow *captureWindow;
 @property (nonatomic, strong, nullable) PXSelectionView *selectionView;
 @property (nonatomic, strong, nullable) PXResultBubble *resultBubble;
-@property (nonatomic, strong, nullable) PXLongShotSession *longShotSession;   // 自动长截图会话（主线程）
+@property (nonatomic, strong, nullable) PXLongShotSession *longShotSession;   // 全屏手动滚动采集会话（主线程）
 @property (nonatomic, strong) NSMutableArray<PXFloatingSnap *> *floatingSnaps; // 主线程，多图独立保留
 @property (nonatomic, strong, nullable) PXFloatingSnap *editingFloatingSnap;
 @property (nonatomic, strong, nullable) PXCaptureWindow *editorWindow;
@@ -218,6 +218,13 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
                 task.resultImage = image;
                 if (![task transitionToState:PXCaptureStatePresenting]) return;
                 [self pxPresentEditorForTask:task];
+            } else if (task.mode == PXCaptureModeLong) {
+                if (isPartial) {
+                    [self pxFailTask:task code:@"partial-capture" message:@"无法取得完整屏幕，不能开始滚动截图"];
+                    return;
+                }
+                if (![task transitionToState:PXCaptureStatePresenting]) return;
+                [self pxStartLongShotForTask:task];
             } else if (task.mode == PXCaptureModeFull) {
                 [self pxHandleFullscreenResult:task];
             } else {
@@ -259,19 +266,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
     if (!task) return;
     [self pxPersistSelectionRect:displayRect config:task.configSnapshot];
-    if (task.mode == PXCaptureModeLong) {
-        // 长截图模式：确认选区即进入会话，动作参数不参与（输出走默认动作）。
-        [self pxStartLongShotForTask:task displayRect:displayRect];
-        return;
-    }
     [self pxCropAndOutput:task displayRect:displayRect overrideAction:action];
-}
-
-- (void)selectionViewDidRequestLong:(PXSelectionView *)view displayRect:(CGRect)displayRect {
-    PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
-    if (!task || view != self.selectionView) return;
-    [self pxPersistSelectionRect:displayRect config:task.configSnapshot];
-    [self pxStartLongShotForTask:task displayRect:displayRect];
 }
 
 - (void)selectionViewDidCancel:(PXSelectionView *)view {
@@ -318,14 +313,13 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }];
 }
 
-#pragma mark - 自动长截图会话
+#pragma mark - 全屏手动滚动采集会话
 
-- (void)pxStartLongShotForTask:(PXCaptureTask *)task displayRect:(CGRect)displayRect {
+- (void)pxStartLongShotForTask:(PXCaptureTask *)task {
     if (![self pxIsTaskCurrent:task] || task.state != PXCaptureStatePresenting) return;
     [self pxTeardownLongShotSession];
     [self pxDestroyCaptureWindow];
     self.longShotSession = [PXLongShotSession startWithTask:task
-                                                displayRect:displayRect
                                                    delegate:self];
     if (!self.longShotSession) {
         [self pxFailTask:task code:@"longshot" message:@"长截图会话创建失败"];
@@ -776,7 +770,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         }
         return;
     }
-    // 长截图会话中旋转：采集视口坐标失效，同样直接取消。
+    // 长截图会话中旋转：采集屏幕坐标失效，同样直接取消。
     if (self.longShotSession) {
         PXLogWarn(@"orientation changed during long shot, cancelling task");
         [self pxCancelCurrentTaskClosingFloatingSnaps:NO];

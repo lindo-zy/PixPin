@@ -2,6 +2,7 @@
 #import "../Common/PXLog.h"
 #import <dlfcn.h>
 #import <QuartzCore/QuartzCore.h>
+#import <string.h>
 
 NSString * const PXCaptureErrorDomain = @"com.pixpin.screenshot.capture";
 
@@ -52,64 +53,118 @@ static void PXResolveScreenCaptureSymbols(void) {
 }
 
 - (void)captureWithCompletion:(void (^)(UIImage *, BOOL, NSString *, NSError *))completion {
+    [self captureExcludingWindows:@[] completion:completion];
+}
+
+- (UIImage *)pxSnapshotExcludingWindows:(NSArray<UIWindow *> *)windows {
+    SEL selector = NSSelectorFromString(@"_snapshotExcludingWindows:withRect:");
+    UIScreen *screen = UIScreen.mainScreen;
+    if (![screen respondsToSelector:selector]) return nil;
+    @try {
+        NSMethodSignature *signature = [screen methodSignatureForSelector:selector];
+        if (!signature || signature.numberOfArguments != 4 ||
+            signature.methodReturnType[0] != '@' || signature.methodReturnLength != sizeof(id) ||
+            [signature getArgumentTypeAtIndex:2][0] != '@' ||
+            strcmp([signature getArgumentTypeAtIndex:3], @encode(CGRect)) != 0) return nil;
+        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+        invocation.target = screen;
+        invocation.selector = selector;
+        NSArray *excluded = windows;
+        CGRect rect = screen.bounds;
+        [invocation setArgument:&excluded atIndex:2];
+        [invocation setArgument:&rect atIndex:3];
+        [invocation invoke];
+        __unsafe_unretained id raw = nil;
+        [invocation getReturnValue:&raw];
+        id result = raw; // 在 invocation 生命周期内建立强引用。
+        return [result isKindOfClass:UIImage.class] ? result : nil;
+    } @catch (__unused NSException *exception) { return nil; }
+}
+
+- (void)captureExcludingWindows:(NSArray<UIWindow *> *)windows
+                    completion:(void (^)(UIImage *, BOOL, NSString *, NSError *))completion {
     NSParameterAssert(completion);
-    void (^grabBlock)(void) = ^{
-        NSString *method = [[self class] resolvedCaptureMethod];
-        UIImage *image = nil;
-        BOOL isPartial = NO;
-
-        if (_PXCreateScreenUIImage) {
-            image = _PXCreateScreenUIImage();
-            if (image) method = @"private-uicreate";
-        }
-        if (!image && _PXGetScreenImage) {
-            CGImageRef screenCG = _PXGetScreenImage();
-            if (screenCG) {
-                image = [UIImage imageWithCGImage:screenCG];
-                CGImageRelease(screenCG);   // UIGetScreenImage 按命名约定返回 retained CGImage
-                if (image) method = @"private-uigetscreen";
+    void (^begin)(void) = ^{
+        UIImage *excludedImage = windows.count ? [self pxSnapshotExcludingWindows:windows] : nil;
+        NSMutableArray<NSDictionary *> *hidden = [NSMutableArray array];
+        if (windows.count && !excludedImage) {
+            for (UIWindow *window in windows) {
+                if (window.hidden || !window.rootViewController) continue;
+                [hidden addObject:@{@"window": window, @"controller": window.rootViewController}];
+                window.hidden = YES;
             }
+            [CATransaction flush];
         }
-        if (!image) {
-            image = [self pxGrabBySnapshotFallback];
-            isPartial = (image != nil);
-            method = @"fallback-snapshot";
-        }
+        void (^grabBlock)(void) = ^{
+            NSString *method = [[self class] resolvedCaptureMethod];
+            UIImage *image = excludedImage;
+            BOOL isPartial = NO;
+            if (image) method = @"private-excluding-windows";
 
-        if (!image) {
-            NSError *error = [NSError errorWithDomain:PXCaptureErrorDomain
-                                                 code:PXCaptureErrorCaptureFailed
-                                             userInfo:@{NSLocalizedDescriptionKey: @"所有抓取路径均未取得屏幕图像"}];
-            self.lastCaptureMethod = method;
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, NO, method, error); });
-            return;
-        }
+            @try {
+                if (!image && _PXCreateScreenUIImage) {
+                    image = _PXCreateScreenUIImage();
+                    if (image) method = @"private-uicreate";
+                }
+                if (!image && _PXGetScreenImage) {
+                    CGImageRef screenCG = _PXGetScreenImage();
+                    if (screenCG) {
+                        image = [UIImage imageWithCGImage:screenCG];
+                        CGImageRelease(screenCG);   // UIGetScreenImage 按命名约定返回 retained CGImage
+                        if (image) method = @"private-uigetscreen";
+                    }
+                }
+                if (!image) {
+                    image = [self pxGrabBySnapshotFallback];
+                    isPartial = (image != nil);
+                    method = @"fallback-snapshot";
+                }
+            } @catch (NSException *exception) {
+                PXLogWarn(@"capture exception: %@", exception.name);
+                image = nil;
+            } @finally {
+                // 不把后台归一化的耗时计入窗口隐藏时间；取消已销毁的窗口不能复活。
+                for (NSDictionary *entry in hidden) {
+                    UIWindow *window = entry[@"window"];
+                    if (window.rootViewController == entry[@"controller"]) window.hidden = NO;
+                }
+            }
+            if (!image) {
+                NSError *error = [NSError errorWithDomain:PXCaptureErrorDomain
+                                                     code:PXCaptureErrorCaptureFailed
+                                                 userInfo:@{NSLocalizedDescriptionKey: @"所有抓取路径均未取得屏幕图像"}];
+                self.lastCaptureMethod = method;
+                dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, NO, method, error); });
+                return;
+            }
 
-        // 归一化放到后台：大图重排不允许阻塞 SpringBoard 主线程。
-        CGSize targetPixelSize = CGSizeMake(
-            [UIScreen mainScreen].bounds.size.width * [UIScreen mainScreen].scale,
-            [UIScreen mainScreen].bounds.size.height * [UIScreen mainScreen].scale);
-        CGFloat screenScale = [UIScreen mainScreen].scale;
-        self.lastCaptureMethod = method;   // 主线程（grabBlock）内记录实际使用的策略
+            // 归一化放到后台：大图重排不允许阻塞 SpringBoard 主线程。
+            CGSize targetPixelSize = CGSizeMake(
+                [UIScreen mainScreen].bounds.size.width * [UIScreen mainScreen].scale,
+                [UIScreen mainScreen].bounds.size.height * [UIScreen mainScreen].scale);
+            CGFloat screenScale = [UIScreen mainScreen].scale;
+            self.lastCaptureMethod = method;   // 主线程（grabBlock）内记录实际使用的策略
 
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            NSError *normalizeError = nil;
-            UIImage *normalized = [self pxNormalizeImage:image
-                                        targetPixelSize:targetPixelSize
-                                            screenScale:screenScale
-                                                  error:&normalizeError];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(normalized, isPartial, method, normalizeError);
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                NSError *normalizeError = nil;
+                UIImage *normalized = [self pxNormalizeImage:image
+                                            targetPixelSize:targetPixelSize
+                                                screenScale:screenScale
+                                                      error:&normalizeError];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(normalized, isPartial, method, normalizeError);
+                });
             });
-        });
+        };
+        if (hidden.count) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 / 60.0 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), grabBlock);
+        } else {
+            grabBlock();
+        }
     };
-
-    // UIKit 抓屏要求主线程。
-    if ([NSThread isMainThread]) {
-        grabBlock();
-    } else {
-        dispatch_async(dispatch_get_main_queue(), grabBlock);
-    }
+    if (NSThread.isMainThread) begin();
+    else dispatch_async(dispatch_get_main_queue(), begin);
 }
 
 #pragma mark - 抓取路径

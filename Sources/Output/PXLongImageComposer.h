@@ -7,7 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // MARK: - 常量（本模块唯一数值来源）
 
-/// 分片上限：防失控采集，也约束签名驻留内存（≤50 × 每片 ~180KB）。
+/// 整屏帧上限：防失控采集；只有最近帧保留用于对齐的签名。
 FOUNDATION_EXPORT const NSInteger PXLongShotMaxSlices;
 /// 画布像素高度预算：超出后整图等比降采样到预算内（GPU 纹理上限 16384）。
 FOUNDATION_EXPORT const NSInteger PXLongShotMaxCanvasHeight;
@@ -23,7 +23,7 @@ FOUNDATION_EXPORT const NSInteger PXLongShotCopyMaxPixelHeight;
 
 // MARK: - 分片
 
-/// 一个已落盘分片：JPEG 文件 + 驻内存的行签名（pixelHeight × PXLongShotSigWidth 字节）。
+/// 一个已落盘整屏帧：JPEG 文件 + 最近帧的行签名。
 /// 图片本体不驻留内存，拼接时按需从磁盘解码；签名计算见 Common/PXLongShotAligner.h。
 @interface PXLongShotSlice : NSObject
 
@@ -31,8 +31,12 @@ FOUNDATION_EXPORT const NSInteger PXLongShotCopyMaxPixelHeight;
 @property (nonatomic, assign, readonly) NSInteger pixelWidth;
 @property (nonatomic, assign, readonly) NSInteger pixelHeight;
 @property (nonatomic, strong, readonly) NSData *rowSignatures;
-/// 入列时已确认的重叠行数，预览和最终拼接共用，避免完成时重复搜索。
-@property (nonatomic, assign) NSInteger overlapRows;
+/// 对齐完成后旧帧不再需要签名，导出仅使用 JPEG。
+- (void)discardAlignmentSignature;
+/// 整屏帧中的有效裁片：顶部保留首帧，底部保留末帧，中间仅保留新正文。
+@property (nonatomic, assign) NSInteger cropTopRows;
+@property (nonatomic, assign) NSInteger cropBottomRows;
+@property (nonatomic, assign, readonly) NSInteger renderedPixelHeight;
 
 @end
 
@@ -49,7 +53,7 @@ FOUNDATION_EXPORT const NSInteger PXLongShotCopyMaxPixelHeight;
                                              error:(NSError **)error;
 
 /// 拼接全部分片并编码 JPEG 到 outputURL（后台队列调用）。
-/// 重叠行数采用会话入列时保存的 overlapRows。
+/// 裁片位置采用会话入列时保存的 cropTopRows/cropBottomRows。
 /// 画布先按 PXLongShotMaxCanvasHeight 缩高，再按 PXLongShotMaxCanvasPixels 缩像素总量。
 /// progressBlock（可空，调用线程即后台线程）：进度口径 2n——前 n 为偏移累计、
 /// 后 n 为逐片绘制；done==total 后进入编码阶段。

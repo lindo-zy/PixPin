@@ -43,7 +43,7 @@
     static NSArray<NSString *> *identifiers;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        identifiers = @[@"cancel", @"selectall", @"editor", @"float", @"long",
+        identifiers = @[@"cancel", @"selectall", @"editor", @"float",
                         @"save", @"copy", @"confirm",
                         @"shellxarea", @"shellxinstant", @"shellxfreeze",
                         @"shellxshot", @"shellxclose"];
@@ -114,7 +114,6 @@
                   @"selectall": @"全屏",
                   @"editor": @"编辑",
                   @"float": @"悬浮",
-                  @"long": @"长截图",
                   @"save": @"保存",
                   @"copy": @"复制",
                   @"confirm": @"完成",
@@ -213,7 +212,6 @@
                   @"selectall": @"viewfinder",
                   @"editor": @"pencil.and.outline",
                   @"float": @"rectangle.on.rectangle",
-                  @"long": @"arrow.down.to.line.compact",
                   @"save": @"square.and.arrow.down",
                   @"copy": @"doc.on.doc",
                   @"confirm": @"checkmark.circle",
