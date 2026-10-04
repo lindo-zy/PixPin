@@ -33,7 +33,7 @@
 
 | 动作 | URL Scheme | Darwin 通知 |
 |---|---|---|
-| 默认启动（全屏标记） | `pixpin://` | `com.pixpin.screenshot/activate` |
+| 默认启动（全屏截图） | `pixpin://` | `com.pixpin.screenshot/activate` |
 | 全屏截图 | `pixpin://capture/full` | `com.pixpin.screenshot/capture/full` |
 | 区域截图 | `pixpin://capture/area` | `com.pixpin.screenshot/capture/area` |
 | 冻结截图 | `pixpin://capture/freeze` | `com.pixpin.screenshot/capture/freeze` |

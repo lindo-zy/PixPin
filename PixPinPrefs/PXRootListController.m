@@ -181,7 +181,7 @@
 // activate 与裸 pixpin:// 等价，capture/cancel 是 cancel 的别名，不单独占行，见分组 footer。
 - (NSArray<NSArray<NSString *> *> *)pxSchemeEntries {
     return @[
-        @[@"启动（全屏标记）", @"activate"],
+        @[@"启动（全屏截图）", @"activate"],
         @[@"全屏截图", @"capture/full"],
         @[@"区域截图", @"capture/area"],
         @[@"冻结截图", @"capture/freeze"],

@@ -33,8 +33,8 @@
 | 入口 | 位置 | 说明 |
 |---|---|---|
 | 设置快捷入口 | 设置 → PixPin → 外部入口 | 点击即复制 URL 并触发对应功能，含取消入口 |
-| 跨进程通知 | Darwin 通知 | `com.pixpin.screenshot/activate` 默认打开全屏标记，也支持指定模式 |
-| URL Scheme | 外部插件 / 打开 URL 动作 | `pixpin://` 默认打开全屏标记，也支持指定模式 |
+| 跨进程通知 | Darwin 通知 | `com.pixpin.screenshot/activate` 默认打开全屏截图，也支持指定模式 |
+| URL Scheme | 外部插件 / 打开 URL 动作 | `pixpin://` 默认打开全屏截图，也支持指定模式 |
 
 控制中心模块与系统截图按钮联动暂未实现（见「已知限制」）。
 
@@ -44,7 +44,7 @@ PixPin 在 SpringBoard 内运行。安装后需注销并确保注入成功；“
 
 | 动作 | URL Scheme | Darwin 通知名称 |
 |---|---|---|
-| 默认启动（全屏标记） | `pixpin://` 或 `pixpin://activate` | `com.pixpin.screenshot/activate` |
+| 默认启动（全屏截图） | `pixpin://` 或 `pixpin://activate` | `com.pixpin.screenshot/activate` |
 | 全屏截图 | `pixpin://capture/full` | `com.pixpin.screenshot/capture/full` |
 | 区域截图 | `pixpin://capture/area` | `com.pixpin.screenshot/capture/area` |
 | 冻结截图 | `pixpin://capture/freeze` | `com.pixpin.screenshot/capture/freeze` |
@@ -128,7 +128,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 
 ### 3.2 外部入口真机验收（待执行）
 
-1. iOS 16/17 各自在设备冷启动并恢复越狱注入后、热启动时，从桌面和 App 内分别调用默认 URL 与默认 Darwin 通知；预期直接进入全屏标记，底图为触发时屏幕。
+1. iOS 16/17 各自在设备冷启动并恢复越狱注入后、热启动时，从桌面和 App 内分别调用默认 URL 与默认 Darwin 通知；预期按默认结果动作输出整屏截图并出现结果气泡，不进入标记编辑器。
 2. 逐项调用上表五种模式，确认与设置“外部入口”同模式一致；调用取消后窗口消失且可重新启动。
 3. 面板打开时连续触发 URL/Darwin，确认只有一个任务并出现 `request ignored: another task is busy`；关闭总开关/模式开关后触发，确认 `mode ... disabled, request ignored`。
 4. 打开 `pixpin://capture/unknown` 和 `pixpin://activate?mode=full`，确认不截图；普通 HTTPS、其他 App Scheme 仍按原行为打开。与其他 URL 接管插件同时启用时再次测试。
@@ -247,7 +247,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 或 SSH 到设备后：`grep -E '\[PixPin\]' /var/log/syslog`（或 `oslog` 工具）。
 所有日志以 `[PixPin][I/W/E]` 为前缀，不会输出图片内容。
 
-设置入口验收（1.6.4，待真机执行）：iOS 16/17 冷启动设置、返回重进后，确认诊断分组已移除。依次点击七个外部入口，每次先退出前一个截图任务，核对所复制 URL 和实际模式；“启动”与“全屏标记”均进入标记面板，“取消截图”关闭当前任务与全部悬浮图。快速重复点击不叠加任务；同一行和多行连续点击后反馈可恢复。关闭模式开关后仍复制 URL，但不启动截图。syslog 每次点击应只发送一次对应功能请求。
+设置入口验收（1.6.4，待真机执行）：iOS 16/17 冷启动设置、返回重进后，确认诊断分组已移除。依次点击七个外部入口，每次先退出前一个截图任务，核对所复制 URL 和实际模式；“启动（全屏截图）”与“全屏截图”按默认结果动作输出整屏截图，“全屏标记”进入标记面板，“取消截图”关闭当前任务与全部悬浮图。快速重复点击不叠加任务；同一行和多行连续点击后反馈可恢复。关闭模式开关后仍复制 URL，但不启动截图。syslog 每次点击应只发送一次对应功能请求。
 
 编辑与结果面板验收（1.6.9，待真机执行）：
 
