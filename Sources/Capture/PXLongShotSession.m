@@ -7,6 +7,19 @@
 #import "../Overlay/PXCaptureWindow.h"
 #import "../Overlay/PXLongShotHUD.h"
 
+@interface PXLongShotSession () <PXLongShotHUDDelegate>
+@property (nonatomic, strong) PXCaptureTask *task;
+@property (nonatomic, weak) id<PXLongShotSessionDelegate> delegate;
+@property (nonatomic, strong) PXCaptureProvider *provider;
+@property (nonatomic, strong) PXCaptureWindow *window;
+@property (nonatomic, strong) PXLongShotHUD *hud;
+@property (nonatomic, assign) CGRect displayRect;
+@property (nonatomic, strong) NSMutableArray<PXLongShotSlice *> *slices;
+@property (nonatomic, assign) BOOL busy;
+@property (nonatomic, assign) BOOL finished;
+- (void)handleLockStateChanged;
+@end
+
 // 抓屏前等待帧数：与协调器 pxRunCaptureForTask 的两帧等待同一口径。
 static const CGFloat PXLongShotFramesToWaitBeforeCapture = 2.0;
 
@@ -25,18 +38,6 @@ static void PXLongShotLockStateCallback(CFNotificationCenterRef center,
         [_PXLongShotLockObserverSession handleLockStateChanged];
     });
 }
-
-@interface PXLongShotSession ()
-@property (nonatomic, strong) PXCaptureTask *task;
-@property (nonatomic, weak) id<PXLongShotSessionDelegate> delegate;
-@property (nonatomic, strong) PXCaptureProvider *provider;
-@property (nonatomic, strong) PXCaptureWindow *window;
-@property (nonatomic, strong) PXLongShotHUD *hud;
-@property (nonatomic, copy) CGRect displayRect;
-@property (nonatomic, strong) NSMutableArray<PXLongShotSlice *> *slices;
-@property (nonatomic, assign) BOOL busy;
-@property (nonatomic, assign) BOOL finished;
-@end
 
 @implementation PXLongShotSession
 

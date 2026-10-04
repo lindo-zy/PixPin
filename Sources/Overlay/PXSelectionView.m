@@ -120,14 +120,14 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
                                                                       hidden:[PXEditorOrder currentSelectionHidden]
                                                                      instant:_isInstantMode];
     // 模式过滤：长截图按钮只在区域模式出现；长截图模式本身只留 区域/取消/完成 三个出口。
-    if (mode == PXCaptureModeLong) {
+    if (self.mode == PXCaptureModeLong) {
         NSSet<NSString *> *allowed = [NSSet setWithArray:@[@"cancel", @"selectall", @"confirm"]];
         NSMutableArray<NSString *> *filtered = [NSMutableArray array];
         for (NSString *identifier in order) {
             if ([allowed containsObject:identifier]) [filtered addObject:identifier];
         }
         order = [filtered copy];
-    } else if (mode != PXCaptureModeArea) {
+    } else if (self.mode != PXCaptureModeArea) {
         // 冻结模式的基础图是静态快照，长截图会话采集的是实时画面，语义冲突，不展示入口。
         NSMutableArray<NSString *> *filtered = [NSMutableArray array];
         for (NSString *identifier in order) {
