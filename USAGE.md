@@ -129,8 +129,8 @@ dispatch_async(dispatch_get_main_queue(), ^{
 ### 3.2 外部入口真机验收（待执行）
 
 1. iOS 16/17 各自在设备冷启动并恢复越狱注入后、热启动时，从桌面和 App 内分别调用默认 URL 与默认 Darwin 通知；预期按默认结果动作输出整屏截图并出现结果气泡，不进入标记编辑器。
-2. 逐项调用上表五种模式，确认与设置“外部入口”同模式一致；调用取消后窗口消失且可重新启动。
-3. 面板打开时连续触发 URL/Darwin，确认只有一个任务并出现 `request ignored: another task is busy`；关闭总开关/模式开关后触发，确认 `mode ... disabled, request ignored`。
+2. 逐项调用上表六种模式，确认与设置“外部入口”同模式一致；调用取消后窗口消失且可重新启动。
+3. 面板打开时连续触发 URL/Darwin，确认只有一个任务并出现 `request ignored: another task is busy`；关闭总开关后触发，确认 `PixPin disabled, request ignored`。
 4. 打开 `pixpin://capture/unknown` 和 `pixpin://activate?mode=full`，确认不截图；普通 HTTPS、其他 App Scheme 仍按原行为打开。与其他 URL 接管插件同时启用时再次测试。
 5. 收集 `[PixPin]` syslog：加载时应有 `external URL hook installed`（某个版本专属入口可能为 `unavailable`），请求时有 `external request source=url/darwin`；无效指令为 `external URL rejected`。再核对 `capture request accepted`、`request ignored`、`task cancelled` 和 `output completed`。
 6. Snapper3 兼容别名：`notify_post` 逐条发送 3.1.1 表中五条通知，确认分别进入区域 / 即时区域 / 冻结截图与取消当前任务；开关关闭与任务忙碌时同样出现 `rejected-disabled` / `rejected-busy`。
@@ -214,7 +214,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 
 - **首页标识**：顶部显示 PixPin 高清 Logo、名称和当前安装包版本号。构建时自动同步设置包版本，并校验与 DEB 一致。真机验收：冷启动设置及返回重进均只显示一份头部；深浅色、横竖屏下居中且文字清晰；升级后重新启动设置，版本号与安装包一致，syslog 出现 `prefs branding header loaded: version=...`。
 - **基本**：总开关（关闭后所有入口无动作）。
-- **截图模式**：五种模式独立开关；「记住上次区域选区」（默认关）让区域/冻结/即时以上次选区大小与位置开局。
+- **截图模式**：六种截图模式共用总开关，无独立模式开关；「记住上次区域选区」（默认关）让区域/冻结/即时以上次选区大小与位置开局。
 - **输出**：
   - 默认结果动作：保存到相册 / 复制到剪贴板 / 保存并复制 / 仅显示预览气泡。
   - 显示结果气泡、完成时震动反馈。
@@ -247,7 +247,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 或 SSH 到设备后：`grep -E '\[PixPin\]' /var/log/syslog`（或 `oslog` 工具）。
 所有日志以 `[PixPin][I/W/E]` 为前缀，不会输出图片内容。
 
-设置入口验收（1.6.4，待真机执行）：iOS 16/17 冷启动设置、返回重进后，确认诊断分组已移除。依次点击七个外部入口，每次先退出前一个截图任务，核对所复制 URL 和实际模式；“启动（全屏截图）”与“全屏截图”按默认结果动作输出整屏截图，“全屏标记”进入标记面板，“取消截图”关闭当前任务与全部悬浮图。快速重复点击不叠加任务；同一行和多行连续点击后反馈可恢复。关闭模式开关后仍复制 URL，但不启动截图。syslog 每次点击应只发送一次对应功能请求。
+设置入口验收（1.6.4，待真机执行）：iOS 16/17 冷启动设置、返回重进后，确认诊断分组已移除。依次点击八个外部入口，每次先退出前一个截图任务，核对所复制 URL 和实际模式；“启动（全屏截图）”与“全屏截图”按默认结果动作输出整屏截图，“全屏标记”进入标记面板，“滚动截图”进入全屏滚动采集会话（右上小窗），“取消截图”关闭当前任务与全部悬浮图；桌面状态触发“滚动截图”需验证前台校验分支（失败气泡或正常启动桌面采集，以真机表现为准）。快速重复点击不叠加任务；同一行和多行连续点击后反馈可恢复。关闭总开关后仍复制 URL，但不启动截图。syslog 每次点击应只发送一次对应功能请求。
 
 编辑与结果面板验收（1.6.9，待真机执行）：
 
@@ -255,7 +255,7 @@ dispatch_async(dispatch_get_main_queue(), ^{
 - 在两个编辑模式中拖动粗细滑杆，确认两端指示图标、滑块及已选轨道均为白色，画笔粗细仍正常变化。
 - 截图输出成功后，确认半透明磨砂面板出现在右下角安全区，缩略图、编辑、关闭均为 44×44pt 圆角方块；横竖屏位置正确，面板外触摸穿透。
 - 点击缩略图或编辑进入编辑器，点击关闭仅关闭面板；等待四秒自动消失，快速重新截图后旧缩略图回填不影响新面板。输出失败时仍显示错误信息与关闭按钮。
-- 设置“外部入口”的 URL 行由选中行直接分发；依次点击七行，核对复制地址、模式与取消行为，每次只出现一条 `prefs external entry copied and requested` 和一条 `external request source=darwin`，随后出现对应模式的接受或明确忽略日志。普通设置行仍按原动作打开。
+- 设置“外部入口”的 URL 行由选中行直接分发；依次点击八行，核对复制地址、模式与取消行为，每次只出现一条 `prefs external entry copied and requested` 和一条 `external request source=darwin`，随后出现对应模式的接受或明确忽略日志。普通设置行仍按原动作打开。
 
 1.6.9 已通过源码审查、278 项宿主检查及 iOS 16/17 双架构构建和包结构检查。上述 UI、入口功能、安装卸载与冷/热启动行为未在设备上验证；本次 URL 修复针对设置页点击入口，未更改其他 App 打开 URL 时的 SpringBoard Hook。
 

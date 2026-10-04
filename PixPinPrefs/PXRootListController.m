@@ -187,6 +187,7 @@
         @[@"冻结截图", @"capture/freeze"],
         @[@"即时区域截图", @"capture/instant"],
         @[@"全屏标记", @"capture/markup"],
+        @[@"滚动截图", @"capture/long"],
         @[@"取消截图", @"cancel"],
     ];
 }
