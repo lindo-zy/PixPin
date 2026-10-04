@@ -146,7 +146,7 @@ com.pixpin.screenshot/result/updated
 
 通知只负责发出请求，不直接传递图片对象。图片和任务状态通过 `PXCaptureTask`、内存对象或临时文件管理。
 
-外部 URL 协议为 `pixpin://` / `pixpin://activate`（默认全屏标记）、
+外部 URL 协议为 `pixpin://` / `pixpin://activate`（默认全屏截图）、
 `pixpin://capture/{full,area,freeze,instant,markup}`、`pixpin://cancel`。
 URL 白名单解析集中在 `PXExternalRequest`；SpringBoard 接收后与 Darwin 共用协调器，
 不再广播通知，不排队重试。完整接入示例、限制及真机验收见 `USAGE.md` 第 3 节。

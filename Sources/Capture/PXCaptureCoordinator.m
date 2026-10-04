@@ -112,7 +112,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureInstant]) mode = PXCaptureModeInstant;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureMarkup]) mode = PXCaptureModeMarkup;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinCaptureLong]) mode = PXCaptureModeLong;
-    else if ([name isEqualToString:(__bridge NSString *)PXDarwinActivate]) mode = PXCaptureModeMarkup;
+    else if ([name isEqualToString:(__bridge NSString *)PXDarwinActivate]) mode = PXCaptureModeFull;
     // Snapper3 兼容别名：force.open 是 Snapper3 的框选流程，对应区域截图。
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinSnapperForceOpen]) mode = PXCaptureModeArea;
     else if ([name isEqualToString:(__bridge NSString *)PXDarwinSnapperForceInstantOpen]) mode = PXCaptureModeInstant;

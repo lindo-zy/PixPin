@@ -13,7 +13,7 @@ FOUNDATION_EXPORT NSString * const PXPreferencesDomain;
 // MARK: - Darwin 跨进程通知名（只发请求信号，不携带图片对象）
 
 FOUNDATION_EXPORT NSString * const PXExternalURLScheme;        // pixpin
-FOUNDATION_EXPORT CFStringRef const PXDarwinActivate;          // com.pixpin.screenshot/activate（全屏标记）
+FOUNDATION_EXPORT CFStringRef const PXDarwinActivate;          // com.pixpin.screenshot/activate（全屏截图）
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureFull;        // com.pixpin.screenshot/capture/full
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureArea;        // com.pixpin.screenshot/capture/area
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureFreeze;      // com.pixpin.screenshot/capture/freeze
