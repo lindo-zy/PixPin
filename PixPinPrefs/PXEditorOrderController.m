@@ -142,12 +142,13 @@
             PXSelectionToolbar *toolbar = [[PXSelectionToolbar alloc] initWithIdentifiers:order
                 style:selectionStyle iconPointSize:iconSize];
             CGFloat toolbarWidth = [toolbar preferredWidthForAvailableWidth:contentWidth];
+            CGFloat toolbarHeight = [toolbar preferredHeightForAvailableWidth:toolbarWidth];
             toolbar.frame = CGRectMake(inset + (contentWidth - toolbarWidth) / 2.0, y,
-                                       toolbarWidth, toolbar.preferredHeight);
+                                       toolbarWidth, toolbarHeight);
             toolbar.userInteractionEnabled = NO;
             for (UIButton *button in toolbar.buttons) button.accessibilityTraits = UIAccessibilityTraitImage;
             [header addSubview:toolbar];
-            y += toolbar.preferredHeight + 14.0;
+            y += toolbarHeight + 14.0;
             continue;
         }
         CGFloat scale = iconSize / 17.0;

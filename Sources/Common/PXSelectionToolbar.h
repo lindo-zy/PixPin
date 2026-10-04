@@ -6,11 +6,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// 选区与设置预览共用的工具栏；外观在创建时取快照，调用方负责按钮动作。
 @interface PXSelectionToolbar : UIView
 @property (nonatomic, copy, readonly) NSArray<UIButton *> *buttons;
-@property (nonatomic, assign, readonly) CGFloat preferredHeight;
 - (instancetype)initWithIdentifiers:(NSArray<NSString *> *)identifiers
                               style:(PXSelectionButtonStyle)style
                       iconPointSize:(CGFloat)iconPointSize;
 - (CGFloat)preferredWidthForAvailableWidth:(CGFloat)availableWidth;
+// 每行最多 8 个按钮，窄屏按按钮大小减少列数；高度必须按最终工具栏宽度计算。
+- (CGFloat)preferredHeightForAvailableWidth:(CGFloat)availableWidth;
 @end
 
 NS_ASSUME_NONNULL_END
