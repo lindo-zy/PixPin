@@ -118,11 +118,13 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
             if (session.scroller.availabilityError) { [session pxFail:session.scroller.availabilityError]; return; }
             // HUD 小窗布局完成后读取实际面板矩形，自动滑动必须避开它。
             [session.hud layoutIfNeeded];
+            PXLongShotScrollPlan plan;
             if (!PXLongShotBuildScrollPlan(session.displayRect, task.capturedScreenBounds,
-                                           session.hud.panelFrame, &session->scrollPlan)) {
+                                           session.hud.panelFrame, &plan)) {
                 [session pxFail:@"选区可滚动高度不足，请选择更大的内容区域"];
                 return;
             }
+            session.scrollPlan = plan;
             session.hud.statusText = @"自动滚动截取中，点「完成」停止";
             PXLogInfo(@"long shot automatic fullscreen started (task %@, rect=%@)", session.taskID,
                       NSStringFromCGRect(session.displayRect));
