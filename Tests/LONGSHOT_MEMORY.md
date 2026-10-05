@@ -108,10 +108,10 @@ os_proc_available_memory + phys_footprint 估算，不可知时保底 48MiB）�
 
 2026-10-05 第三轮验证记录：
 
-- 修复经临时分支 dev/longshot-limit-aware-floor 合入 main 后运行根目录 build.sh。
-- 宿主测试：542 项检查，0 失败（新增限额未知保底、400MB 限额画布收缩、临界限额
-  钳制、大限额维持上限 6 项）；git diff --check 通过。
+- 修复提交 d9943eb，经临时分支 dev/longshot-limit-aware-floor 合入 main 后运行根目录 build.sh。
+- 宿主测试：544 项检查，0 失败（新增限额未知保底、400MB 限额画布收缩、临界限额
+  钳制、大限额维持上限等 5 项净增）；git diff --check 通过。
 - iOS 16/17 的 1.9.8 双包构建成功，偏好 bundle 版本一致，两包 Architecture=iphoneos-arm64e。
-- iOS16 DEB SHA256：待构建后回填。
-- iOS17 DEB SHA256：待构建后回填。
+- iOS16 DEB SHA256：df0038a45b7c4b6b0170d0a2c89064fad6f6a1f792765e1269bf56f634d1b078。
+- iOS17 DEB SHA256：8b12660c905c7a70c78607697633fb74e9e8f202ca90106e7d90276f43430194。
 - 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/真机回归：未验证。
