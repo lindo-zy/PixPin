@@ -21,11 +21,18 @@ typedef struct {
 /// 预算包含位图快照/编码的额外峰值，并保留 16MiB 给抓屏与系统；最低降到 256K 像素。
 NSInteger PXLongShotCanvasPixelBudget(size_t availableBytes, NSInteger requestedPixels);
 
-/// 会话继续采集所需的最低自身余量：一帧分片位图 + 抓屏表面 + 编码缓冲的瞬态峰值约
-/// 40MiB，再留系统余量。低于该值才认定本进程真耗尽；系统级警告突发不据此熔断。
-extern const size_t PXLongShotMemoryFloorBytes;
+/// 会话继续采集所需的最低自身余量：按任务限额的 30% 动态计算。实测 iPhone14,2/iOS 16.1
+/// 的 SpringBoard jetsam 限额只有约 400MB（jetsam 报告 highwater @408MB），固定阈值在
+/// 小限额设备上形同虚设；限额未知时返回 48MiB 保底。
+size_t PXLongShotMemoryFloorBytes(void);
 /// iOS 上返回 os_proc_available_memory()；其余平台返回 0（表示余量未知）。
 size_t PXLongShotAvailableMemoryBytes(void);
+/// 任务内存限额估算：os_proc_available_memory + 当前 phys_footprint（task_vm_info），
+/// 两者任一不可得时返回 0（表示未知）。
+size_t PXLongShotProcessMemoryLimitBytes(void);
+/// 拼接画布像素上限：按限额收缩（画布字节 ≈ 限额/16，对应像素 ≈ 限额/64），
+/// 最低 1M 像素保证可用；限额未知时原样返回 requestedPixels。
+NSInteger PXLongShotStitchPixelCap(size_t limitBytes, NSInteger requestedPixels);
 /// 正文总高等比缩放到高度与像素预算内；同时消化整数舍入误差。
 BOOL PXLongShotCanvasGeometry(NSInteger width, NSInteger totalHeight, NSInteger maxHeight,
                              NSInteger maxPixels, CGSize *size, CGFloat *scale);

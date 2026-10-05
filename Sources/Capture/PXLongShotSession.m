@@ -201,14 +201,15 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
     self.memoryWarningReceived = YES;
     [self pxDisablePreview];
     size_t availableBytes = PXLongShotAvailableMemoryBytes();
-    PXLogWarn(@"long shot memory pressure (task %@, slices=%lu busy=%d repeated=%d stitching=%d available=%llu)",
+    size_t floorBytes = PXLongShotMemoryFloorBytes();
+    PXLogWarn(@"long shot memory pressure (task %@, slices=%lu busy=%d repeated=%d stitching=%d available=%llu floor=%llu)",
               self.taskID, (unsigned long)self.slices.count, self.busy, repeated, self.stitching,
-              (unsigned long long)availableBytes);
+              (unsigned long long)availableBytes, (unsigned long long)floorBytes);
     if (self.stitching || self.samplingStopped || self.finishRequested) return;
-    // 全局警告≠本进程耗尽：SpringBoard 会因系统级压力收到警告突发（上一轮长截图
-    // 遗留的可清空缓存即可触发），按警告次数熔断会让下一次会话一进入就停。
-    // 只有自身余量低于底线（余量不可知时退回“反复警告”）才认定真耗尽，保留当前分片。
-    BOOL exhausted = (availableBytes != 0) ? (availableBytes < PXLongShotMemoryFloorBytes) : repeated;
+    // SpringBoard 的 jetsam 限额只有几百 MB（实测 iPhone14,2/iOS 16.1 约 400MB），
+    // 警告通常代表限额真的临近，按余量对比动态底线（限额 30%）判定是否熔断；
+    // 余量不可知时退回“反复警告即停”。
+    BOOL exhausted = (availableBytes != 0) ? (availableBytes < floorBytes) : repeated;
     if (!exhausted) {
         // 首片还在写盘时必须保留 generation，不能关闭会话；预览保持关闭即可继续。
         self.hud.statusText = @"已释放预览内存\n继续截取中";
@@ -457,8 +458,9 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
     NSArray<PXLongShotSlice *> *slices = [self.slices copy];
     CGFloat screenScale = self.task.capturedScreenScale;
     PXLongShotCancellation *cancellation = self.cancellation;
-    // 预算随当前余量自适应收缩（PXLongShotCanvasPixelBudget），不因历史警告永久降级。
-    NSInteger maxPixels = PXLongShotMaxCanvasPixels;
+    // 画布上限按任务限额收缩（SpringBoard 限额仅几百 MB），余量预算在拼接内逐片适配。
+    NSInteger maxPixels = PXLongShotStitchPixelCap(PXLongShotProcessMemoryLimitBytes(),
+                                                   PXLongShotMaxCanvasPixels);
     __weak PXLongShotSession *weakSelf = self;
     dispatch_async(PXLongShotImageQueue(), ^{
         @autoreleasepool {

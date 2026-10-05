@@ -87,13 +87,31 @@ thumbnailImageFromFile:screenScale:maxPixelSize:），任务目录在缩略图�
 `long shot memory pressure` 行观察 available= 数值并据此校准 64MiB 底线；
 真低内存下仍应保留分片、优雅停止并可完成保存。
 
-2026-10-05 第二轮验证记录：
+## 第三轮修复：内存参数按任务限额自适应（2026-10-05）
 
-- 修复提交 8bcd244，经临时分支 dev/longshot-memory-relatch 合入 main 后运行根目录 build.sh。
-- 宿主测试：539 项检查，0 失败（新增余量语义、底线常量、文件降采样缩略图 4 项）；
-  git diff --check 通过。
-- iOS 16/17 的 1.9.7 双包构建成功，偏好 bundle 版本一致，两包 Architecture=iphoneos-arm64e，
-  dylib=arm64+arm64e，最低系统 16.0。安装/卸载行为仍未在设备执行。
-- iOS16 DEB SHA256：d861fe838463c47b473f4357f7d57bcae8beeaa488fabf1341988823a8461ee8。
-- iOS17 DEB SHA256：ca5f13e65613c2e21c0eeef0caf10784089d05cd510b7b65a0ca7798705a0168。
-- 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/冷热启动/真机回归：未验证。
+证据：用户提供 JetsamEvent-2026-10-05-123245.ips（iPhone14,2 / iOS 16.1）。
+SpringBoard 被击杀，reason=highwater，rpages=26101（≈408MB），lifetimeMax=29373
+（≈459MB）——**SpringBoard 的 jetsam 限额仅约 400MB**，推翻此前“GB 级限额”的假设；
+1.9.7 的 64MiB 固定底线仅占限额 16%，8M 像素拼接画布（32MB）占 8%，参数全部偏大。
+同报告系统级背景：mediaserverd 占 1512MB（异常膨胀，与 PixPin 无关）、WeChat 挂起
+610MB、全机 free 仅 82MB。1.9.6“第二次提示内存不足”即限额临近的正确信号。
+
+修改：底线改按任务限额 30% 动态计算（PXLongShotMemoryFloorBytes()，限额由
+os_proc_available_memory + phys_footprint 估算，不可知时保底 48MiB）；
+拼接画布像素上限按限额收缩（PXLongShotStitchPixelCap，限额/64 ≈ 画布限额/16 字节，
+最低 1M 像素，未知限额维持 8M）。警告日志增加 floor= 字段。
+不修改：抓屏接口、自动滚动、对齐、预览画布、输出管线。
+
+真机验收（待执行）：syslog `memory pressure` 行观察 available/floor；限额正常设备
+（清理后台与 mediaserverd 后）应能完整长截图；限额紧张时应在熔断点优雅停止并保存，
+不得再出现 SpringBoard highwater 击杀。
+
+2026-10-05 第三轮验证记录：
+
+- 修复经临时分支 dev/longshot-limit-aware-floor 合入 main 后运行根目录 build.sh。
+- 宿主测试：542 项检查，0 失败（新增限额未知保底、400MB 限额画布收缩、临界限额
+  钳制、大限额维持上限 6 项）；git diff --check 通过。
+- iOS 16/17 的 1.9.8 双包构建成功，偏好 bundle 版本一致，两包 Architecture=iphoneos-arm64e。
+- iOS16 DEB SHA256：待构建后回填。
+- iOS17 DEB SHA256：待构建后回填。
+- 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/真机回归：未验证。

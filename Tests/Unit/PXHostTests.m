@@ -887,8 +887,18 @@ static BOOL PXTestImageColor(UIImage *image, NSInteger row, NSInteger channel) {
 
 static void testLongShotMemoryBudget(void) {
     printf("[long shot memory budget and disk pipeline]\n");
-    PXCheck(PXLongShotMemoryFloorBytes == 64ull * 1024 * 1024, "memory floor matches documented continue budget");
     PXCheck(PXLongShotAvailableMemoryBytes() == 0, "host headroom is unknown so policy tolerates warning bursts");
+    PXCheck(PXLongShotProcessMemoryLimitBytes() == 0, "host memory limit is unknown on test host");
+    PXCheck(PXLongShotMemoryFloorBytes() == 48ull * 1024 * 1024,
+            "unknown limit falls back to minimum continue floor");
+    PXCheckInt(PXLongShotStitchPixelCap(0, 8000000), 8000000,
+               "unknown limit keeps full export budget");
+    PXCheckInt(PXLongShotStitchPixelCap(419430400ull, 8000000), 6553600,
+               "400MB SpringBoard limit shrinks stitch canvas to limit/64");
+    PXCheckInt(PXLongShotStitchPixelCap(32ull * 1024 * 1024, 8000000), 1000000,
+               "critical limit clamps to minimum usable canvas");
+    PXCheckInt(PXLongShotStitchPixelCap(1024ull * 1024 * 1024, 8000000), 8000000,
+               "large limit keeps full export budget");
     PXCheckInt(PXLongShotCanvasPixelBudget(0, 8000000), 8000000,
                "unknown SpringBoard headroom does not falsely reject capture");
     PXCheckInt(PXLongShotCanvasPixelBudget(40 * 1024 * 1024, 8000000), 2097152,

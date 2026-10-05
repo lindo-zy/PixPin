@@ -3,12 +3,13 @@
 #import <TargetConditionals.h>
 #if TARGET_OS_IPHONE
 #import <os/proc.h>
+#import <mach/mach.h>
 #endif
 
 @implementation PXLongShotCancellation
 @end
 
-const size_t PXLongShotMemoryFloorBytes = 64ull * 1024 * 1024;
+static const size_t PXLongShotMinFloorBytes = 48ull * 1024 * 1024;
 
 size_t PXLongShotAvailableMemoryBytes(void) {
 #if TARGET_OS_IPHONE
@@ -16,6 +17,35 @@ size_t PXLongShotAvailableMemoryBytes(void) {
 #else
     return 0;
 #endif
+}
+
+size_t PXLongShotProcessMemoryLimitBytes(void) {
+#if TARGET_OS_IPHONE
+    size_t available = os_proc_available_memory();
+    if (!available) return 0;
+    task_vm_info_data_t vmInfo;
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vmInfo, &count) != KERN_SUCCESS) return 0;
+    if (vmInfo.phys_footprint <= 0) return 0;
+    return available + (size_t)vmInfo.phys_footprint;
+#else
+    return 0;
+#endif
+}
+
+size_t PXLongShotMemoryFloorBytes(void) {
+    size_t limit = PXLongShotProcessMemoryLimitBytes();
+    if (!limit) return PXLongShotMinFloorBytes;
+    // SpringBoard 限额实测约 400MB：留 70% 给系统与自身基线，30%（约 126MB）
+    // 作为采集底线——覆盖一帧分片位图 + 抓屏表面 + 编码缓冲的瞬态峰值。
+    return MAX(PXLongShotMinFloorBytes, limit / 10 * 3);
+}
+
+NSInteger PXLongShotStitchPixelCap(size_t limitBytes, NSInteger requestedPixels) {
+    if (!limitBytes) return requestedPixels;
+    // 画布 RGBA 字节 ≈ 限额/16（400MB 限额 ≈ 25MB 画布），像素数即限额/64；
+    // 最低 1M 像素（4MB）保底，未知限额时维持调用方传入的上限。
+    return MIN(requestedPixels, MAX((NSInteger)1000000, (NSInteger)(limitBytes / 64)));
 }
 
 NSInteger PXLongShotCanvasPixelBudget(size_t availableBytes, NSInteger requestedPixels) {
