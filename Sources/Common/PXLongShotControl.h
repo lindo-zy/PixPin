@@ -30,6 +30,9 @@ size_t PXLongShotAvailableMemoryBytes(void);
 /// 任务内存限额估算：os_proc_available_memory + 当前 phys_footprint（task_vm_info），
 /// 两者任一不可得时返回 0（表示未知）。
 size_t PXLongShotProcessMemoryLimitBytes(void);
+/// 当前 phys_footprint（task_vm_info），即 jetsam highwater 的计量口径；
+/// 不可得时返回 0。逐帧遥测用，用于在 syslog 留下内存增长曲线。
+size_t PXLongShotProcessFootprintBytes(void);
 /// 拼接画布像素上限：按限额收缩（画布字节 ≈ 限额/16，对应像素 ≈ 限额/64），
 /// 最低 1M 像素保证可用；限额未知时原样返回 requestedPixels。
 NSInteger PXLongShotStitchPixelCap(size_t limitBytes, NSInteger requestedPixels);

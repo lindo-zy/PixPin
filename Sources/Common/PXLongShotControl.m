@@ -19,15 +19,24 @@ size_t PXLongShotAvailableMemoryBytes(void) {
 #endif
 }
 
+size_t PXLongShotProcessFootprintBytes(void) {
+#if TARGET_OS_IPHONE
+    task_vm_info_data_t vmInfo;
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vmInfo, &count) != KERN_SUCCESS) return 0;
+    return vmInfo.phys_footprint > 0 ? (size_t)vmInfo.phys_footprint : 0;
+#else
+    return 0;
+#endif
+}
+
 size_t PXLongShotProcessMemoryLimitBytes(void) {
 #if TARGET_OS_IPHONE
     size_t available = os_proc_available_memory();
     if (!available) return 0;
-    task_vm_info_data_t vmInfo;
-    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
-    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vmInfo, &count) != KERN_SUCCESS) return 0;
-    if (vmInfo.phys_footprint <= 0) return 0;
-    return available + (size_t)vmInfo.phys_footprint;
+    size_t footprint = PXLongShotProcessFootprintBytes();
+    if (!footprint) return 0;
+    return available + footprint;
 #else
     return 0;
 #endif

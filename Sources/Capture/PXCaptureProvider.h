@@ -24,6 +24,11 @@ typedef NS_ENUM(NSInteger, PXCaptureError) {
 
 /// 最近一次抓屏实际使用的策略（主线程更新）。
 @property (nonatomic, copy, readonly, nullable) NSString *lastCaptureMethod;
+/// 内存保护降级开关（主线程读写）：置位后跳过 _snapshotExcludingWindows 快照，
+/// 每帧改走「短暂隐藏本方窗口 + 整屏私有抓屏」路径。长截图会话在收到内存警告后
+/// 置位——exclude-windows 快照疑有每帧 surface 驻留（设备观测为 4 帧即触熔断），
+/// 整屏私有抓屏与 ShellX 同路径，无此驻留。
+@property (nonatomic, assign) BOOL fallbackOnlyCapture;
 
 - (void)captureWithCompletion:(void (^)(UIImage *image,
                                         BOOL isPartial,

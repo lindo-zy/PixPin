@@ -136,8 +136,15 @@ static BOOL PXOutputAllowedForState(PXCaptureState state) {
                 dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, @"任务已取消"); });
                 return;
             }
-            // 保存前先落盘临时文件：相册失败时保留可恢复副本。
-            [PXTemporaryFileStore writeImage:image taskID:task.taskID name:@"original.jpg" error:nil];
+            // 已有落盘产物（长图 longshot.jpg）时不再重复 JPEG 编码：UIImageJPEGRepresentation
+            // 的整幅解码是保存期最大内存尖峰，可恢复副本本来就已存在。
+            NSString *stagedPath = task.resultFilePath;
+            BOOL hasStagedFile = stagedPath.length > 0 &&
+                [[NSFileManager defaultManager] fileExistsAtPath:stagedPath];
+            if (!hasStagedFile) {
+                // 保存前先落盘临时文件：相册失败时保留可恢复副本。
+                [PXTemporaryFileStore writeImage:image taskID:task.taskID name:@"original.jpg" error:nil];
+            }
 
             // 授权回调在 SpringBoard 内不保证到达（DEVELOPMENT.md 11.4）：超时兜底为失败并
             // 保留临时副本，避免任务永久卡在 exporting。settled 只在主线程读写（回调链固定主线程）。
@@ -151,7 +158,7 @@ static BOOL PXOutputAllowedForState(PXCaptureState state) {
                 completion(NO, @"相册保存超时，已保留临时副本");
             });
 
-            [PXPhotoWriter saveImage:image completion:^(NSString *identifier, NSError *error) {
+            void (^saveCompletion)(NSString *, NSError *) = ^(NSString *identifier, NSError *error) {
                 if (settled) return;   // 超时已兜底，丢弃迟到回调
                 settled = YES;
                 if (error) {
@@ -162,7 +169,13 @@ static BOOL PXOutputAllowedForState(PXCaptureState state) {
                 task.savedAssetIdentifier = identifier;
                 PXLogInfo(@"photo saved: %@ (task %@)", identifier ?: @"(no id)", task.taskID);
                 completion(YES, @"已保存到相册");
-            }];
+            };
+            if (hasStagedFile) {
+                // 文件直存：JPEG 原样入库，不做整幅解码/重编码（PXPhotoWriter）。
+                [PXPhotoWriter saveImageFileAtPath:stagedPath completion:saveCompletion];
+            } else {
+                [PXPhotoWriter saveImage:image completion:saveCompletion];
+            }
         }
     });
 }

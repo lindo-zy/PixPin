@@ -85,7 +85,8 @@ static void PXResolveScreenCaptureSymbols(void) {
                     completion:(void (^)(UIImage *, BOOL, NSString *, NSError *))completion {
     NSParameterAssert(completion);
     void (^begin)(void) = ^{
-        UIImage *excludedImage = windows.count ? [self pxSnapshotExcludingWindows:windows] : nil;
+        UIImage *excludedImage = (windows.count && !self.fallbackOnlyCapture)
+            ? [self pxSnapshotExcludingWindows:windows] : nil;
         NSMutableArray<NSDictionary *> *hidden = [NSMutableArray array];
         if (windows.count && !excludedImage) {
             for (UIWindow *window in windows) {

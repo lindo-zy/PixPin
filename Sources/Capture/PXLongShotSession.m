@@ -65,6 +65,7 @@ static id PXLongShotReadObject(id object, NSString *name) {
 @property (nonatomic, assign) BOOL memoryWarningReceived;
 @property (nonatomic, assign) BOOL stopAfterCurrentFrame;
 - (void)handleLockStateChanged;
+- (void)pxCheckFrameMemory;
 @end
 static __weak PXLongShotSession *PXLockSession;
 static atomic_uint_fast64_t PXLockGeneration;
@@ -200,6 +201,9 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
     BOOL repeated = self.memoryWarningReceived;
     self.memoryWarningReceived = YES;
     [self pxDisablePreview];
+    // 警告即降级：exclude-windows 快照疑有每帧 surface 驻留（设备观测 4 帧即触熔断），
+    // 后续帧改走隐藏窗口 + 整屏私有抓屏，与 ShellX 同路径。
+    self.provider.fallbackOnlyCapture = YES;
     size_t availableBytes = PXLongShotAvailableMemoryBytes();
     size_t floorBytes = PXLongShotMemoryFloorBytes();
     PXLogWarn(@"long shot memory pressure (task %@, slices=%lu busy=%d repeated=%d stitching=%d available=%llu floor=%llu)",
@@ -373,7 +377,27 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
         }
     });
 }
+// 每帧遥测 + 主动熔断：highwater jetsam 可能先于 MemoryWarning 击杀（警告不保证送达
+// 或来得及处理），不能只依赖系统警告采样。逐帧留下 footprint/余量曲线到 syslog；
+// 余量跌破动态底线时与警告 exhausted 路径同口径熔断。
+- (void)pxCheckFrameMemory {
+    size_t availableBytes = PXLongShotAvailableMemoryBytes();
+    size_t floorBytes = PXLongShotMemoryFloorBytes();
+    PXLogInfo(@"long shot mem (task %@, gen=%lu slices=%lu footprint=%llu available=%llu floor=%llu fallback=%d)",
+              self.taskID, (unsigned long)self.captureGeneration, (unsigned long)self.slices.count,
+              (unsigned long long)PXLongShotProcessFootprintBytes(), (unsigned long long)availableBytes,
+              (unsigned long long)floorBytes, self.provider.fallbackOnlyCapture);
+    if (!availableBytes || availableBytes >= floorBytes) return;
+    PXLogWarn(@"long shot proactive memory trip (task %@, available=%llu floor=%llu)",
+              self.taskID, (unsigned long long)availableBytes, (unsigned long long)floorBytes);
+    if (!self.memoryWarningReceived) [self pxDisablePreview];
+    self.memoryWarningReceived = YES;
+    self.provider.fallbackOnlyCapture = YES;
+    self.stopAfterCurrentFrame = YES;
+    if (self.scrolling) [self.scroller cancel];
+}
 - (void)pxCompleteFrame {
+    [self pxCheckFrameMemory];
     self.nextSample = CACurrentMediaTime() + (self.sameCount >= 3 ? 0.5 : 0.12);
     if (self.finishRequested || self.slices.count >= PXLongShotMaxSlices) { [self pxStartStitch]; return; }
     if (self.stopAfterCurrentFrame) {
