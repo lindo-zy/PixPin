@@ -23,11 +23,13 @@ clang \
     "$ROOT_DIR/Sources/Common/PXClaimSet.m" \
     "$ROOT_DIR/Sources/Common/PXLongShotAligner.m" \
     "$ROOT_DIR/Sources/Common/PXLongShotControl.m" \
+    "$ROOT_DIR/Sources/Capture/PXLongShotHID.m" \
     "$ROOT_DIR/Sources/Common/PXLog.m" \
     "$ROOT_DIR/Sources/Output/PXLongImageComposer.m" \
     "$ROOT_DIR/Sources/Output/PXLongPreviewCanvas.m" \
     "$ROOT_DIR/Tests/Support/PXUIKitImageStub.m" \
     "$ROOT_DIR/Sources/Editor/PXEditorLayout.m" \
-    "$ROOT_DIR/Tests/Unit/PXHostTests.m"
+    "$ROOT_DIR/Tests/Unit/PXHostTests.m" \
+    "$ROOT_DIR/Tests/Unit/PXLongShotHIDTests.m"
 
 "$OUT_BIN"

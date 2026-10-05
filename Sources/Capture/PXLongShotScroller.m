@@ -1,23 +1,13 @@
 #import "PXLongShotScroller.h"
+#import "PXLongShotHID.h"
 #import "../Common/PXLog.h"
 #import <dlfcn.h>
 #import <objc/message.h>
 #import <mach/mach_time.h>
 #import <QuartzCore/QuartzCore.h>
 
-typedef CFTypeRef PXHIDEventRef;
 typedef CFTypeRef PXHIDClientRef;
-// 与 arm64 IOKit 的 IOHIDFloat=double / Boolean=uint8_t ABI 一致。
-static PXHIDClientRef (*PXHIDCreateClient)(CFAllocatorRef);
-static PXHIDEventRef (*PXHIDCreateHand)(CFAllocatorRef, uint64_t, uint32_t, uint32_t, uint32_t,
-                                      uint32_t, uint32_t, double, double, double, double, double,
-                                      uint8_t, uint8_t, uint32_t);
-static PXHIDEventRef (*PXHIDCreateFinger)(CFAllocatorRef, uint64_t, uint32_t, uint32_t, uint32_t,
-                                        double, double, double, double, double, uint8_t, uint8_t, uint32_t);
-static void (*PXHIDSetInteger)(PXHIDEventRef, uint32_t, int64_t);
-static void (*PXHIDSetSender)(PXHIDEventRef, uint64_t);
-static void (*PXHIDAppend)(PXHIDEventRef, PXHIDEventRef, uint32_t);
-static void (*PXHIDDispatch)(PXHIDClientRef, PXHIDEventRef);
+static PXLongShotHIDFunctions PXHIDFunctions;
 
 static id PXLongShotReadObject(id object, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -49,20 +39,22 @@ static id PXLongShotReadObject(id object, NSString *name) {
             // 句柄驻进程；函数指针使用期不可 dlclose。未导出时安全拒绝自动滚动。
             void *handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY);
             if (!handle) return;
-            PXHIDCreateClient = dlsym(handle, "IOHIDEventSystemClientCreate");
-            PXHIDCreateHand = dlsym(handle, "IOHIDEventCreateDigitizerEvent");
-            PXHIDCreateFinger = dlsym(handle, "IOHIDEventCreateDigitizerFingerEvent");
-            PXHIDSetInteger = dlsym(handle, "IOHIDEventSetIntegerValue");
-            PXHIDSetSender = dlsym(handle, "IOHIDEventSetSenderID");
-            PXHIDAppend = dlsym(handle, "IOHIDEventAppendEvent");
-            PXHIDDispatch = dlsym(handle, "IOHIDEventSystemClientDispatchEvent");
+            PXHIDFunctions.createClient = dlsym(handle, "IOHIDEventSystemClientCreate");
+            PXHIDFunctions.createClientWithType = dlsym(handle, "IOHIDEventSystemClientCreateWithType");
+            PXHIDFunctions.createHand = dlsym(handle, "IOHIDEventCreateDigitizerEvent");
+            PXHIDFunctions.createFinger = dlsym(handle, "IOHIDEventCreateDigitizerFingerEvent");
+            PXHIDFunctions.setInteger = dlsym(handle, "IOHIDEventSetIntegerValue");
+            PXHIDFunctions.setSender = dlsym(handle, "IOHIDEventSetSenderID");
+            PXHIDFunctions.append = dlsym(handle, "IOHIDEventAppendEvent");
+            PXHIDFunctions.dispatch = dlsym(handle, "IOHIDEventSystemClientDispatchEvent");
         });
-        if (!PXHIDCreateClient || !PXHIDCreateHand || !PXHIDCreateFinger ||
-            !PXHIDSetInteger || !PXHIDSetSender || !PXHIDAppend || !PXHIDDispatch) {
+        if (!PXLongShotHIDIsAvailable(&PXHIDFunctions)) {
             _availabilityError = @"当前系统的自动滚动接口不可用";
         } else {
-            _client = PXHIDCreateClient(kCFAllocatorDefault);
+            BOOL typedFallback = NO;
+            _client = PXLongShotCreateHIDClient(&PXHIDFunctions, &typedFallback);
             if (!_client) _availabilityError = @"自动滚动事件通道创建失败";
+            PXLogInfo(@"long shot scroll HID client (created=%d typedFallback=%d)", _client != NULL, typedFallback);
         }
         id application = PXLongShotReadObject(UIApplication.sharedApplication, @"_accessibilityFrontMostApplication");
         id identifier = PXLongShotReadObject(application, @"bundleIdentifier");
@@ -100,28 +92,8 @@ static id PXLongShotReadObject(id object, NSString *name) {
     if (bounds.size.width <= 0 || bounds.size.height <= 0) return NO;
     double x = MIN(MAX((native.x - bounds.origin.x) / bounds.size.width, 0.0), 1.0);
     double y = MIN(MAX((native.y - bounds.origin.y) / bounds.size.height, 0.0), 1.0);
-    uint32_t mask = transition ? (0x01 | 0x02 | 0x20) : 0x04; // Range / Touch / Identity / Position
-    if (cancelled) mask |= 0x80;
-    uint64_t timestamp = mach_absolute_time();
-    PXHIDEventRef hand = PXHIDCreateHand(kCFAllocatorDefault, timestamp, 3, 0, 0, mask, 0,
-                                        x, y, 0, 0, 0, touching, touching, 0);
-    PXHIDEventRef finger = PXHIDCreateFinger(kCFAllocatorDefault, timestamp, 11, 11, mask,
-                                            x, y, 0, touching ? 1.0 : 0.0, 0, touching, touching, 0);
-    if (!hand || !finger) {
-        if (hand) CFRelease(hand);
-        if (finger) CFRelease(finger);
-        return NO;
-    }
-    // Digitizer 基类字段见现代 IOHIDEventTypes；通过系统事件通道路由到前台 App，
-    // 不使用 UIApplication._enqueueHIDEvent（它只送到 SpringBoard 自己的 Window）。
-    PXHIDSetInteger(hand, 4, 1);        // kIOHIDEventFieldIsBuiltIn
-    PXHIDSetInteger(hand, 0xB0019, 1);  // kIOHIDEventFieldDigitizerIsDisplayIntegrated
-    PXHIDSetSender(hand, 0x8000000817319375ULL);
-    PXHIDAppend(hand, finger, 0);
-    PXHIDDispatch(_client, hand);
-    CFRelease(finger);
-    CFRelease(hand);
-    return YES;
+    return PXLongShotSendHIDFrame(&PXHIDFunctions, _client, mach_absolute_time(),
+                                   CGPointMake(x, y), touching, transition, cancelled);
 }
 
 - (void)scrollWithPlan:(PXLongShotScrollPlan)plan completion:(void (^)(BOOL))completion {
@@ -133,7 +105,10 @@ static id PXLongShotReadObject(id object, NSString *name) {
     self.plan = plan;
     self.lastPoint = plan.start;
     self.completion = completion;
+    PXLogInfo(@"long shot scroll begin (target=%@ start=%@ end=%@)", self.targetApplicationIdentifier,
+              NSStringFromCGPoint(plan.start), NSStringFromCGPoint(plan.end));
     if (![self pxSendPoint:plan.start touching:YES transition:YES cancelled:NO]) {
+        PXLogWarn(@"long shot scroll touch-down failed (target=%@)", self.targetApplicationIdentifier);
         [self pxFinish:NO];
         return;
     }
@@ -165,7 +140,10 @@ static id PXLongShotReadObject(id object, NSString *name) {
     }
     void (^completion)(BOOL) = self.completion;
     self.completion = nil;
-    if (completion) completion(completed);
+    if (completion) {
+        PXLogInfo(@"long shot scroll finished (target=%@ completed=%d)", self.targetApplicationIdentifier, completed);
+        completion(completed);
+    }
 }
 
 - (void)cancel {
