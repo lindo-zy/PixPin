@@ -349,6 +349,12 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     if (!task || !image) return;
 
     task.resultImage = image;
+    // 拼接产物在任务临时目录：登记路径供气泡缩略图降采样（此刻目录尚未清理）。
+    NSString *stitchedPath = [[[task ensureTemporaryDirectory]
+        stringByAppendingPathComponent:@"longshot.jpg"] copy];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:stitchedPath]) {
+        task.resultFilePath = stitchedPath;
+    }
     CGFloat pixelHeight = image.size.height * image.scale;
     PXOutputAction action = task.configSnapshot.defaultResultAction;
     // 巨型长图写入剪贴板会在 SpringBoard 内触发 PNG 编码尖峰，降级为保存（诊断优先）。
@@ -528,8 +534,6 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
             UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
             [haptic impactOccurred];
         }
-        // 输出成功不再需要重试，任务临时目录立即回收（失败路径保留供诊断）。
-        [PXTemporaryFileStore removeTaskDirectory:task.taskID];
     } else {
         // 输出失败：保留临时文件供诊断，失败原因在气泡中显示（重新截图重试）。
         [task transitionToState:PXCaptureStateFailed];
@@ -544,6 +548,9 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         // 缩略图后台渲染后回填（P1-4：大图解码不占主线程）。
         CGFloat screenScale = [UIScreen mainScreen].scale;
         UIImage *resultImage = task.resultImage;
+        // 长图优先从落盘产物降采样（受限解码，不为 88pt 小图整幅解出 8MP 位图，
+        // 两次长截图之间不给 SpringBoard 抬基线）；无落盘文件时回退内存解码。
+        NSString *thumbnailPath = task.resultFilePath;
         self.resultBubble = [PXResultBubble presentWithImage:nil
                                                      message:(message ?: @"截图完成")
                                                         task:task
@@ -552,12 +559,21 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         PXResultBubble *bubble = self.resultBubble;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             @autoreleasepool {
-                UIImage *thumbnail = [self pxThumbnailForImage:resultImage screenScale:screenScale];
+                UIImage *thumbnail = thumbnailPath.length
+                    ? [PXLongImageComposer thumbnailImageFromFile:thumbnailPath screenScale:screenScale
+                                                     maxPixelSize:88.0 * MAX(2.0, screenScale)]
+                    : nil;
+                if (!thumbnail) thumbnail = [self pxThumbnailForImage:resultImage screenScale:screenScale];
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [bubble updateThumbnailImage:thumbnail];
                 });
+                // 缩略图已独立于源文件，输出成功后再回收任务临时目录（失败路径保留）。
+                if (ok) [PXTemporaryFileStore removeTaskDirectory:task.taskID];
             }
         });
+    } else if (ok) {
+        // 输出成功不再需要重试，任务临时目录立即回收（失败路径保留供诊断）。
+        [PXTemporaryFileStore removeTaskDirectory:task.taskID];
     }
 
     [[NSNotificationCenter defaultCenter] postNotificationName:PXNotificationResultUpdated object:nil];

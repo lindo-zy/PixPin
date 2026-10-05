@@ -21,6 +21,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) UIImage *baseImage;
 /// 当前结果图（裁剪/编辑后的输出源）。
 @property (nonatomic, strong, nullable) UIImage *resultImage;
+/// 结果图对应的磁盘文件（长截图为拼接产物 longshot.jpg）：气泡缩略图优先从此
+/// 降采样，避免为小图整幅解码大图；非长截图任务为 nil，回退内存解码路径。
+@property (nonatomic, copy, nullable) NSString *resultFilePath;
 @property (nonatomic, assign) BOOL isPartialCapture;   // 回退路径仅捕获到 SpringBoard 自身窗口
 @property (nonatomic, copy, nullable) NSString *savedAssetIdentifier;  // 相册写入成功后的资产 ID
 @property (nonatomic, assign) BOOL isReedit;                           // 气泡重编辑产生的新任务

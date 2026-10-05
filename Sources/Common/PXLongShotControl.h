@@ -20,6 +20,12 @@ typedef struct {
 /// availableBytes 为当前进程余量；0 表示无法取得有效余量（SpringBoard 可能不是 app）。
 /// 预算包含位图快照/编码的额外峰值，并保留 16MiB 给抓屏与系统；最低降到 256K 像素。
 NSInteger PXLongShotCanvasPixelBudget(size_t availableBytes, NSInteger requestedPixels);
+
+/// 会话继续采集所需的最低自身余量：一帧分片位图 + 抓屏表面 + 编码缓冲的瞬态峰值约
+/// 40MiB，再留系统余量。低于该值才认定本进程真耗尽；系统级警告突发不据此熔断。
+extern const size_t PXLongShotMemoryFloorBytes;
+/// iOS 上返回 os_proc_available_memory()；其余平台返回 0（表示余量未知）。
+size_t PXLongShotAvailableMemoryBytes(void);
 /// 正文总高等比缩放到高度与像素预算内；同时消化整数舍入误差。
 BOOL PXLongShotCanvasGeometry(NSInteger width, NSInteger totalHeight, NSInteger maxHeight,
                              NSInteger maxPixels, CGSize *size, CGFloat *scale);

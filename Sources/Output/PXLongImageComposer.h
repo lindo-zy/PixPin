@@ -68,6 +68,12 @@ FOUNDATION_EXPORT const NSInteger PXLongShotCopyMaxPixelHeight;
                                  outPixelSize:(nullable CGSize *)outPixelSize
                                         error:(NSError **)error;
 
+/// 从已落盘 JPEG 直接降采样出小尺寸缩略图（ImageIO 解码峰值受 maxPixelSize 约束，
+/// 不整幅解码原图）。用于结果气泡缩略图，避免为 88pt 小图解出整幅长图。
++ (nullable UIImage *)thumbnailImageFromFile:(NSString *)filePath
+                                 screenScale:(CGFloat)screenScale
+                                maxPixelSize:(CGFloat)maxPixelSize;
+
 @end
 
 NS_ASSUME_NONNULL_END

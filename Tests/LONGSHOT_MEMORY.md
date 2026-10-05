@@ -61,3 +61,28 @@ ss_appendCrop、autoToEnd、autoSameCount；SSLongCaptureWindow 包含 processNe
 - iOS17 DEB SHA256：9aa0aa2e820fcdc8742e8f75772cf4af2246472e704900a91cc868838449360a。
 - 短时读取连接设备的 SpringBoard syslog，未捕获 PixPin 长截图事件，未形成设备复现证据。
 - 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/冷热启动/真机回归：未验证。
+
+## 第二轮修复：内存警告按自身余量判定（2026-10-05）
+
+问题：1.9.6 之后长截图只能成功运行一次；下一次长截图很快提示内存不足并停止。
+根因（源码已确认）：`pxHandleMemoryWarning` 把同一会话内的全局警告次数当熔断依据，
+第 2 条 `UIApplicationDidReceiveMemoryWarningNotification` 一律停止采集（slices 为空时
+直接失败关窗），与本进程真实余量无关。SpringBoard 的警告常以突发到达（系统级压力、
+上一轮长截图遗留的可清空解码缓存与结果图抬高基线），第二次会话开头连收两条即被误杀；
+任一警告还会把导出预算永久砍到 2M 像素。另：结果气泡缩略图原先整幅解码 8MP 长图。
+ShellX 对照（静态资料）：同为分片落盘 + 行签名架构，采集同用 _UICreateScreenUIImage /
+_snapshotExcludingWindows:，预算用 os_proc_available_memory，保护为限额制而非警告计数。
+
+修改：警告只释放预览；是否停止采集按 os_proc_available_memory 自身余量判定
+（低于 PXLongShotMemoryFloorBytes=64MiB 才熔断，返回 0 时退回“反复警告即停”），
+拼接预算不再因历史警告永久降级，由 PXLongShotCanvasPixelBudget 按实时余量收缩。
+气泡缩略图优先从落盘 longshot.jpg 降采样（PXLongImageComposer
+thumbnailImageFromFile:screenScale:maxPixelSize:），任务目录在缩略图独立后回收。
+不修改：抓屏接口、自动滚动、对齐、拼接几何、悬浮图/编辑器。
+
+已知问题（范围外）：悬浮图动作下长图解码位图常驻（PXFloatingSnap 持原图显示），
+若默认输出动作为悬浮图，多次长截图之间基线仍会抬高，后续单独评估。
+
+真机验收（待执行）：连续两次长截图，第二次不得出现「内存持续紧张」；syslog
+`long shot memory pressure` 行观察 available= 数值并据此校准 64MiB 底线；
+真低内存下仍应保留分片、优雅停止并可完成保存。

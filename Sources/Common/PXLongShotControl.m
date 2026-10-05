@@ -1,8 +1,22 @@
 #import "PXLongShotControl.h"
 #import <math.h>
+#import <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#import <os/proc.h>
+#endif
 
 @implementation PXLongShotCancellation
 @end
+
+const size_t PXLongShotMemoryFloorBytes = 64ull * 1024 * 1024;
+
+size_t PXLongShotAvailableMemoryBytes(void) {
+#if TARGET_OS_IPHONE
+    return os_proc_available_memory();
+#else
+    return 0;
+#endif
+}
 
 NSInteger PXLongShotCanvasPixelBudget(size_t availableBytes, NSInteger requestedPixels) {
     NSInteger budget = MAX(1, requestedPixels);

@@ -251,4 +251,23 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
     return result;
 }
 
++ (nullable UIImage *)thumbnailImageFromFile:(NSString *)filePath
+                                 screenScale:(CGFloat)screenScale
+                                maxPixelSize:(CGFloat)maxPixelSize {
+    if (filePath.length == 0 || maxPixelSize < 1) return nil;
+    CGImageSourceRef source = CGImageSourceCreateWithURL(
+        (__bridge CFURLRef)[NSURL fileURLWithPath:filePath], NULL);
+    if (!source) return nil;
+    CGImageRef thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)@{
+        (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+        (__bridge NSString *)kCGImageSourceCreateThumbnailWithTransform: @YES,
+        (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @(maxPixelSize),
+        (__bridge NSString *)kCGImageSourceShouldCacheImmediately: @YES});
+    CFRelease(source);
+    if (!thumb) return nil;
+    UIImage *result = [UIImage imageWithCGImage:thumb scale:screenScale orientation:UIImageOrientationUp];
+    CGImageRelease(thumb);
+    return result;
+}
+
 @end

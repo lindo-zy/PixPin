@@ -200,11 +200,17 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
     BOOL repeated = self.memoryWarningReceived;
     self.memoryWarningReceived = YES;
     [self pxDisablePreview];
-    PXLogWarn(@"long shot memory pressure (task %@, slices=%lu busy=%d repeated=%d stitching=%d)",
-              self.taskID, (unsigned long)self.slices.count, self.busy, repeated, self.stitching);
+    size_t availableBytes = PXLongShotAvailableMemoryBytes();
+    PXLogWarn(@"long shot memory pressure (task %@, slices=%lu busy=%d repeated=%d stitching=%d available=%llu)",
+              self.taskID, (unsigned long)self.slices.count, self.busy, repeated, self.stitching,
+              (unsigned long long)availableBytes);
     if (self.stitching || self.samplingStopped || self.finishRequested) return;
-    if (!repeated) {
-        // 全局内存警告不等于当前分片失败。首片还在写盘时必须保留 generation，不能关闭会话。
+    // 全局警告≠本进程耗尽：SpringBoard 会因系统级压力收到警告突发（上一轮长截图
+    // 遗留的可清空缓存即可触发），按警告次数熔断会让下一次会话一进入就停。
+    // 只有自身余量低于底线（余量不可知时退回“反复警告”）才认定真耗尽，保留当前分片。
+    BOOL exhausted = (availableBytes != 0) ? (availableBytes < PXLongShotMemoryFloorBytes) : repeated;
+    if (!exhausted) {
+        // 首片还在写盘时必须保留 generation，不能关闭会话；预览保持关闭即可继续。
         self.hud.statusText = @"已释放预览内存\n继续截取中";
         return;
     }
@@ -451,7 +457,8 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
     NSArray<PXLongShotSlice *> *slices = [self.slices copy];
     CGFloat screenScale = self.task.capturedScreenScale;
     PXLongShotCancellation *cancellation = self.cancellation;
-    NSInteger maxPixels = self.memoryWarningReceived ? 2000000 : PXLongShotMaxCanvasPixels;
+    // 预算随当前余量自适应收缩（PXLongShotCanvasPixelBudget），不因历史警告永久降级。
+    NSInteger maxPixels = PXLongShotMaxCanvasPixels;
     __weak PXLongShotSession *weakSelf = self;
     dispatch_async(PXLongShotImageQueue(), ^{
         @autoreleasepool {

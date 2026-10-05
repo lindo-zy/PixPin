@@ -887,6 +887,8 @@ static BOOL PXTestImageColor(UIImage *image, NSInteger row, NSInteger channel) {
 
 static void testLongShotMemoryBudget(void) {
     printf("[long shot memory budget and disk pipeline]\n");
+    PXCheck(PXLongShotMemoryFloorBytes == 64ull * 1024 * 1024, "memory floor matches documented continue budget");
+    PXCheck(PXLongShotAvailableMemoryBytes() == 0, "host headroom is unknown so policy tolerates warning bursts");
     PXCheckInt(PXLongShotCanvasPixelBudget(0, 8000000), 8000000,
                "unknown SpringBoard headroom does not falsely reject capture");
     PXCheckInt(PXLongShotCanvasPixelBudget(40 * 1024 * 1024, 8000000), 2097152,
@@ -962,6 +964,15 @@ static void testLongShotMemoryBudget(void) {
             outputURL:[NSURL fileURLWithPath:[directory stringByAppendingPathComponent:@"cancelled.jpg"]]
             maxPixels:80000 cancellation:cancel progressBlock:nil outPixelSize:nil error:nil] == nil,
             "cancelled composition does not export");
+
+        UIImage *thumb = [PXLongImageComposer thumbnailImageFromFile:first.filePath screenScale:1 maxPixelSize:64];
+        PXCheck(thumb && MAX(CGImageGetWidth(thumb.CGImage), CGImageGetHeight(thumb.CGImage)) <= 64 &&
+                PXTestImageColor(thumb, 2, 0),
+                "bubble thumbnail downsamples from disk within pixel cap");
+        PXCheck([PXLongImageComposer thumbnailImageFromFile:@"" screenScale:1 maxPixelSize:64] == nil &&
+                [PXLongImageComposer thumbnailImageFromFile:[directory stringByAppendingPathComponent:@"missing.jpg"]
+                 screenScale:1 maxPixelSize:64] == nil,
+                "missing thumbnail sources yield nil without fallback full decode");
     }
     [NSFileManager.defaultManager removeItemAtPath:directory error:nil];
 }
