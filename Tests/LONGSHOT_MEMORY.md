@@ -115,3 +115,61 @@ os_proc_available_memory + phys_footprint 估算，不可知时保底 48MiB）�
 - iOS16 DEB SHA256：df0038a45b7c4b6b0170d0a2c89064fad6f6a1f792765e1269bf56f634d1b078。
 - iOS17 DEB SHA256：8b12660c905c7a70c78607697633fb74e9e8f202ca90106e7d90276f43430194。
 - 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/真机回归：未验证。
+
+## 第四轮修复：逐帧遥测+主动熔断+抓屏降级+文件直存（2026-10-05）
+
+症状：长截图自动滚动只能滚 4 次，之后一直提示「内存持续紧张」；继续使用触发
+SpringBoard highwater 击杀（第三轮 jetsam 报告同源）。
+根因（源码+症状推算）：熔断线 = 限额 70%（408MB×0.7≈286MB），4 次滚动触线意味着
+每帧 footprint 净增约 10-16MB；而源码内每帧净驻留仅约 2MB（预览图+末帧签名），
+差值指向每帧一次的 `UIScreen _snapshotExcludingWindows:withRect:` 抓屏路径的
+IOSurface 驻留（@3x 全屏 surface ≈12MB/帧，数量级吻合；ShellX 对照组同架构但走
+整屏私有抓屏，无此症状）。其次：熔断只在收到 MemoryWarning 后评估，而 highwater
+击杀可能先于警告送达；拼接与保存路径完全无余量检查，`writeImage:` 的
+UIImageJPEGRepresentation 整幅解码 + PHAssetCreationRequest 重编码是保存期最大尖峰。
+
+修改（提交 5e7d497 + 50815a2）：
+- PXLongShotSession.pxCompleteFrame 逐帧遥测（gen/slices/footprint/available/floor/
+  fallback 写 syslog），available < PXLongShotMemoryFloorBytes() 时与警告 exhausted
+  同口径主动熔断（pxCheckFrameMemory），不再只依赖系统警告。
+- PXCaptureProvider 新增 fallbackOnlyCapture 开关：收到内存警告或主动熔断后置位，
+  跳过 exclude-windows 快照，每帧改走既有「短暂隐藏本方窗口 + _UICreateScreenUIImage/
+  UIGetScreenImage」路径（与 ShellX 同路径）。
+- 长图保存走文件：pxRunSave 在 task.resultFilePath（longshot.jpg）已存在时跳过
+  writeImage 重复编码；PXPhotoWriter 新增 saveImageFileAtPath:，以
+  PHAssetResourceTypePhoto + fileURL 原样入库，不做整幅解码/重编码。
+- PXLongShotControl 拆出 PXLongShotProcessFootprintBytes（phys_footprint，jetsam
+  highwater 同口径）供遥测；PXLongShotProcessMemoryLimitBytes 复用，口径不变。
+不修改：自动滚动、行签名对齐、拼接几何与预算、悬浮图/编辑器、非长图保存路径
+（resultFilePath 仅长图 didFinish 赋值，区域/全屏仍走 original.jpg + saveImage）。
+
+已知限制（设备验收时确认）：
+- 降级稳态下每帧隐藏/恢复本方窗口约 33ms，HUD 会按采集节奏闪烁（既有机制成为常态路径）。
+- 若 _UICreateScreenUIImage 与 UIGetScreenImage 均不可用，降级路径落到 snapshot
+  fallback（partial）并优雅停止，会话比旧路径更早终止。
+- 底线 = MAX(48MB, 限额 30%)：基线 footprint 偏高的机型可能首帧即熔断（优雅停机），
+  依据逐帧遥测曲线在更多机型校准后再议系数。
+
+真机验收（待执行）：
+1. 复现原症状场景（自动滚动长页面），观察 syslog `long shot mem` 行：gen-slices-
+   footprint-available 曲线是否逐帧单调下降；首次警告/熔断后 capture method 日志应从
+   private-excluding-windows 切到 private-uicreate，之后 footprint 应停止增长，
+   滚动不得再被 4 帧上限截停。
+2. 长图完成后保存相册：确认入库图片完整可打开，syslog 无 photo save 失败；
+   观察保存期 footprint 尖峰应显著低于 1.9.8（无整幅解码）。
+3. 回归：区域/全屏截图保存路径不变；权限拒绝/超时路径仍提示保留临时副本。
+
+2026-10-05 第四轮验证记录：
+
+- 修复提交 5e7d497、50815a2，经临时分支 dev/longshot-capture-degrade（独立 worktree）
+  开发，子代理源码审查 PASS（无 P0/P1；P2-1 遥测标签已采纳，P2-2/3/4 记入已知限制），
+  快进合入 main 后运行根目录 build.sh。
+- 首次构建失败：PXPhotoWriter.m 改动误删 saveImage: 依赖的 pxSaveIfAuthorized 实现
+  （宿主测试不编译 Photos 层，未拦截），50815a2 补回后构建通过。
+- 宿主测试：544 项检查，0 失败；git diff --check 通过。
+- iOS 16/17 的 1.9.9 双包构建成功，偏好 bundle 版本一致，两包
+  Architecture=iphoneos-arm64e，dylib=arm64+arm64e，layout/plist 校验通过。
+- iOS16 DEB SHA256：6717c832ebd412e598282b59bc9609a6a4c04e8bb958770e8333fdbfb528b9b2。
+- iOS17 DEB SHA256：0870d7d2c4c7072c0a60209c013eef460dff4340446d8a1fb8843e4733dd3aa0。
+- 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/真机回归：未验证
+  （第 4 帧驻留假说需第 1 条验收的 syslog 曲线证实）。
