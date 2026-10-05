@@ -86,3 +86,14 @@ thumbnailImageFromFile:screenScale:maxPixelSize:），任务目录在缩略图�
 真机验收（待执行）：连续两次长截图，第二次不得出现「内存持续紧张」；syslog
 `long shot memory pressure` 行观察 available= 数值并据此校准 64MiB 底线；
 真低内存下仍应保留分片、优雅停止并可完成保存。
+
+2026-10-05 第二轮验证记录：
+
+- 修复提交 8bcd244，经临时分支 dev/longshot-memory-relatch 合入 main 后运行根目录 build.sh。
+- 宿主测试：539 项检查，0 失败（新增余量语义、底线常量、文件降采样缩略图 4 项）；
+  git diff --check 通过。
+- iOS 16/17 的 1.9.7 双包构建成功，偏好 bundle 版本一致，两包 Architecture=iphoneos-arm64e，
+  dylib=arm64+arm64e，最低系统 16.0。安装/卸载行为仍未在设备执行。
+- iOS16 DEB SHA256：d861fe838463c47b473f4357f7d57bcae8beeaa488fabf1341988823a8461ee8。
+- iOS17 DEB SHA256：ca5f13e65613c2e21c0eeef0caf10784089d05cd510b7b65a0ca7798705a0168。
+- 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/冷热启动/真机回归：未验证。
