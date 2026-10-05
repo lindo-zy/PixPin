@@ -25,6 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign, readonly) NSInteger usedPixelHeight;
 /// 画布像素宽（展示侧换算点宽用：width / uiScale）。
 @property (nonatomic, assign, readonly) NSInteger canvasWidth;
+/// 实际画布占用像素（不含交给 HUD 的独立有效行快照）。
+@property (nonatomic, assign, readonly) NSInteger allocatedPixelCount;
 /// 已放弃后续预览更新（预算缩到下限 / 画布创建失败 / 重放绘制失败）。
 /// 注意首片到达前本值必为 NO——饱和只代表“曾经放弃”，不代表“尚未开始”。
 @property (nonatomic, assign, readonly) BOOL saturated;

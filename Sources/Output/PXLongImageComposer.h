@@ -11,7 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
 FOUNDATION_EXPORT const NSInteger PXLongShotMaxSlices;
 /// 画布像素高度预算：超出后整图等比降采样到预算内（GPU 纹理上限 16384）。
 FOUNDATION_EXPORT const NSInteger PXLongShotMaxCanvasHeight;
-/// 画布像素总量预算（宽×高）：位图 ≈96MB。高度上限之后的第一性约束——
+/// 画布像素总量预算（宽×高）：位图最高约 32MB。高度上限之后的第一性约束——
 /// 快照/编码可能额外占内存；本预算只约束画布，跨会话位图工作由会话串行化。
 FOUNDATION_EXPORT const NSInteger PXLongShotMaxCanvasPixels;
 /// 分片 JPEG 质量（拼接收口还会再编码一次，分片取高保真）。
@@ -54,13 +54,15 @@ FOUNDATION_EXPORT const NSInteger PXLongShotCopyMaxPixelHeight;
 
 /// 拼接全部分片并编码 JPEG 到 outputURL（后台队列调用）。
 /// 裁片位置采用会话入列时保存的 cropTopRows/cropBottomRows。
-/// 画布先按 PXLongShotMaxCanvasHeight 缩高，再按 PXLongShotMaxCanvasPixels 缩像素总量。
+/// maxPixels 与进程实时余量共同约束画布，最高 PXLongShotMaxCanvasPixels；
+/// 高度上限仍为 PXLongShotMaxCanvasHeight。分配失败则减半预算重试，保留完整图尾。
 /// progressBlock（可空，调用线程即后台线程）：进度口径 2n——前 n 为偏移累计、
 /// 后 n 为逐片绘制；done==total 后进入编码阶段。
 /// 返回文件回读的 UIImage（scale = screenScale），画布随即释放，内存不驻留。
 + (nullable UIImage *)composedImageWithSlices:(NSArray<PXLongShotSlice *> *)slices
                                   screenScale:(CGFloat)screenScale
                                     outputURL:(NSURL *)outputURL
+                                    maxPixels:(NSInteger)maxPixels
                                  cancellation:(PXLongShotCancellation *)cancellation
                                 progressBlock:(nullable void (^)(NSInteger done, NSInteger total))progressBlock
                                  outPixelSize:(nullable CGSize *)outPixelSize

@@ -17,6 +17,13 @@ typedef struct {
     CGPoint end;
 } PXLongShotScrollPlan;
 
+/// availableBytes 为当前进程余量；0 表示无法取得有效余量（SpringBoard 可能不是 app）。
+/// 预算包含位图快照/编码的额外峰值，并保留 16MiB 给抓屏与系统；最低降到 256K 像素。
+NSInteger PXLongShotCanvasPixelBudget(size_t availableBytes, NSInteger requestedPixels);
+/// 正文总高等比缩放到高度与像素预算内；同时消化整数舍入误差。
+BOOL PXLongShotCanvasGeometry(NSInteger width, NSInteger totalHeight, NSInteger maxHeight,
+                             NSInteger maxPixels, CGSize *size, CGFloat *scale);
+
 /// 在 viewport∩screenBounds 安全区内规划一条避开 protectedRect 的竖直上滑：
 /// 滑动带压到 protectedRect 下缘以下（HUD 小窗悬在右上），带高不足 80pt 返回 NO。
 BOOL PXLongShotBuildScrollPlan(CGRect viewport, CGRect screenBounds, CGRect protectedRect,

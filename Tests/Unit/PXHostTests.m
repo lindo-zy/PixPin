@@ -1,7 +1,9 @@
-// 宿主单元测试：只覆盖不依赖 iOS 私有框架/UIImage 的纯逻辑层。
+// 宿主单元测试：纯逻辑与真实 CG/ImageIO 长图链路；UIKit 图像对象使用最小适配器。
 // 在 macOS 上编译运行（见 Tests/run-host-tests.sh）。
 
 #import <Foundation/Foundation.h>
+#import "../../Sources/Output/PXLongImageComposer.h"
+#import "../../Sources/Output/PXLongPreviewCanvas.h"
 #import "../../Sources/Common/PXGeometry.h"
 #import "../../Sources/Common/PXClaimSet.h"
 #import "../../Sources/Common/PXConstants.h"
@@ -855,6 +857,115 @@ static void testLongCaptureRouting(void) {
             "unknown long path rejected");
 }
 
+static UIImage *PXTestLongFrame(CGFloat red, CGFloat green, CGFloat blue) {
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(NULL, 400, 600, 8, 0, space, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    if (!context) return nil;
+    CGContextSetRGBFillColor(context, red, green, blue, 1);
+    CGContextFillRect(context, CGRectMake(0, 0, 400, 600));
+    CGImageRef image = CGBitmapContextCreateImage(context);
+    CGContextRelease(context);
+    UIImage *result = [UIImage imageWithCGImage:image scale:1 orientation:UIImageOrientationUp];
+    CGImageRelease(image);
+    return result;
+}
+
+static BOOL PXTestImageColor(UIImage *image, NSInteger row, NSInteger channel) {
+    if (!image || row < 0 || row >= (NSInteger)CGImageGetHeight(image.CGImage)) return NO;
+    size_t width = CGImageGetWidth(image.CGImage), height = CGImageGetHeight(image.CGImage);
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(NULL, width, height, 8, 0, space, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    if (!context) return NO;
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), image.CGImage);
+    uint8_t *pixel = (uint8_t *)CGBitmapContextGetData(context) + row * CGBitmapContextGetBytesPerRow(context) + (width / 2) * 4;
+    BOOL correct = pixel[channel] > 220 && pixel[(channel + 1) % 3] < 30 && pixel[(channel + 2) % 3] < 30;
+    CGContextRelease(context);
+    return correct;
+}
+
+static void testLongShotMemoryBudget(void) {
+    printf("[long shot memory budget and disk pipeline]\n");
+    PXCheckInt(PXLongShotCanvasPixelBudget(0, 8000000), 8000000,
+               "unknown SpringBoard headroom does not falsely reject capture");
+    PXCheckInt(PXLongShotCanvasPixelBudget(40 * 1024 * 1024, 8000000), 2097152,
+               "known headroom reserves capture memory and encoding peak");
+    PXCheckInt(PXLongShotCanvasPixelBudget(1, 8000000), 256000, "critical headroom uses rescue budget");
+    PXCheckInt(PXLongShotCanvasPixelBudget(1024ULL * 1024 * 1024, 2000000), 2000000,
+               "pressure export cannot exceed requested reduced budget");
+    NSInteger widths[] = {1, 400, 1170, 1320, 2732};
+    NSInteger heights[] = {600, 16384, 19999, 100000, 120000000};
+    for (NSUInteger i = 0; i < 5; i++) {
+        for (NSUInteger j = 0; j < 5; j++) {
+            CGSize size; CGFloat scale;
+            BOOL ok = PXLongShotCanvasGeometry(widths[i], heights[j], 16384, 2000000, &size, &scale);
+            PXCheck(ok && size.width >= 1 && size.height >= 1 && size.height <= 16384 &&
+                    size.width * size.height <= 2000000, "export geometry respects height and pixel budget");
+            PXCheck(ok && ceil(heights[j] * scale) <= size.height && size.height - heights[j] * scale < 1.01,
+                    "export geometry includes tail with at most one partial pixel row");
+        }
+    }
+    CGSize size; CGFloat scale;
+    PXCheck(!PXLongShotCanvasGeometry(0, 600, 16384, 2000000, &size, &scale), "invalid export width rejected");
+
+    NSString *directory = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    [NSFileManager.defaultManager createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil];
+    PXLongShotCancellation *cancel = [[PXLongShotCancellation alloc] init];
+    NSError *error = nil;
+    PXLongShotSlice *first = [PXLongImageComposer sliceFromScreenImage:PXTestLongFrame(1, 0, 0)
+        pixelRect:CGRectMake(0, 0, 400, 600) filePath:[directory stringByAppendingPathComponent:@"first.jpg"]
+        cancellation:cancel error:&error];
+    PXLongShotSlice *last = [PXLongImageComposer sliceFromScreenImage:PXTestLongFrame(0, 1, 0)
+        pixelRect:CGRectMake(0, 0, 400, 600) filePath:[directory stringByAppendingPathComponent:@"last.jpg"]
+        cancellation:cancel error:&error];
+    PXCheck(first && last && !error, "real JPEG frames written with alignment signatures");
+    if (first && last) {
+        PXLongPreviewCanvas *preview = [[PXLongPreviewCanvas alloc] initWithWidthPixels:88 maxPixels:80000 uiScale:1 cancellation:cancel];
+        UIImage *retained = [preview updateWithSlices:@[first]];
+        PXCheck(retained && CGImageGetHeight(retained.CGImage) == 132, "first frame produces cropped preview");
+        PXCheck(preview.allocatedPixelCount < 80000 / 2, "first preview does not allocate entire memory budget");
+        first.cropBottomRows = 100;
+        last.cropTopRows = 300;
+        UIImage *updated = [preview updateWithSlices:@[first, last]];
+        PXCheck(updated && CGImageGetHeight(updated.CGImage) == 176, "preview includes cropped frames only");
+        PXCheck(PXTestImageColor(updated, 20, 0) && PXTestImageColor(updated, 160, 1),
+                "preview retains first frame and appended tail in source order");
+        PXCheck(PXTestImageColor(retained, 120, 0), "old HUD snapshot stays independent of mutable preview");
+        UIImage *composed = [PXLongImageComposer composedImageWithSlices:@[first, last] screenScale:1
+            outputURL:[NSURL fileURLWithPath:[directory stringByAppendingPathComponent:@"result.jpg"]]
+            maxPixels:80000 cancellation:cancel progressBlock:nil outPixelSize:&size error:&error];
+        PXCheck(composed && !error && size.width * size.height <= 80000, "reduced-budget real JPEG export succeeds");
+        PXCheck(PXTestImageColor(composed, 5, 0) && PXTestImageColor(composed, (NSInteger)size.height - 3, 1),
+                "reduced-budget export preserves beginning and tail without blank rows");
+
+        first.cropBottomRows = 0;
+        NSMutableArray *many = [NSMutableArray array];
+        for (NSInteger count = 1; count <= 40; count++) {
+            [many addObject:first];
+            @autoreleasepool {
+                UIImage *image = [preview updateWithSlices:many];
+                PXCheck(preview.allocatedPixelCount <= 80000, "growing preview stays within pixel budget");
+                if (image) PXCheck(PXTestImageColor(image, (NSInteger)CGImageGetHeight(image.CGImage) - 2, 0),
+                                   "preview replay preserves last rows under rescaling");
+            }
+        }
+        PXCheck(preview.saturated && preview.allocatedPixelCount == 0, "saturated preview releases backing canvas");
+        error = nil;
+        composed = [PXLongImageComposer composedImageWithSlices:many screenScale:1
+            outputURL:[NSURL fileURLWithPath:[directory stringByAppendingPathComponent:@"after-preview.jpg"]]
+            maxPixels:80000 cancellation:cancel progressBlock:nil outPixelSize:&size error:&error];
+        PXCheck(composed && !error, "export remains available after preview saturation");
+        cancel.cancelled = YES;
+        PXCheck([preview updateWithSlices:@[first]] == nil, "cancelled preview does not restart");
+        PXCheck([PXLongImageComposer composedImageWithSlices:@[first] screenScale:1
+            outputURL:[NSURL fileURLWithPath:[directory stringByAppendingPathComponent:@"cancelled.jpg"]]
+            maxPixels:80000 cancellation:cancel progressBlock:nil outPixelSize:nil error:nil] == nil,
+            "cancelled composition does not export");
+    }
+    [NSFileManager.defaultManager removeItemAtPath:directory error:nil];
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         printf("PixPin host unit tests\n");
@@ -876,6 +987,7 @@ int main(int argc, const char **argv) {
         testLongCaptureRouting();
         testLongShotScrollPlan();
         testManualLongShot();
+        testLongShotMemoryBudget();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
         return PXTestFailures > 0 ? 1 : 0;
     }

@@ -3,12 +3,15 @@
 #import "../Common/PXLongShotAligner.h"
 #import <ImageIO/ImageIO.h>
 #import <math.h>
+#import <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#import <os/proc.h>
+#endif
 
 const NSInteger PXLongShotMaxSlices = 200;
 const NSInteger PXLongShotMaxCanvasHeight = 16384;
-// 24M 像素 ≈ 96MB 位图：手机全宽（~1320px）× 16384 高 ≈ 21.6M，在预算内不受影响；
-// 宽幅设备（iPad 等）超预算后按比例二次缩宽，保证 CreateImage 复制瞬态可控。
-const NSInteger PXLongShotMaxCanvasPixels = 24 * 1000 * 1000;
+// SpringBoard 内还要容纳抓屏、预览与编码峰值；超预算的长图等比缩小并保留全部内容。
+const NSInteger PXLongShotMaxCanvasPixels = 8 * 1000 * 1000;
 const CGFloat PXLongShotSliceJPEGQuality = 0.95;
 const CGFloat PXLongShotOutputJPEGQuality = 0.9;
 const NSInteger PXLongShotCopyMaxPixelHeight = 8192;
@@ -118,6 +121,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
 + (nullable UIImage *)composedImageWithSlices:(NSArray<PXLongShotSlice *> *)slices
                                   screenScale:(CGFloat)screenScale
                                     outputURL:(NSURL *)outputURL
+                                    maxPixels:(NSInteger)maxPixels
                                  cancellation:(PXLongShotCancellation *)cancellation
                                 progressBlock:(nullable void (^)(NSInteger done, NSInteger total))progressBlock
                                  outPixelSize:(CGSize *)outPixelSize
@@ -148,37 +152,33 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
         if (progressBlock) progressBlock(i + 1, sliceCount * 2);
     }
 
-    CGFloat scale = totalHeight > PXLongShotMaxCanvasHeight
-        ? (CGFloat)PXLongShotMaxCanvasHeight / (CGFloat)totalHeight
-        : 1.0;
-    // 像素总量二次缩放：高度封顶后宽幅设备仍可能超预算（如 iPad 全宽 × 16384）。
-    CGFloat scaledW = (CGFloat)slices[0].pixelWidth * scale;
-    CGFloat scaledH = (CGFloat)totalHeight * scale;
-    if (scaledW * scaledH > (CGFloat)PXLongShotMaxCanvasPixels) {
-        scale *= sqrt((CGFloat)PXLongShotMaxCanvasPixels / (scaledW * scaledH));
-    }
-    NSInteger canvasW = MAX((NSInteger)(slices[0].pixelWidth * scale + 0.5), 1);
-    NSInteger canvasH = MAX((NSInteger)(totalHeight * scale + 0.5), 1);
-    // 两维独立 +0.5 舍入可把乘积顶过预算零点几像素（实数域 sqrt 恰好压线），
-    // 宽幅设备特定高度下会确定性触发。降宽消化舍入误差而非报错：绘制按 scale
-    // 裁剪，损失 <1px。乘积随宽线性增长，循环至多两三次。
-    while (canvasW > 1 && (uint64_t)canvasW * (uint64_t)canvasH > (uint64_t)PXLongShotMaxCanvasPixels) {
-        canvasW--;
-    }
-    if (canvasW <= 0 || canvasH <= 0) {
-        if (error) *error = PXLongShotError(@"拼接画布尺寸异常");
-        return nil;
-    }
-
+    size_t availableBytes = 0;
+#if TARGET_OS_IPHONE
+    availableBytes = os_proc_available_memory();
+#endif
+    NSInteger pixelBudget = PXLongShotCanvasPixelBudget(availableBytes, MIN(maxPixels, PXLongShotMaxCanvasPixels));
     if (cancellation.cancelled) return nil;
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGContextRef canvas = CGBitmapContextCreate(NULL, (NSUInteger)canvasW, (NSUInteger)canvasH, 8, 0,
-                                                colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGContextRef canvas = NULL;
+    CGSize canvasSize = CGSizeZero;
+    CGFloat scale = 1.0;
+    // 分配失败时按半量预算重试；不追加重复分片，也不丢弃图尾。
+    while (!cancellation.cancelled) {
+        if (!PXLongShotCanvasGeometry(slices[0].pixelWidth, totalHeight, PXLongShotMaxCanvasHeight,
+                                      pixelBudget, &canvasSize, &scale)) break;
+        canvas = CGBitmapContextCreate(NULL, (NSUInteger)canvasSize.width, (NSUInteger)canvasSize.height, 8, 0,
+                                      colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+        if (canvas || pixelBudget <= 256000) break;
+        pixelBudget = MAX(256000, pixelBudget / 2);
+    }
     CGColorSpaceRelease(colorSpace);
     if (!canvas) {
         if (error) *error = PXLongShotError(@"拼接画布创建失败");
         return nil;
     }
+    NSInteger canvasW = (NSInteger)canvasSize.width, canvasH = (NSInteger)canvasSize.height;
+    PXLogInfo(@"long shot canvas budget (slices=%ld pixels=%ld available=%llu canvas=%ldx%ld)",
+              (long)sliceCount, (long)pixelBudget, (unsigned long long)availableBytes, (long)canvasW, (long)canvasH);
     CGContextSetFillColorWithColor(canvas, [UIColor blackColor].CGColor);
     CGContextFillRect(canvas, CGRectMake(0, 0, canvasW, canvasH));
     CGContextSetInterpolationQuality(canvas, kCGInterpolationMedium);

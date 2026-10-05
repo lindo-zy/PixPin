@@ -1,6 +1,7 @@
 #import "PXLongPreviewCanvas.h"
 #import "PXLongImageComposer.h"
 #import <ImageIO/ImageIO.h>
+#import <string.h>
 
 /// 分辨率下限：预览宽低于该像素数后判饱和（再缩就看不清了）。
 static const NSInteger PXLongPreviewMinWidthPixels = 40;
@@ -12,7 +13,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
     BOOL _gaveUp;
 }
 @property (nonatomic, assign) NSInteger canvasWidth;       // 当前画布像素宽
-@property (nonatomic, assign) NSInteger canvasHeightAlloc; // 画布分配高（px）= maxPixels / canvasWidth
+@property (nonatomic, assign) NSInteger canvasHeightAlloc; // 按有效内容几何增长，不预分配整个预算
 @property (nonatomic, assign) CGFloat drawScale;           // 画布像素 / 原始像素（= canvasWidth / 分片宽）
 @property (nonatomic, assign) NSInteger maxPixels;
 @property (nonatomic, assign) CGFloat uiScale;
@@ -28,8 +29,8 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
                        cancellation:(PXLongShotCancellation *)cancellation {
     if (self = [super init]) {
         _canvasWidth = MAX(widthPixels, PXLongPreviewMinWidthPixels);
-        _maxPixels = MAX(maxPixels, (NSInteger)_canvasWidth * 256);
-        _canvasHeightAlloc = MAX(_maxPixels / _canvasWidth, 256);
+        _maxPixels = MAX(maxPixels, _canvasWidth);
+        _canvasHeightAlloc = 0;
         _drawScale = 1.0;   // 首片追加时按分片宽校正
         _uiScale = uiScale > 0 ? uiScale : 1.0;
         _items = [[NSMutableArray alloc] init];
@@ -45,12 +46,15 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 - (BOOL)saturated {
     return _gaveUp;
 }
+- (NSInteger)allocatedPixelCount { return self.canvasWidth * self.canvasHeightAlloc; }
 
 // MARK: - 画布维护
 
 - (BOOL)pxCreateContextWithWidth:(NSInteger)width heightAlloc:(NSInteger)heightAlloc {
     if (self.cancellation.cancelled) return NO;
     if (_context) CGContextRelease(_context);
+    _context = NULL;
+    if (width < 1 || heightAlloc < 1 || width > self.maxPixels / heightAlloc) return NO;
     self.canvasWidth = width;
     self.canvasHeightAlloc = heightAlloc;
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
@@ -92,7 +96,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
     if (newWidth < (CGFloat)PXLongPreviewMinWidthPixels) return NO;   // 缩到下限，判放弃
     NSInteger width = (NSInteger)newWidth;
     CGFloat scale = (CGFloat)width / (CGFloat)sliceWidth;
-    NSInteger heightAlloc = MAX(self.maxPixels / width, 256);
+    NSInteger heightAlloc = MIN(self.maxPixels / width, MAX(1, (NSInteger)ceil(totalHeight * scale) * 2));
     if (![self pxCreateContextWithWidth:width heightAlloc:heightAlloc]) return NO;
     self.drawScale = scale;
     // 重放即重建：任何一片绘失败都判放弃，宁可停更也不留一幅缺段预览。
@@ -133,9 +137,11 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
     NSInteger width = slices.firstObject.pixelWidth;
     self.items = next;
     self.totalHeight = total;
-    if (_context && total * self.drawScale > self.canvasHeightAlloc) {
+    self.drawScale = (CGFloat)self.canvasWidth / width;
+    NSInteger neededHeight = MAX(1, (NSInteger)ceil(total * self.drawScale));
+    if (neededHeight > self.maxPixels / self.canvasWidth) {
         if (![self pxRescaleForTotalHeight:total firstSliceWidth:width]) { [self pxAbandon]; return nil; }
-    } else if (incremental) {
+    } else if (incremental && neededHeight <= self.canvasHeightAlloc) {
         NSDictionary *item = next.lastObject;
         if (![self pxDrawSliceFile:item[@"path"] pixelWidth:width pixelHeight:[item[@"h"] integerValue]
                            offset:[item[@"offset"] integerValue]
@@ -143,8 +149,9 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
             [self pxAbandon]; return nil;
         }
     } else {
-        self.drawScale = (CGFloat)self.canvasWidth / width;
-        if (![self pxCreateContextWithWidth:self.canvasWidth heightAlloc:self.canvasHeightAlloc]) {
+        NSInteger heightAlloc = MIN(self.maxPixels / self.canvasWidth,
+                                    MAX(neededHeight, MAX(256, self.canvasHeightAlloc * 2)));
+        if (![self pxCreateContextWithWidth:self.canvasWidth heightAlloc:heightAlloc]) {
             [self pxAbandon]; return nil;
         }
         for (NSDictionary *item in next) {
@@ -161,6 +168,7 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 - (void)pxAbandon {
     if (_context) CGContextRelease(_context);
     _context = NULL;
+    self.canvasHeightAlloc = 0;
     _gaveUp = YES;
     [self.items removeAllObjects];
 }
@@ -179,13 +187,23 @@ static const NSInteger PXLongPreviewMinWidthPixels = 40;
 
 - (nullable UIImage *)pxSnapshotImage {
     if (!_context) return nil;
-    CGImageRef image = CGBitmapContextCreateImage(_context);
+    NSInteger usedHeight = self.usedPixelHeight;
+    if (usedHeight < 1 || usedHeight > self.canvasHeightAlloc) return nil;
+    // 子图会继续保活整块预分配画布，并在下一次绘制时触发整块 COW。
+    // 只复制有效行到独立小位图，HUD 的旧图不再引用可变画布。
+    CGContextRef snapshot = CGBitmapContextCreate(NULL, (size_t)self.canvasWidth, (size_t)usedHeight, 8, 0,
+                                                 CGBitmapContextGetColorSpace(_context),
+                                                 (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    if (!snapshot) return nil;
+    uint8_t *src = CGBitmapContextGetData(_context), *dst = CGBitmapContextGetData(snapshot);
+    size_t srcStride = CGBitmapContextGetBytesPerRow(_context), dstStride = CGBitmapContextGetBytesPerRow(snapshot);
+    for (NSInteger row = 0; row < usedHeight; row++)
+        memcpy(dst + row * dstStride, src + row * srcStride, (size_t)self.canvasWidth * 4);
+    CGImageRef image = CGBitmapContextCreateImage(snapshot);
+    CGContextRelease(snapshot);
     if (!image) return nil;
-    CGImageRef cropped = CGImageCreateWithImageInRect(image, CGRectMake(0, 0, self.canvasWidth, self.usedPixelHeight));
+    UIImage *result = [UIImage imageWithCGImage:image scale:self.uiScale orientation:UIImageOrientationUp];
     CGImageRelease(image);
-    if (!cropped) return nil;
-    UIImage *result = [UIImage imageWithCGImage:cropped scale:self.uiScale orientation:UIImageOrientationUp];
-    CGImageRelease(cropped);
     return result;
 }
 

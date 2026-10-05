@@ -78,7 +78,13 @@ const CGFloat PXLongShotHUDPreviewWidthPt = 88.0;
 - (void)setStatusText:(NSString *)text { if (text) self.status.text = text; }
 - (void)setSliceCount:(NSInteger)count { self.counter.text = [NSString stringWithFormat:@"已采集 %ld 段", (long)count]; }
 - (void)setPreviewImage:(UIImage *)image usedPixelHeight:(NSInteger)height {
-    if (!image || height < 1 || image.size.width <= 0) return;
+    if (!image) {
+        self.imageView.image = nil;
+        self.imageView.frame = CGRectZero;
+        self.preview.contentSize = CGSizeZero;
+        return;
+    }
+    if (height < 1 || image.size.width <= 0) return;
     [self layoutIfNeeded];
     CGFloat width = self.preview.bounds.size.width;
     CGFloat used = height / image.scale * width / image.size.width;
