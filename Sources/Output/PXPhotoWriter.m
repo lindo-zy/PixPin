@@ -36,6 +36,33 @@
     [self pxSaveFileIfAuthorized:path status:status completion:completion];
 }
 
++ (void)pxSaveIfAuthorized:(UIImage *)image
+                    status:(PHAuthorizationStatus)status
+                completion:(void (^)(NSString *, NSError *))completion {
+    if (status != PHAuthorizationStatusAuthorized) {
+        NSError *error = [NSError errorWithDomain:@"com.pixpin.screenshot.output"
+                                             code:1
+                                         userInfo:@{NSLocalizedDescriptionKey: @"相册权限被拒绝"}];
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, error); });
+        return;
+    }
+
+    __block NSString *identifier = nil;
+    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+        PHAssetChangeRequest *request = [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+        identifier = request.placeholderForCreatedAsset.localIdentifier;
+    } completionHandler:^(BOOL success, NSError *changeError) {
+        NSError *finalError = nil;
+        if (!success) {
+            finalError = changeError ?: [NSError errorWithDomain:@"com.pixpin.screenshot.output"
+                                                            code:2
+                                            userInfo:@{NSLocalizedDescriptionKey: @"相册保存失败"}];
+        }
+        // 成功但拿不到 identifier 时保持 nil，不产出假 ID。
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(identifier, finalError); });
+    }];
+}
+
 + (void)pxSaveFileIfAuthorized:(NSString *)path
                         status:(PHAuthorizationStatus)status
                     completion:(void (^)(NSString *, NSError *))completion {
