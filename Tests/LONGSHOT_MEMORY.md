@@ -47,3 +47,17 @@ ss_appendCrop、autoToEnd、autoSameCount；SSLongCaptureWindow 包含 processNe
 
 构建入口：根目录 `./build.sh`，必须在本地合入原始集成分支后运行。
 初始集成分支 main，基线 f12a54673a8cdee0d6575f20b08a22927e7a3fbb，工作区干净。
+
+2026-10-05 验证记录：
+
+- 修复提交 9f59b04，已本地快进合入 main 后运行根目录 build.sh。
+- 宿主测试：535 项检查，0 失败；git diff --check 通过。
+- iOS 16/17 的 1.9.6 双包构建成功，偏好 bundle 版本一致，plist 与结构校验通过。
+  两包 Architecture=iphoneos-arm64e，dylib=arm64+arm64e，最低系统 16.0，
+  注入 Filter Bundles 仅 com.apple.springboard；维护脚本仅默认 control，未新增安装/卸载脚本。
+  iOS16 使用项目约定的 iPhoneOS16.5.sdk 目录，Mach-O SDK 标记实际为 16.4；
+  iOS17 的 Mach-O SDK 标记为 17.0。安装/卸载行为仍未在设备执行。
+- iOS16 DEB SHA256：cc68b4c4538dd9d3d89a1ad6f18378564a52816557a2d4d51df5728985e85601。
+- iOS17 DEB SHA256：9aa0aa2e820fcdc8742e8f75772cf4af2246472e704900a91cc868838449360a。
+- 短时读取连接设备的 SpringBoard syslog，未捕获 PixPin 长截图事件，未形成设备复现证据。
+- 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/冷热启动/真机回归：未验证。
