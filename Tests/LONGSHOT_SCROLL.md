@@ -2,10 +2,10 @@
 
 问题：用户报告从普通 App 触发长截图后页面完全不动，设置 App 内可滚动。
 
-根因：源码与 ShellX 3.1.1 二进制对照确认 HID 数据封装不同。PixPin 未设置父事件
+根因分析：源码与 ShellX 3.1.1 二进制对照确认 HID 数据封装不同。PixPin 未设置父事件
 Digitizer Collection（0xB0014）；父事件携带坐标和按下状态，手指子事件也按下；
 sender=0x8000000817319375，手指 index/identity=11/11、pressure=1，转换 mask 含额外
-Identity。上述差异影响触摸识别/路由；是否为设备症状的唯一原因尚未真机确认。
+Identity。这些是触摸识别/路由的可疑差异，与设备症状的因果关系尚未真机确认。
 
 参考证据：本地 ShellX 3.1.1 arm64e 拆包，SHA256
 fe78e3ddcdb7050919642075d9eb58ea2d69ff8d56aaef308d1df0ffb5ecd213。滑动调用者 0x101D48
@@ -44,4 +44,24 @@ sender=0x8000000817319372。普通客户端创建失败后尝试 CreateWithType(
 4. 原全屏手动长截图入口仍由用户自行滚动；其他截图和内存保护行为保持原有逻辑。
 
 初始集成分支 main，基线 1bf0a87，工作区干净；开发分支 codex/pixpin-app-scroll-routing。
-编译与包结构验证记录在本地合入后补充。
+源码提交 5dcdc17 已快进合入 main 后，通过根目录 build.sh 构建。
+
+验证记录（2026-10-06）：
+
+- 源码分析：已确认上述 ShellX 封装参数、动态符号能力检查和失败路径；diff 审查及
+  git diff --check 通过。宿主测试 575 checks、0 failures，覆盖本次新增的事件契约和
+  CF 对象释放检查；未模拟 Backboard 路由。
+- 编译：已确认 iOS 16/17 两个目标构建成功，版本由 1.9.9 更新至 1.9.10。
+- 包结构：已确认两个 DEB 的版本、依赖、RootHide 架构、安装目录、plist 和设置页
+  版本一致；PixPin.dylib 均包含 arm64/arm64e。注入对象仍为 SpringBoard，产物中
+  包含 typed 客户端回退和滚动诊断字符串；无额外安装/卸载维护脚本。
+- Mach-O：两个包最低系统均为 16.0；iOS 16 包记录 SDK 16.4，iOS 17 包记录 SDK 17.0。
+- 核心功能：未验证。设备无法连接，本轮未安装、未验证冷热启动或实际 App 滚动。
+  自定义手势、选区落点、系统路由和重复操作仍按上述步骤真机验收。
+
+产物与 SHA256：
+
+- packages/ios16/com.pixpin.screenshot_1.9.10_ios16_iphoneos-arm64e.deb：
+  08951f2f5a39f738fda574a4bfd608e4d0b14eb520ae17fbd301d344f6549551
+- packages/ios17/com.pixpin.screenshot_1.9.10_ios17_iphoneos-arm64e.deb：
+  64be882759ccfdafa47e3135646e678fef34530043b14d908bba2e6122d66d76
