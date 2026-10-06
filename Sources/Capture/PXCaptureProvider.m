@@ -1,4 +1,5 @@
 #import "PXCaptureProvider.h"
+#import "PXCaptureLayerExclusion.h"
 #import "../Common/PXLog.h"
 #import "../Common/PXLongShotControl.h"
 #import <dlfcn.h>
@@ -32,6 +33,8 @@ static void PXResolveScreenCaptureSymbols(void) {
 }
 
 @interface PXCaptureProvider ()
+@property (nonatomic, strong) PXCaptureLayerExclusion *layerExclusion;
+@property (nonatomic, copy) NSArray<UIWindow *> *protectedWindows;
 @property (nonatomic, copy, readwrite, nullable) NSString *lastCaptureMethod;
 @end
 
@@ -60,13 +63,17 @@ static void PXResolveScreenCaptureSymbols(void) {
 - (UIImage *)pxSnapshotExcludingWindows:(NSArray<UIWindow *> *)windows {
     SEL selector = NSSelectorFromString(@"_snapshotExcludingWindows:withRect:");
     UIScreen *screen = UIScreen.mainScreen;
-    if (![screen respondsToSelector:selector]) return nil;
+    if (![screen respondsToSelector:selector]) {
+        PXLogWarn(@"long shot excluding-windows selector unavailable"); return nil;
+    }
     @try {
         NSMethodSignature *signature = [screen methodSignatureForSelector:selector];
         if (!signature || signature.numberOfArguments != 4 ||
             signature.methodReturnType[0] != '@' || signature.methodReturnLength != sizeof(id) ||
             [signature getArgumentTypeAtIndex:2][0] != '@' ||
-            strcmp([signature getArgumentTypeAtIndex:3], @encode(CGRect)) != 0) return nil;
+            strcmp([signature getArgumentTypeAtIndex:3], @encode(CGRect)) != 0) {
+            PXLogWarn(@"long shot excluding-windows signature incompatible"); return nil;
+        }
         NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
         invocation.target = screen;
         invocation.selector = selector;
@@ -78,8 +85,31 @@ static void PXResolveScreenCaptureSymbols(void) {
         __unsafe_unretained id raw = nil;
         [invocation getReturnValue:&raw];
         id result = raw; // 在 invocation 生命周期内建立强引用。
-        return [result isKindOfClass:UIImage.class] ? result : nil;
-    } @catch (__unused NSException *exception) { return nil; }
+        if (![result isKindOfClass:UIImage.class]) {
+            PXLogWarn(@"long shot excluding-windows returned %@", result ? NSStringFromClass([result class]) : @"nil");
+            return nil;
+        }
+        return result;
+    } @catch (NSException *exception) {
+        PXLogWarn(@"long shot excluding-windows exception (%@)", exception.name); return nil;
+    }
+}
+
+- (void)endVisibleWindowExclusion {
+    NSParameterAssert(NSThread.isMainThread);
+    [self.layerExclusion invalidate]; self.layerExclusion = nil; self.protectedWindows = nil;
+}
+- (BOOL)pxPrepareVisibleWindows:(NSArray<UIWindow *> *)windows {
+    if (self.layerExclusion.isActive && [self.protectedWindows isEqualToArray:windows]) return NO;
+    [self endVisibleWindowExclusion];
+    NSMutableArray *layers = [NSMutableArray array];
+    for (UIWindow *window in windows) [layers addObject:window.layer];
+    self.layerExclusion = [PXCaptureLayerExclusion beginWithLayers:layers];
+    if (self.layerExclusion) self.protectedWindows = windows;
+    PXLogInfo(@"long shot visible capture exclusion (layers=%lu active=%d)",
+              (unsigned long)layers.count, self.layerExclusion.isActive);
+    [CATransaction flush];
+    return self.layerExclusion.isActive; // 新标记等两帧提交；期间窗口仍可见。
 }
 
 - (void)captureExcludingWindows:(NSArray<UIWindow *> *)windows
@@ -87,6 +117,7 @@ static void PXResolveScreenCaptureSymbols(void) {
     NSParameterAssert(completion);
     void (^begin)(void) = ^{
         BOOL keepVisible = self.keepsExcludedWindowsVisible && windows.count > 0;
+        BOOL needsExclusionCommit = keepVisible && [self pxPrepareVisibleWindows:windows];
         NSMutableArray<NSDictionary *> *hidden = [NSMutableArray array];
         if (windows.count && !keepVisible) {
             for (UIWindow *window in windows) {
@@ -107,20 +138,23 @@ static void PXResolveScreenCaptureSymbols(void) {
                     return;
                 }
             }
-            NSString *method = keepVisible ? @"private-excluding-windows" : [[self class] resolvedCaptureMethod];
+            BOOL layerExcluded = keepVisible && self.layerExclusion.isActive &&
+                                 [self.protectedWindows isEqualToArray:windows];
+            BOOL canCaptureScreen = !keepVisible || layerExcluded;
+            NSString *method = [[self class] resolvedCaptureMethod];
             __block UIImage *image = nil;
             BOOL isPartial = NO;
 
             @try {
-                if (windows.count && !self.fallbackOnlyCapture) {
+                if (windows.count && !layerExcluded && !self.fallbackOnlyCapture) {
                     image = [self pxSnapshotExcludingWindows:windows];
                     if (image) method = @"private-excluding-windows";
                 }
-                if (!image && !keepVisible && _PXCreateScreenUIImage) {
+                if (!image && canCaptureScreen && _PXCreateScreenUIImage) {
                     image = _PXCreateScreenUIImage();
                     if (image) method = @"private-uicreate";
                 }
-                if (!image && !keepVisible && _PXGetScreenImage) {
+                if (!image && canCaptureScreen && _PXGetScreenImage) {
                     CGImageRef screenCG = _PXGetScreenImage();
                     if (screenCG) {
                         image = [UIImage imageWithCGImage:screenCG];
@@ -128,7 +162,11 @@ static void PXResolveScreenCaptureSymbols(void) {
                         if (image) method = @"private-uigetscreen";
                     }
                 }
-                if (!image && !keepVisible) {
+                if (!image && layerExcluded && !self.fallbackOnlyCapture) {
+                    image = [self pxSnapshotExcludingWindows:windows];
+                    if (image) method = @"private-excluding-windows";
+                }
+                if (!image && canCaptureScreen) {
                     image = [self pxGrabBySnapshotFallback];
                     isPartial = (image != nil);
                     method = @"fallback-snapshot";
@@ -180,7 +218,7 @@ static void PXResolveScreenCaptureSymbols(void) {
             });
           }
         };
-        if (hidden.count) {
+        if (hidden.count || needsExclusionCommit) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 / 60.0 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), grabBlock);
         } else {

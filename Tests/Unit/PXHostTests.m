@@ -17,6 +17,7 @@ static NSInteger PXTestFailures = 0;
 static NSInteger PXTestCount = 0;
 NSInteger PXRunLongShotHIDTests(NSInteger *checkCount);
 NSInteger PXRunLongShotOptionsTests(NSInteger *checkCount);
+NSInteger PXRunCaptureProviderTests(NSInteger *checkCount);
 NSInteger PXRunLongShotFrameStoreTests(NSInteger *checkCount);
 
 #define PXCheck(condition, name) do { \
@@ -1064,6 +1065,9 @@ int main(int argc, const char **argv) {
         NSInteger frameChecks = 0;
         PXTestFailures += PXRunLongShotFrameStoreTests(&frameChecks);
         PXTestCount += frameChecks;
+        NSInteger captureChecks = 0;
+        PXTestFailures += PXRunCaptureProviderTests(&captureChecks);
+        PXTestCount += captureChecks;
         testManualLongShot();
         testLongShotMemoryBudget();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);
