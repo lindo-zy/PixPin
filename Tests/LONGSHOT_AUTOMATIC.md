@@ -131,3 +131,7 @@ Options 适配器、Common 行为/位图逻辑、Composer、HUD、偏好键和�
   7a584e46fc786cf81b187d5f33fe74b268ae91b8999b42513335d110d4f2afd4
 - packages/ios17/com.pixpin.screenshot_1.10.1_ios17_iphoneos-arm64e.deb
   bda122420c5030a5fb5ee9b06190357b61f73c11125588b90385a10a83342bf3
+
+交付归档：通过 deb-to-icloud.sh PixPin 分类到 Downloads/PixPin/ios16 和 ios17，
+两份归档 SHA256 与构建产物一致；旧归档保留。运行本项目 python3 webdav-sync.py PixPin，
+新增上传 2 个、大小一致跳过 90 个，脚本对账全部一致，退出码 0。未读取或输出凭据，未 push。
