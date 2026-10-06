@@ -48,3 +48,14 @@
 8. iOS 16/17 两包安装/卸载和原全屏、区域截图、编辑器、相册/剪贴板回归。
 
 编译和包结构检查不是设备验证。最终包和归档结果在交付记录补充。
+
+## 1.10.5 交付记录
+
+- 集成目标：`main`，起点 `4cda374`，起始工作区干净。
+- 开发提交：`815563d`，独立 `codex/pixpin-longshot-rebuild` worktree；本地合并 `439d420` 后运行根目录 `./build.sh`，未 push。
+- 最终脚本宿主验证：703 checks, 0 failures。iOS 16.5/17.0 SDK 构建均通过；现有宿主枚举转换警告和链接器弃用参数警告仍存在，没有新构建错误。
+- 两包版本均为 `1.10.5`；实际 DEB Architecture 为 `iphoneos-arm64e`，依赖 firmware >= 16.0；dylib 含 arm64 与 arm64e。
+- 偏好包显示/构建版本一致，资源、过滤器、PreferenceLoader 入口及 plist 校验通过；包无自定义安装/卸载脚本，路径保持原 RootHide 布局。安装/卸载仍未在设备执行。
+- iOS 16 SHA-256：`919243efa020da4cf9eb7df976b033d66bd60ff776c2b5b90c4ee16eef80d0d0`
+- iOS 17 SHA-256：`b195ce500e804c46efda7eca79d8f53e4b025da01bfed23fac95877c1219101d`
+- 源码分析：已确认；编译：已确认；包结构：已确认；核心设备功能、冷热启动和回归：未验证。
