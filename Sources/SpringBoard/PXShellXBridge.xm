@@ -1,12 +1,15 @@
 #import "../Common/PXShellXBridge.h"
 #import "../Common/PXConstants.h"
 #import "../Common/PXLog.h"
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <notify.h>
 
-// SHELLX 出向桥实现（依据 ShellX 3.1.1 逆向报告 2.1/2.2 节）。与入向注册
-// （PXShellXPlugin）不同，这里只发 Darwin 通知、不触碰 SHELLX 的 ObjC 接口，
-// 通知名常量集中在 PXConstants（逐字取自 SHELLX 二进制字符串表）。
+// SHELLX 出向桥实现（依据 SHELLX 插件文档 2/3 节 + ShellX 3.1.1 逆向报告 2.1/2.2 节）。
+// 与入向注册（PXShellXPlugin）不同，这里不触碰 SHELLX 的 ObjC 接口：通知类动作只发
+// Darwin 通知（文档约定 SHELLX 两个中心都监听，调用方每次只发一条），URL 类动作经
+// SpringBoard 的 UIApplication openURL 打开 prefs:// 路由（快捷指令同链路，SHELLX 在
+// URL 分发层拦截）。名与路由常量集中在 PXConstants，逐字取自 SHELLX 插件文档。
 // 探测不设重试链：调用时机全部是用户主动交互，远晚于 SpringBoard 注入期。
 
 static NSString * const PXShellXPrefsDomain = @"com.iosdump.screenshotshell";
@@ -33,24 +36,67 @@ static NSString * const PXShellXMasterSwitchKey = @"GlobalEnabled";
 
 + (NSString *)notificationNameForAction:(PXShellXAction)action {
     switch (action) {
-        case PXShellXActionArea:     return (__bridge NSString *)PXShellXTriggerArea;
-        case PXShellXActionInstant:  return (__bridge NSString *)PXShellXTriggerInstant;
-        case PXShellXActionFreeze:   return (__bridge NSString *)PXShellXTriggerFreeze;
-        case PXShellXActionClose:    return (__bridge NSString *)PXShellXTriggerClose;
+        case PXShellXActionArea:      return (__bridge NSString *)PXShellXTriggerArea;
+        case PXShellXActionInstant:   return (__bridge NSString *)PXShellXTriggerInstant;
+        case PXShellXActionFreeze:    return (__bridge NSString *)PXShellXTriggerFreeze;
+        case PXShellXActionHistory:   return (__bridge NSString *)PXShellXTriggerHistory;
+        case PXShellXActionOpenLast:  return (__bridge NSString *)PXShellXTriggerOpenLast;
+        case PXShellXActionClose:     return (__bridge NSString *)PXShellXTriggerClose;
         case PXShellXActionAssistive: return (__bridge NSString *)PXShellXTriggerAssistive;
+        case PXShellXActionLongShot:
+        case PXShellXActionFullShot:
+        case PXShellXActionMark:
+        case PXShellXActionEdit:
+        case PXShellXActionAI2:
+        case PXShellXActionTranslate:
+        case PXShellXActionScan:
+            return nil;   // 文档只给 prefs:// 路由，没有等价通知
     }
     return nil;
 }
 
++ (NSURL *)urlForAction:(PXShellXAction)action {
+    CFStringRef route = NULL;
+    switch (action) {
+        case PXShellXActionLongShot:  route = PXShellXRouteLong; break;
+        case PXShellXActionFullShot:  route = PXShellXRouteFull; break;
+        case PXShellXActionMark:      route = PXShellXRouteMark; break;
+        case PXShellXActionEdit:      route = PXShellXRouteEdit; break;
+        case PXShellXActionAI2:       route = PXShellXRouteAI2; break;
+        case PXShellXActionTranslate: route = PXShellXRouteTranslate; break;
+        case PXShellXActionScan:      route = PXShellXRouteScan; break;
+        case PXShellXActionArea:
+        case PXShellXActionInstant:
+        case PXShellXActionFreeze:
+        case PXShellXActionHistory:
+        case PXShellXActionOpenLast:
+        case PXShellXActionClose:
+        case PXShellXActionAssistive:
+            return nil;   // 通知类动作不走 URL
+    }
+    if (!route) return nil;
+    return [NSURL URLWithString:(__bridge NSString *)route];
+}
+
 + (void)notifyAction:(PXShellXAction)action {
-    NSString *name = [self notificationNameForAction:action];
-    if (!name) return;
     if (![self isInstalled]) {
         PXLogInfo(@"shellx notify skipped: not installed");
         return;
     }
-    notify_post(name.UTF8String);
-    PXLogInfo(@"shellx notify posted: %@", name);
+    NSString *name = [self notificationNameForAction:action];
+    if (name) {
+        notify_post(name.UTF8String);
+        PXLogInfo(@"shellx notify posted: %@", name);
+        return;
+    }
+    NSURL *url = [self urlForAction:action];
+    if (!url) return;
+    // SpringBoard 本身是 UIApplication 子类实例，openURL 走系统 URL 分发层；
+    // 本方 hook（PXSpringBoardEntry）对非 pixpin:// 一律放行，SHELLX 侧拦截触发。
+    // 回调线程不确定，只打日志。SHELLX 未拦截时系统会打开设置页对应面板，可据此排查。
+    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL success) {
+        PXLogInfo(@"shellx url opened: %@ success=%d", url, success);
+    }];
 }
 
 @end

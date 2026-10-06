@@ -413,14 +413,11 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         return;
     }
     // SHELLX 扩展键：交给协调器外调，不走本方输出动作。
-    if ([[PXEditorOrder shellxSelectionIdentifiers] containsObject:identifier]) {
-        PXShellXAction action = PXShellXActionArea;
-        if ([identifier isEqualToString:@"shellxinstant"]) action = PXShellXActionInstant;
-        else if ([identifier isEqualToString:@"shellxfreeze"]) action = PXShellXActionFreeze;
-        else if ([identifier isEqualToString:@"shellxshot"]) action = PXShellXActionAssistive;
-        else if ([identifier isEqualToString:@"shellxclose"]) action = PXShellXActionClose;
+    // id→动作映射（PXEditorOrder）与 shellxSelectionIdentifiers 一一对应，缺一即静默失效。
+    NSNumber *shellxAction = [PXEditorOrder shellxSelectionActionMap][identifier];
+    if (shellxAction) {
         if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestShellXAction:action:)]) {
-            [self.delegate selectionViewDidRequestShellXAction:self action:action];
+            [self.delegate selectionViewDidRequestShellXAction:self action:(PXShellXAction)shellxAction.integerValue];
         }
         return;
     }

@@ -46,7 +46,11 @@
         identifiers = @[@"cancel", @"selectall", @"editor", @"float", @"long",
                         @"save", @"copy", @"confirm",
                         @"shellxarea", @"shellxinstant", @"shellxfreeze",
-                        @"shellxshot", @"shellxclose"];
+                        @"shellxshot", @"shellxclose",
+                        @"shellxhistory", @"shellxopenlast",
+                        @"shellxlong", @"shellxfull",
+                        @"shellxmark", @"shellxedit",
+                        @"shellxai2", @"shellxtranslate", @"shellxscan"];
     });
     return identifiers;
 }
@@ -56,9 +60,35 @@
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         identifiers = @[@"shellxarea", @"shellxinstant", @"shellxfreeze",
-                        @"shellxshot", @"shellxclose"];
+                        @"shellxshot", @"shellxclose",
+                        @"shellxhistory", @"shellxopenlast",
+                        @"shellxlong", @"shellxfull",
+                        @"shellxmark", @"shellxedit",
+                        @"shellxai2", @"shellxtranslate", @"shellxscan"];
     });
     return identifiers;
+}
+
++ (NSDictionary<NSString *, NSNumber *> *)shellxSelectionActionMap {
+    static NSDictionary<NSString *, NSNumber *> *map;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        map = @{@"shellxarea": @(PXShellXActionArea),
+                @"shellxinstant": @(PXShellXActionInstant),
+                @"shellxfreeze": @(PXShellXActionFreeze),
+                @"shellxshot": @(PXShellXActionAssistive),
+                @"shellxclose": @(PXShellXActionClose),
+                @"shellxhistory": @(PXShellXActionHistory),
+                @"shellxopenlast": @(PXShellXActionOpenLast),
+                @"shellxlong": @(PXShellXActionLongShot),
+                @"shellxfull": @(PXShellXActionFullShot),
+                @"shellxmark": @(PXShellXActionMark),
+                @"shellxedit": @(PXShellXActionEdit),
+                @"shellxai2": @(PXShellXActionAI2),
+                @"shellxtranslate": @(PXShellXActionTranslate),
+                @"shellxscan": @(PXShellXActionScan)};
+    });
+    return map;
 }
 
 + (NSDictionary<NSString *, NSString *> *)actionDisplayNames {
@@ -122,7 +152,16 @@
                   @"shellxinstant": @"ShellX 即时",
                   @"shellxfreeze": @"ShellX 冻结",
                   @"shellxshot": @"ShellX 套壳",
-                  @"shellxclose": @"ShellX 关闭"};
+                  @"shellxclose": @"ShellX 关闭",
+                  @"shellxhistory": @"ShellX 记录",
+                  @"shellxopenlast": @"ShellX 最近",
+                  @"shellxlong": @"ShellX 长图",
+                  @"shellxfull": @"ShellX 整屏",
+                  @"shellxmark": @"ShellX 标记",
+                  @"shellxedit": @"ShellX 编辑",
+                  @"shellxai2": @"ShellX 问答",
+                  @"shellxtranslate": @"ShellX 翻译",
+                  @"shellxscan": @"ShellX 扫码"};
     });
     return names;
 }
@@ -221,7 +260,16 @@
                   @"shellxinstant": @"timer",
                   @"shellxfreeze": @"snowflake",
                   @"shellxshot": @"smartphone",
-                  @"shellxclose": @"xmark.app"};
+                  @"shellxclose": @"xmark.app",
+                  @"shellxhistory": @"clock.arrow.circlepath",
+                  @"shellxopenlast": @"photo.on.rectangle",
+                  @"shellxlong": @"arrow.down.to.line",
+                  @"shellxfull": @"rectangle.inset.filled",
+                  @"shellxmark": @"highlighter",
+                  @"shellxedit": @"square.and.pencil",
+                  @"shellxai2": @"text.bubble",
+                  @"shellxtranslate": @"character.bubble",
+                  @"shellxscan": @"qrcode.viewfinder"};
     });
     return icons;
 }

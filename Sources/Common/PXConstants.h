@@ -40,14 +40,31 @@ FOUNDATION_EXPORT CFStringRef const PXDarwinShellXOpenFreeze;  // com.iosdump.sc
 FOUNDATION_EXPORT CFStringRef const PXDarwinShellXClose;       // com.iosdump.screenshotshell.close → 取消当前任务
 
 // MARK: - SHELLX 出向触发名（SHELLX 自己注册的观察者，PixPin 工具栏按钮 notify_post 外调用。
-// 与上方兼容别名相反：别名只有 PixPin 监听，这些名在 SHELLX 二进制中逐字存在，
-// 名字写错即静默无效，改前必须用 ShellX 二进制字符串表核对）
+// 官方名逐字取自 SHELLX 插件文档第 2 节，文档保证 SHELLX 监听；其中区域/即时/冻结/关闭
+// 与上方兼容别名同名，自发通知会被本方观察者收到，外调方必须做自发自收抑制。
+// 历史版本走 Snapper3 别名（com.jontelang.snapper3.*），现按官方文档统一切换；
+// AssistiveScreenshot 是文档外的逆向入口，继续沿用逆向报告。名字写错即静默无效，
+// 改前必须用 SHELLX 插件文档或二进制字符串表核对）
 
-FOUNDATION_EXPORT CFStringRef const PXShellXTriggerArea;      // com.jontelang.snapper3.force.open → SHELLX 区域画板
-FOUNDATION_EXPORT CFStringRef const PXShellXTriggerInstant;   // com.jontelang.snapper3.forceinstant.open → 即时模式
-FOUNDATION_EXPORT CFStringRef const PXShellXTriggerFreeze;    // com.jontelang.snapper3.forcefreeze.open → 冻结画板
-FOUNDATION_EXPORT CFStringRef const PXShellXTriggerClose;     // com.jontelang.snapper3.close.all → 关闭 SHELLX 画板
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerArea;      // com.iosdump.screenshotshell.open → 普通框选
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerInstant;   // com.iosdump.screenshotshell.open.instant → 即时
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerFreeze;    // com.iosdump.screenshotshell.open.freeze → 冻结
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerHistory;   // com.iosdump.screenshotshell.history → 图片记录
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerOpenLast;  // com.iosdump.screenshotshell.openlast → 最近一张悬浮
+FOUNDATION_EXPORT CFStringRef const PXShellXTriggerClose;     // com.iosdump.screenshotshell.close → 关闭框选/长截图/拼接
 FOUNDATION_EXPORT CFStringRef const PXShellXTriggerAssistive; // com.iosdump.screenshotshell/AssistiveScreenshot → 套壳截图
+
+// MARK: - SHELLX 出向 URL 路由（SHELLX 插件文档第 3 节：prefs://root=shellx_*，
+// 快捷指令与其余插件同链路调用。文档未给这些功能的等价通知，只能走 URL：
+// 经 SpringBoard URL 分发层由 SHELLX 拦截，本方 URL hook 对非 pixpin:// 一律放行）
+
+FOUNDATION_EXPORT CFStringRef const PXShellXRouteLong;      // prefs://root=shellx_long → 长截图
+FOUNDATION_EXPORT CFStringRef const PXShellXRouteFull;      // prefs://root=shellx_full → 整屏截一张
+FOUNDATION_EXPORT CFStringRef const PXShellXRouteMark;      // prefs://root=shellx_mark → 全屏标记
+FOUNDATION_EXPORT CFStringRef const PXShellXRouteEdit;      // prefs://root=shellx_edit → 编辑
+FOUNDATION_EXPORT CFStringRef const PXShellXRouteAI2;       // prefs://root=shellx_ai2 → 文字问答
+FOUNDATION_EXPORT CFStringRef const PXShellXRouteTranslate; // prefs://root=shellx_translate → 全屏翻译
+FOUNDATION_EXPORT CFStringRef const PXShellXRouteScan;      // prefs://root=shellx_scan → 全屏扫码
 
 // MARK: - 进程内通知名（同样不携带图片对象，只提示协调器刷新）
 

@@ -25,11 +25,21 @@ CFStringRef const PXDarwinShellXOpenInstant = CFSTR("com.iosdump.screenshotshell
 CFStringRef const PXDarwinShellXOpenFreeze = CFSTR("com.iosdump.screenshotshell.open.freeze");
 CFStringRef const PXDarwinShellXClose = CFSTR("com.iosdump.screenshotshell.close");
 
-CFStringRef const PXShellXTriggerArea = CFSTR("com.jontelang.snapper3.force.open");
-CFStringRef const PXShellXTriggerInstant = CFSTR("com.jontelang.snapper3.forceinstant.open");
-CFStringRef const PXShellXTriggerFreeze = CFSTR("com.jontelang.snapper3.forcefreeze.open");
-CFStringRef const PXShellXTriggerClose = CFSTR("com.jontelang.snapper3.close.all");
+CFStringRef const PXShellXTriggerArea = CFSTR("com.iosdump.screenshotshell.open");
+CFStringRef const PXShellXTriggerInstant = CFSTR("com.iosdump.screenshotshell.open.instant");
+CFStringRef const PXShellXTriggerFreeze = CFSTR("com.iosdump.screenshotshell.open.freeze");
+CFStringRef const PXShellXTriggerHistory = CFSTR("com.iosdump.screenshotshell.history");
+CFStringRef const PXShellXTriggerOpenLast = CFSTR("com.iosdump.screenshotshell.openlast");
+CFStringRef const PXShellXTriggerClose = CFSTR("com.iosdump.screenshotshell.close");
 CFStringRef const PXShellXTriggerAssistive = CFSTR("com.iosdump.screenshotshell/AssistiveScreenshot");
+
+CFStringRef const PXShellXRouteLong = CFSTR("prefs://root=shellx_long");
+CFStringRef const PXShellXRouteFull = CFSTR("prefs://root=shellx_full");
+CFStringRef const PXShellXRouteMark = CFSTR("prefs://root=shellx_mark");
+CFStringRef const PXShellXRouteEdit = CFSTR("prefs://root=shellx_edit");
+CFStringRef const PXShellXRouteAI2 = CFSTR("prefs://root=shellx_ai2");
+CFStringRef const PXShellXRouteTranslate = CFSTR("prefs://root=shellx_translate");
+CFStringRef const PXShellXRouteScan = CFSTR("prefs://root=shellx_scan");
 
 NSString * const PXNotificationResultUpdated = @"com.pixpin.screenshot/result/updated";
 

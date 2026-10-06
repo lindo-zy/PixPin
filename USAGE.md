@@ -126,6 +126,31 @@ dispatch_async(dispatch_get_main_queue(), ^{
 
 注册遵守运行时探测：`SHELLXPluginManager` 类不存在（未装 SHELLX，或新版改名）时最多重试 6 秒后放弃，仅留一条 info 日志，无其他副作用。转发回调遵守 PixPin 总开关，关闭时忽略；任务忙碌时丢弃并记录日志（重新触发即可）。
 
+### 3.1.4 工具栏外调 SHELLX 全功能（1.10.11+）
+
+装有 SHELLX 且其总开关打开时，区域/冻结选区工具栏提供 SHELLX 扩展按钮（设置 → PixPin → 区域截图按钮可排序、显隐、改名改图标），点击直接触发 SHELLX 对应功能，触发前先收起本方选区窗口、避免截进本方画板：
+
+| 按钮 | 功能 | 触发通道 |
+|---|---|---|
+| ShellX 区域 | 普通框选 | 通知 `com.iosdump.screenshotshell.open` |
+| ShellX 即时 | 即时 | 通知 `…shell.open.instant` |
+| ShellX 冻结 | 冻结 | 通知 `…shell.open.freeze` |
+| ShellX 套壳 | 套壳截图 | 通知 `…shell/AssistiveScreenshot`（文档外逆向入口） |
+| ShellX 关闭 | 关闭框选/长截图/拼接 | 通知 `…shell.close` |
+| ShellX 记录 | 图片记录 | 通知 `…shell.history` |
+| ShellX 最近 | 最近一张悬浮 | 通知 `…shell.openlast`（无最近图片时无反应） |
+| ShellX 长图 | 长截图 | URL `prefs://root=shellx_long` |
+| ShellX 整屏 | 整屏截一张 | URL `prefs://root=shellx_full` |
+| ShellX 标记 | 全屏标记 | URL `prefs://root=shellx_mark` |
+| ShellX 编辑 | 编辑 | URL `prefs://root=shellx_edit` |
+| ShellX 问答 | 文字问答 | URL `prefs://root=shellx_ai2` |
+| ShellX 翻译 | 全屏翻译 | URL `prefs://root=shellx_translate` |
+| ShellX 扫码 | 全屏扫码 | URL `prefs://root=shellx_scan` |
+
+通知按官方文档每次只发 Darwin 一条；URL 走 SpringBoard 的 UIApplication openURL（与快捷指令同链路），由 SHELLX 在 URL 分发层拦截，本方对非 `pixpin://` 请求一律放行。区域/即时/冻结/关闭的官方触发名与本方 SHELLX 兼容别名同名，外调前按名武装自发自收抑制，避免画板双开。1.10.10 及之前版本外调走 Snapper3 别名（`com.jontelang.snapper3.*`），1.10.11 起统一切换为官方文档名。
+
+真机验收：点击各按钮后 syslog 应出现 `shellx notify posted: <名>` 或 `shellx url opened: <路由> success=1`，且 SHELLX 侧对应功能被触发；URL 类若退化为打开设置页对应面板，说明 SHELLX 未拦截该路由，需核对其版本与文档。
+
 ### 3.2 外部入口真机验收（待执行）
 
 1. iOS 16/17 各自在设备冷启动并恢复越狱注入后、热启动时，从桌面和 App 内分别调用默认 URL 与默认 Darwin 通知；预期按默认结果动作输出整屏截图并出现结果气泡，不进入标记编辑器。
