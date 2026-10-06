@@ -54,6 +54,8 @@ BOOL PXLongShotCanvasGeometry(NSInteger width, NSInteger totalHeight, NSInteger 
 
 /// 在 viewport∩screenBounds 安全区内规划一条避开 protectedRect 的竖直上滑：
 /// 滑动带压到 protectedRect 下缘以下（HUD 小窗悬在右上），带高不足 80pt 返回 NO。
+/// 起滑点居中于滑动带：贴带底起滑会落进微信等 App 的 tabBar/输入栏，触摸被底栏
+/// 消费、正文不滚（ShellX 起滑 0.60·H，手势全程在屏幕中部）。
 BOOL PXLongShotBuildScrollPlan(CGRect viewport, CGRect screenBounds, CGRect protectedRect,
                               PXLongShotScrollPlan *plan);
 

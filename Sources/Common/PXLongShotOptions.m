@@ -30,7 +30,7 @@ static double PXLongShotNumber(NSDictionary *values, NSString *key, double fallb
         _idleInterval = PXLongShotNumber(values, PXKeyLongShotIdleInterval, 0.5, _sampleInterval, 2, NO);
         if (_idleInterval < _sampleInterval) _idleInterval = _sampleInterval;
         _scrollDuration = PXLongShotNumber(values, PXKeyLongShotScrollDuration, 0.62, 0.25, 2, NO);
-        _settleDuration = PXLongShotNumber(values, PXKeyLongShotSettleDuration, 0.45, 0.15, 2, NO);
+        _settleDuration = PXLongShotNumber(values, PXKeyLongShotSettleDuration, 0.7, 0.15, 2, NO); // ShellX 抬指后等 0.7s：指示条淡出+动画稳定
         _maxSlices = (NSInteger)PXLongShotNumber(values, PXKeyLongShotMaxSlices, 200, 2, 500, YES);
         _maxCanvasHeight = (NSInteger)PXLongShotNumber(values, PXKeyLongShotMaxCanvasHeight, 16384, 1024, 16384, YES);
         _sliceQuality = PXLongShotNumber(values, PXKeyLongShotSliceQuality, 0.95, 0.5, 1, NO);

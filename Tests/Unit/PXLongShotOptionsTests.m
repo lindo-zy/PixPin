@@ -60,7 +60,7 @@ NSInteger PXRunLongShotOptionsTests(NSInteger *checkCount) {
     LS_CHECK(defaults.autoScroll && defaults.maxSlices == 200 && defaults.maxCanvasHeight == 16384,
              "external long mode defaults to automatic without a four-frame limit");
     LS_CHECK(defaults.sampleInterval == 0.12 && defaults.idleInterval == 0.5 && defaults.scrollDuration == 0.62 &&
-             defaults.settleDuration == 0.45 && defaults.sliceQuality == 0.95 && defaults.outputQuality == 0.9,
+             defaults.settleDuration == 0.7 && defaults.sliceQuality == 0.95 && defaults.outputQuality == 0.9,
              "sampling and encoding defaults preserve existing values");
     NSArray *bad = @[@(-1), @(NAN), @(INFINITY), @"0.5", @YES, NSNull.null];
     for (id value in bad) {

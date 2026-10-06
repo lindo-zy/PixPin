@@ -58,7 +58,7 @@ Options 适配器、Common 行为/位图逻辑、Composer、HUD、偏好键和�
 | LongShotSampleInterval | 0.12 秒 | 0.08–1 |
 | LongShotIdleInterval | 0.5 秒 | sampleInterval–2 |
 | LongShotScrollDuration | 0.62 秒 | 0.25–2 |
-| LongShotSettleDuration | 0.45 秒 | 0.15–2 |
+| LongShotSettleDuration | 0.7 秒 | 0.15–2 |
 | LongShotMaxSlices | 200 | 2–500，整数 |
 | LongShotMaxCanvasHeight | 16384 像素 | 1024–16384，整数 |
 | LongShotSliceQuality | 0.95 | 0.5–1 |
@@ -77,6 +77,9 @@ Options 适配器、Common 行为/位图逻辑、Composer、HUD、偏好键和�
   本版不含重拼入口。
   needsSettledCapture 防止内存恢复时跳过尚未抓取段。静止完成还要求当前采样与末
   保存锚点重复，未对齐页面静止不会伪报到底；不可信衔接也不作为回弹完成的方向证据。
+- 手势起滑点居中于滑动带（两端各留 ≥22pt）：贴带底起滑会落进微信等 App 的
+  tabBar/输入栏，触摸被底栏消费、正文不滚（v1.9.8 逆向结论，v1.10.4 才实施）；
+  对齐 ShellX 抬指后等待，settleDuration 默认 0.45→0.7 秒（可配置回退）。
 - 首片内存警告保留 generation，后台工作结束后再决定停机；安全底线保持原值。
 - 完成与取消清理 displayLink、Timer、Observer 和弱会话注册；后台临时文件在串行
   队列末尾再清理，确保迟到写盘不残留。窗口恢复检查原 controller，销毁后不会复活。
@@ -108,6 +111,9 @@ Options 适配器、Common 行为/位图逻辑、Composer、HUD、偏好键和�
   目标是断开长期持有关系，不能把这一点宣称为设备 footprint 已恒定。
 - 单次最多默认 200/配置 500 帧，磁盘不足会安全停机；没有无限帧采集承诺。
 - 冷/热启动、安装/卸载、真实触摸和相册/剪贴板回归全部未执行。
+- 纠正性回滚的起滑点未设顶栏安全下限：选区带顶贴屏顶且带高约 140–285pt 时，
+  回滑起点可低至 y≈60 落进导航栏/状态栏区，触摸被顶栏消费、该次回滚无效
+  （失败由 unmatchedCount>=3 暂停兜底）；后续可按 screenBounds 推导安全下限。
 
 初始集成分支：main；HEAD：761fd2d；工作区干净。
 开发分支：codex/pixpin-auto-longshot；独立 worktree 完成后本地合并，不 push。
