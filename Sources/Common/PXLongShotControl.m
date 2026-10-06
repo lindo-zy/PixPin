@@ -141,8 +141,12 @@ BOOL PXLongShotBuildScrollPlan(CGRect viewport, CGRect screenBounds, CGRect prot
         rect.size.height = bandBottom - rect.origin.y;
     }
     CGFloat distance = MIN((CGRectGetHeight(rect) - 20.0) * 0.60, 320.0);
-    plan->start = CGPointMake(CGRectGetMidX(rect), CGRectGetMaxY(rect) - 10.0);
-    plan->end = CGPointMake(plan->start.x, plan->start.y - distance);
+    // 起滑点居中于滑动带：带底上方 10pt 在全屏模式下落在微信等 App 的 tabBar/输入栏，
+    // 触摸被底栏消费、正文不滚（v1.9.8 逆向结论，ShellX 起滑 0.60·H 手势全程在屏幕
+    // 中部）。居中放置后两端各留 ≥22pt 带内余量，远离上下边栏。
+    CGFloat center = CGRectGetMinY(rect) + CGRectGetHeight(rect) / 2.0;
+    plan->start = CGPointMake(CGRectGetMidX(rect), center + distance / 2.0);
+    plan->end = CGPointMake(plan->start.x, center - distance / 2.0);
     return YES;
 }
 

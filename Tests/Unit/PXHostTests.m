@@ -838,6 +838,9 @@ static void testLongShotScrollPlan(void) {
     PXCheck(!PXLongShotBuildScrollPlan(CGRectMake(280, 20, 90, 150), bounds, panel, &plan),
             "viewport hidden behind HUD panel is rejected");
     PXCheck(PXLongShotBuildScrollPlan(bounds, bounds, CGRectZero, &plan), "no protected rect uses full band");
+    // 微信回归守卫：全屏带 [24,820] 居中起滑 → start=582/end=262，均远离底部 tabBar（y≥761）。
+    PXCheck(plan.start.y == 582 && plan.end.y == 262,
+            "fullscreen swipe centers in the band away from tab bars");
     PXCheck(!PXLongShotBuildScrollPlan(CGRectNull, bounds, panel, &plan), "null viewport is rejected");
     PXCheck(!PXLongShotBuildScrollPlan(viewport, bounds, panel, NULL), "null plan is rejected");
     PXCheck(PXLongShotBuildScrollPlan(CGRectMake(20, 40, 700, 700), CGRectMake(0, 0, 844, 390), panel, &plan),
