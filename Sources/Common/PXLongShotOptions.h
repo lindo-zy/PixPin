@@ -4,6 +4,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// 每个任务的不可变参数快照；内存安全底线不属于可配置项。
 @interface PXLongShotOptions : NSObject
 @property (nonatomic, readonly) BOOL autoScroll;
+@property (nonatomic, readonly) BOOL keepFrames;
 @property (nonatomic, readonly) NSTimeInterval sampleInterval;
 @property (nonatomic, readonly) NSTimeInterval idleInterval;
 @property (nonatomic, readonly) NSTimeInterval scrollDuration;
