@@ -297,22 +297,41 @@ static void testShellXAliases(void) {
 
 static void testShellXTriggers(void) {
     printf("[shellx triggers]\n");
-    // 出向触发名必须与 SHELLX 二进制内注册的观察者名逐字一致（ShellX 3.1.1 cstring 核对）；
+    // 出向触发名必须与 SHELLX 观察者注册名逐字一致（官方名取自 SHELLX 插件文档第 2 节，
+    // AssistiveScreenshot 为文档外逆向入口，ShellX 3.1.1 cstring 核对）；
     // 写错则 notify_post 静默无效——没有接收方，也没有任何报错。
     NSDictionary<NSString *, NSString *> *triggers = @{
-        @"com.jontelang.snapper3.force.open": (__bridge NSString *)PXShellXTriggerArea,
-        @"com.jontelang.snapper3.forceinstant.open": (__bridge NSString *)PXShellXTriggerInstant,
-        @"com.jontelang.snapper3.forcefreeze.open": (__bridge NSString *)PXShellXTriggerFreeze,
-        @"com.jontelang.snapper3.close.all": (__bridge NSString *)PXShellXTriggerClose,
+        @"com.iosdump.screenshotshell.open": (__bridge NSString *)PXShellXTriggerArea,
+        @"com.iosdump.screenshotshell.open.instant": (__bridge NSString *)PXShellXTriggerInstant,
+        @"com.iosdump.screenshotshell.open.freeze": (__bridge NSString *)PXShellXTriggerFreeze,
+        @"com.iosdump.screenshotshell.history": (__bridge NSString *)PXShellXTriggerHistory,
+        @"com.iosdump.screenshotshell.openlast": (__bridge NSString *)PXShellXTriggerOpenLast,
+        @"com.iosdump.screenshotshell.close": (__bridge NSString *)PXShellXTriggerClose,
         @"com.iosdump.screenshotshell/AssistiveScreenshot": (__bridge NSString *)PXShellXTriggerAssistive,
     };
     for (NSString *expected in triggers) {
         PXCheck([triggers[expected] isEqualToString:expected], expected.UTF8String);
     }
-    // 区域/即时/冻结/关闭四个触发名与本方 Snapper3 兼容别名同名：自发通知会被自己的
+    // 区域/即时/冻结/关闭四个官方触发名与本方 SHELLX 兼容别名同名：自发通知会被自己的
     // 观察者收到，外调方必须做自发自收抑制（协调器按名武装一次）；这条检查钉住该前提。
-    PXCheck([(__bridge NSString *)PXShellXTriggerArea isEqualToString:(__bridge NSString *)PXDarwinSnapperForceOpen],
-            "area trigger shares snapper3 alias name, self-post suppression required");
+    PXCheck([(__bridge NSString *)PXShellXTriggerArea isEqualToString:(__bridge NSString *)PXDarwinShellXOpen],
+            "area trigger shares shellx alias name, self-post suppression required");
+
+    // URL 路由必须与 SHELLX 插件文档第 3 节逐字一致：走 SpringBoard URL 分发层由
+    // SHELLX 拦截，路由写错的症状是打开设置页而不是触发功能。
+    NSDictionary<NSString *, NSString *> *routes = @{
+        @"prefs://root=shellx_long": (__bridge NSString *)PXShellXRouteLong,
+        @"prefs://root=shellx_full": (__bridge NSString *)PXShellXRouteFull,
+        @"prefs://root=shellx_mark": (__bridge NSString *)PXShellXRouteMark,
+        @"prefs://root=shellx_edit": (__bridge NSString *)PXShellXRouteEdit,
+        @"prefs://root=shellx_ai2": (__bridge NSString *)PXShellXRouteAI2,
+        @"prefs://root=shellx_translate": (__bridge NSString *)PXShellXRouteTranslate,
+        @"prefs://root=shellx_scan": (__bridge NSString *)PXShellXRouteScan,
+    };
+    for (NSString *expected in routes) {
+        PXCheck([routes[expected] isEqualToString:expected], expected.UTF8String);
+        PXCheck([NSURL URLWithString:routes[expected]] != nil, "route parses as NSURL");
+    }
 }
 
 static void testEditorOrder(void) {
@@ -455,11 +474,11 @@ static void testEditorOverrides(void) {
 static void testSelectionOrder(void) {
     printf("[selection order]\n");
     NSArray<NSString *> *defaults = [PXEditorOrder defaultSelectionIdentifiers];
-    PXCheckInt(defaults.count, 13, "selection catalog count");
-    PXCheckInt([NSSet setWithArray:defaults].count, 13, "selection ids unique");
+    PXCheckInt(defaults.count, 22, "selection catalog count");
+    PXCheckInt([NSSet setWithArray:defaults].count, 22, "selection ids unique");
     // SHELLX 扩展组是目录的子集：工具栏按运行时可用性整体增删，目录解析无需特判。
     NSArray<NSString *> *shellx = [PXEditorOrder shellxSelectionIdentifiers];
-    PXCheckInt(shellx.count, 5, "shellx group count");
+    PXCheckInt(shellx.count, 14, "shellx group count");
     for (NSString *identifier in shellx) {
         PXCheck([defaults containsObject:identifier], "shellx id inside selection catalog");
         PXCheck([PXEditorOrder displayNameForSelectionIdentifier:identifier].length > 0, "selection display name");
@@ -486,7 +505,7 @@ static void testSelectionOrder(void) {
     [expectedOrder removeObject:@"float"];
     PXCheck([visible indexOfObject:@"confirm"] == [expectedOrder indexOfObject:@"confirm"],
             "confirm stays at configured position");
-    PXCheck([visible.lastObject isEqualToString:@"shellxclose"], "shellx group appended at tail");
+    PXCheck([visible.lastObject isEqualToString:@"shellxscan"], "shellx group appended at tail");
 
     // 即时模式：固定快速三键。
     NSArray<NSString *> *instant = [PXEditorOrder visibleSelectionOrderForOrder:defaults hidden:nil instant:YES];

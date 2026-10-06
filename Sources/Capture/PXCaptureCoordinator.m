@@ -18,9 +18,9 @@
 static const CGFloat PXFramesToWaitBeforeCapture = 2.0;
 /// 与 PXSelectionView 的选区下限一致；恢复上次选区时钳制用。
 static const CGFloat PXSelectionMinimumSize = 44.0;
-// 自发自收抑制（主线程读写）：工具栏外调 SHELLX 的触发名与上方 Snapper3 兼容别名同名，
-// Darwin 中心会把自发通知也投递回本进程，外调前按名武装一次，回环到达时吞掉，
-// 否则画板会双开（PixPin 一块、SHELLX 一块）。
+// 自发自收抑制（主线程读写）：工具栏外调 SHELLX 的官方触发名与本方 SHELLX/Snapper3
+// 兼容别名同名，Darwin 中心会把自发通知也投递回本进程，外调前按名武装一次，
+// 回环到达时吞掉，否则画板会双开（PixPin 一块、SHELLX 一块）。
 static NSString *_Nullable pxDarwinSelfPostArmedName = nil;
 
 @interface PXCaptureCoordinator () <PXSelectionViewDelegate, PXResultBubbleDelegate,
@@ -381,12 +381,15 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
 }
 
 - (void)selectionViewDidRequestShellXAction:(PXSelectionView *)view action:(PXShellXAction)action {
-    // SHELLX 收到通知后会重新抓屏：先把本方选区窗口收掉，避免截进 SHELLX 画板。
+    // SHELLX 收到信号后会重抓屏或弹全屏界面：先把本方选区窗口收掉，避免截进本方画板。
     // 悬浮图是用户主动常驻的内容，与「取消」同口径保留；关闭动作不涉及重抓屏，本方会话不动。
     if (action != PXShellXActionClose) {
         [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
     }
-    // 套壳截图名本方未监听无需武装；其余四个触发名都撞本方兼容别名，武装防双开。
+    // 武装自发自收抑制：区域/即时/冻结/关闭的官方触发名与本方 SHELLX 兼容别名同名
+    // （Darwin 中心把自发通知也投递回本进程），外调前按名武装一次，回环到达时吞掉，
+    // 否则画板双开（PixPin 一块、SHELLX 一块）。记录/最近一张本方未监听，套壳截图名
+    // 同样不在监听表，均无回环；URL 类动作不经过通知中心，也无回环。
     switch (action) {
         case PXShellXActionArea:
         case PXShellXActionInstant:
@@ -394,7 +397,16 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
         case PXShellXActionClose:
             pxDarwinSelfPostArmedName = [PXShellXBridge notificationNameForAction:action];
             break;
+        case PXShellXActionHistory:
+        case PXShellXActionOpenLast:
         case PXShellXActionAssistive:
+        case PXShellXActionLongShot:
+        case PXShellXActionFullShot:
+        case PXShellXActionMark:
+        case PXShellXActionEdit:
+        case PXShellXActionAI2:
+        case PXShellXActionTranslate:
+        case PXShellXActionScan:
             break;
     }
     [PXShellXBridge notifyAction:action];
