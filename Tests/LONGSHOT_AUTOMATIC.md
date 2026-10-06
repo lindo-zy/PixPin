@@ -103,3 +103,31 @@ Options 适配器、Common 行为/位图逻辑、Composer、HUD、偏好键和�
 
 初始集成分支：main；HEAD：761fd2d；工作区干净。
 开发分支：codex/pixpin-auto-longshot；独立 worktree 完成后本地合并，不 push。
+
+## 最终静态与构建记录
+
+源码提交 6ed0146、96a4483 已快进合入 main。第二次审查补上未对齐静止页面不能
+自动完成的约束；最终通过根目录 build.sh 生成 1.10.1（首轮验证包为 1.10.0，
+最终交付以 1.10.1 为准）。版本号仅在两目标全部成功后由脚本回写。
+
+- 源码分析：已确认静态调用链、修改范围、所有权和取消/重复/失败路径；
+  git diff --check 通过。App 路由因果、私有 API 的实时表现未确认。
+- 宿主测试：645 checks，0 failures；包含 24 帧独立位图/签名/JPEG 流程。
+  不覆盖 SpringBoard 的实际 Window/Scene 生命周期、设备内存通知或 App 触摸。
+- 编译：已确认 iOS 16/17 双目标成功；dylib 均为 arm64 + arm64e。
+- 包结构：已确认版本 1.10.1、Architecture=iphoneos-arm64e、依赖
+  mobilesubstrate / preferenceloader / firmware >=16.0；设置 bundle 显示/构建版本一致。
+  RootHide 安装目录为 Library/MobileSubstrate/DynamicLibraries，过滤仍只有
+  com.apple.springboard。DEBIAN 仅 control，没有新增维护脚本。
+- Mach-O：两包 minos 均为 16.0；iOS16 约定 SDK 目录为 16.5，其内部版本标记仍为
+  16.4；iOS17 标记为 17.0。没有改 SDK 或目标支持线。
+- 核心功能：未验证；安装/卸载、冷/热启动、真实 App 自动滚动及内存曲线未验证。
+- 已知构建告警：既有 PXHostTests 的三处 CGBitmapInfo 枚举转换告警，及工具链
+  -multiply_defined obsolete 链接告警；本轮新增位图代码的枚举转换已显式处理。
+
+最终产物及 SHA256：
+
+- packages/ios16/com.pixpin.screenshot_1.10.1_ios16_iphoneos-arm64e.deb
+  7a584e46fc786cf81b187d5f33fe74b268ae91b8999b42513335d110d4f2afd4
+- packages/ios17/com.pixpin.screenshot_1.10.1_ios17_iphoneos-arm64e.deb
+  bda122420c5030a5fb5ee9b06190357b61f73c11125588b90385a10a83342bf3
