@@ -59,3 +59,6 @@
 - iOS 16 SHA-256：`919243efa020da4cf9eb7df976b033d66bd60ff776c2b5b90c4ee16eef80d0d0`
 - iOS 17 SHA-256：`b195ce500e804c46efda7eca79d8f53e4b025da01bfed23fac95877c1219101d`
 - 源码分析：已确认；编译：已确认；包结构：已确认；核心设备功能、冷热启动和回归：未验证。
+- 已执行 `~/dev/scripts/deb-to-icloud.sh PixPin <双包>`；iCloud 两份归档与原包逐字节一致，旧版保留。
+- 已执行本仓库 `python3 webdav-sync.py PixPin`：上传 2 个，一致跳过 98 个，对账全部一致；远端历史文件未删除。
+- 临时 worktree 已归档，已合并开发分支已清理；未 push。
