@@ -11,7 +11,6 @@
 @property (nonatomic, strong) NSMutableArray<PXLongShotSlice *> *slices;
 @property (nonatomic, strong) NSData *anchorSignature;
 @property (nonatomic, strong) PXLongPreviewCanvas *preview;
-@property (nonatomic, strong) NSMutableArray<NSString *> *keptPaths;
 @property (nonatomic) NSInteger fixedTop;
 @property (nonatomic) NSInteger fixedBottom;
 @property (nonatomic) NSUInteger sequence;
@@ -53,7 +52,7 @@ static NSData *PXFrameSignature(CGImageRef source, CGRect rect) {
                      cancellation:(PXLongShotCancellation *)cancellation scale:(CGFloat)scale {
     if ((self = [super init])) {
         _directory = [directory copy]; _options = options; _cancellation = cancellation;
-        _scale = MAX(1, scale); _slices = [NSMutableArray array]; _keptPaths = [NSMutableArray array];
+        _scale = MAX(1, scale); _slices = [NSMutableArray array];
         _fixedTop = _fixedBottom = -1;
     }
     return self;
@@ -80,39 +79,31 @@ static NSData *PXFrameSignature(CGImageRef source, CGRect rect) {
     if (self.cancellation.cancelled) return nil;
     NSString *path = [self.directory stringByAppendingPathComponent:
                        [NSString stringWithFormat:@"longframe_%06lu.jpg", (unsigned long)++self.sequence]];
-    // 只有有效帧编码；诊断开关开启时最多保留 24 张判歧帧，完全不参与正式结果。
-    if (match.kind == PXLongShotMatchForward || (match.kind == PXLongShotMatchUncertain && self.options.keepFrames)) {
+    // 只有可靠推进帧参与编码；判歧/回退帧直接跳过，不落盘、不参与正式结果。
+    if (match.kind == PXLongShotMatchForward) {
         PXLongShotSlice *slice = [PXLongImageComposer sliceFromScreenImage:image pixelRect:rect filePath:path
                                         options:self.options cancellation:self.cancellation error:error];
         if (!slice || self.cancellation.cancelled) {
             [NSFileManager.defaultManager removeItemAtPath:path error:nil]; return nil;
         }
         [slice discardAlignmentSignature];
-        if (match.kind == PXLongShotMatchForward) {
-            if (anchor) {
-                if (self.fixedTop < 0) { self.fixedTop = match.fixedTopRows; self.fixedBottom = match.fixedBottomRows; }
-                NSInteger crop = slice.pixelHeight - self.fixedBottom - match.shiftRows;
-                if (crop < self.fixedTop || crop >= slice.pixelHeight || match.shiftRows <= 0) {
-                    [NSFileManager.defaultManager removeItemAtPath:path error:nil];
-                    PXFrameError(error, @"拼接边界无效"); return nil;
-                }
-                // 接缝移到两帧共享正文的内侧，避开视口底缘的阴影/模糊栏。
-                // 两侧裁切等量变化，累计高度仍只增加实际滚动位移。
-                NSInteger overlap = slice.pixelHeight - self.fixedTop - self.fixedBottom - match.shiftRows;
-                NSInteger inset = MIN(MAX(0, overlap / 2),
-                                      MAX(0, anchor.pixelHeight - anchor.cropTopRows - self.fixedBottom - 1));
-                anchor.cropBottomRows = self.fixedBottom + inset;
-                slice.cropTopRows = crop - inset;
+        if (anchor) {
+            if (self.fixedTop < 0) { self.fixedTop = match.fixedTopRows; self.fixedBottom = match.fixedBottomRows; }
+            NSInteger crop = slice.pixelHeight - self.fixedBottom - match.shiftRows;
+            if (crop < self.fixedTop || crop >= slice.pixelHeight || match.shiftRows <= 0) {
+                [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+                PXFrameError(error, @"拼接边界无效"); return nil;
             }
-            [self.slices addObject:slice];
-            self.anchorSignature = signature;
-        } else {
-            [self.keptPaths addObject:path];
-            while (self.keptPaths.count > 24) {
-                [NSFileManager.defaultManager removeItemAtPath:self.keptPaths.firstObject error:nil];
-                [self.keptPaths removeObjectAtIndex:0];
-            }
+            // 接缝移到两帧共享正文的内侧，避开视口底缘的阴影/模糊栏。
+            // 两侧裁切等量变化，累计高度仍只增加实际滚动位移。
+            NSInteger overlap = slice.pixelHeight - self.fixedTop - self.fixedBottom - match.shiftRows;
+            NSInteger inset = MIN(MAX(0, overlap / 2),
+                                  MAX(0, anchor.pixelHeight - anchor.cropTopRows - self.fixedBottom - 1));
+            anchor.cropBottomRows = self.fixedBottom + inset;
+            slice.cropTopRows = crop - inset;
         }
+        [self.slices addObject:slice];
+        self.anchorSignature = signature;
     }
     PXLongShotFrameResult *result = [PXLongShotFrameResult new];
     result.match = match; result.count = self.slices.count;

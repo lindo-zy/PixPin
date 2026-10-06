@@ -65,7 +65,6 @@ NSString * const PXKeyAreaLastSelectionRect = @"AreaLastSelectionRect";
 NSString * const PXKeyMarkupHandleOrigin = @"MarkupHandleOrigin";
 NSString * const PXKeyLongShotMode = @"LongShotMode";
 NSString * const PXKeyLongShotAutoScroll = @"LongShotAutoScroll";
-NSString * const PXKeyLongShotKeepFrames = @"LongShotKeepFrames";
 NSString * const PXKeyLongShotSampleInterval = @"LongShotSampleInterval";
 NSString * const PXKeyLongShotIdleInterval = @"LongShotIdleInterval";
 NSString * const PXKeyLongShotScrollDuration = @"LongShotScrollDuration";
