@@ -138,3 +138,23 @@ Options 适配器、Common 行为/位图逻辑、Composer、HUD、偏好键和�
 交付归档：通过 deb-to-icloud.sh PixPin 分类到 Downloads/PixPin/ios16 和 ios17，
 两份归档 SHA256 与构建产物一致；旧归档保留。运行本项目 python3 webdav-sync.py PixPin，
 新增上传 2 个、大小一致跳过 90 个，脚本对账全部一致，退出码 0。未读取或输出凭据，未 push。
+
+## 1.10.2 判歧回滚修复的静态与构建记录（2026-10-06）
+
+用户真机复现「已采集 1 段 + 无法可靠拼接」暂停：自动模式首次步进后帧与锚点
+判歧时，同页重采只会复现同一结果，三次即停，属确定性死循环。本轮把第二次
+判歧后的动作改为按原步长 1/3 下滑回滚（限于原滑动带内），Scroller 校验放行
+下滑，pxScrollOnce 泛化为按计划发手势；每次判歧留 syslog（连续次数、是否已
+重采），静置窗口内完成/内存熔断由抓取入口分流收尾。开发走独立 worktree
+（dev/longshot-align-retry），子代理审查发现回滚静置窗口的完成/熔断挂起
+（P1）并修复复核后合入 main，合入提交 98a2704，收尾 8f3b8dd。
+
+- 源码分析：已确认 U1→重采→U2→回滚→U3→暂停的状态机闭合、四条终态
+  （完成/熔断/暂停/teardown）收敛、回滚不产生拼接缺口；git diff --check 通过。
+- 宿主测试：650 checks，0 failures（新增 5 条纠正计划边界断言）。
+- 编译：build.sh 双目标成功（1.10.1 -> 1.10.2），dylib 均为 arm64 + arm64e。
+- 包结构：已确认 1.10.2 双包、设置 bundle 版本一致；已归档 iCloud
+  Downloads/PixPin 并 webdav-sync.py PixPin 对账一致。
+- 核心功能：未验证。回滚手势的实际位移与路由、判歧 syslog 序列
+  （long shot align uncertain / corrective rollback unavailable）、
+  周期性内容是否恢复正常拼接，均待真机复现原场景验证。
