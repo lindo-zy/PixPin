@@ -173,3 +173,53 @@ UIImageJPEGRepresentation 整幅解码 + PHAssetCreationRequest 重编码是保�
 - iOS17 DEB SHA256：0870d7d2c4c7072c0a60209c013eef460dff4340446d8a1fb8843e4733dd3aa0。
 - 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/真机回归：未验证
   （第 4 帧驻留假说需第 1 条验收的 syslog 曲线证实）。
+
+## 第五轮修复：抓屏原图所有权（2026-10-06）
+
+症状：长截图期间 phys_footprint 从约 200MB 涨到约 400MB（SpringBoard jetsam
+highwater ≈408MB，iPhone14,2 / iOS 16.1），与第四轮降级路径并存。
+根因（源码+外部声明范例确认）：PXCaptureProvider 以裸函数指针（+0 惯例）调用
+`_UICreateScreenUIImage`，而该接口公开声明范例为
+`OBJC_EXTERN UIImage *_UICreateScreenUIImage(void) NS_RETURNS_RETAINED;`（返回 +1）。
+ARC 不接管接口交出的引用，每帧调用泄漏一次（@3x 全屏 RGBA ≈11.9MB/帧，
+20 帧 ≈237MB，与症状量级吻合）；复制独立位图、分片落盘、销毁会话都无法释放它。
+第四轮「每帧净增 10-16MB 无法用源码内驻留解释」的旁证由此闭合。
+
+修改（提交 dc1a0c0，临时分支 dev/longshot-uicreate-ownership，独立 worktree）：
+- PXCaptureProvider：函数指针 typedef 补 NS_RETURNS_RETAINED，dlsym 转换改用该
+  typedef；ARC 经 +1 惯例接管后由既有 `image = nil` 释放，UIGetScreenImage/快照
+  路径所有权原已正确，未改。
+- PXOutputPipeline：保存超时 dispatch_after 原强持有 task/completion 到 15 秒计时
+  结束，改经 pendingCompletion 间接持有，saveCompletion 立即置空；taskID 单独拷贝。
+- PXLongShotSession：pxTeardown 主体完成后 0/5/30/60 秒记录
+  `long shot end memory (footprint= available=)`（仅 syslog），
+  dispatch_after 只捕获 taskID 字符串与代数，不持有会话。
+- 宿主测试：mock `_UICreateScreenUIImage` 按真实接口惯例 NS_RETURNS_RETAINED 且
+  每次返回新建 +1 UIImage（弱探针），新增逐帧原图销毁断言；UIImage 桩补
+  `-initWithCGImage:scale:orientation:`（alloc 系 +1 交接，入池对象按 +1 交出会
+  在池排空时过度释放）。未修复版本上该断言确定性失败（已实验验证）。
+
+子代理源码审查 PASS（无 P0/P1）：仓库外 IR+运行时对照实验裁决所有权方向——
+旧 typedef + 裸 +1 返回 100000 alloc / 0 dealloc 精确复现泄漏；新 typedef 平衡；
+唯一危险情形（接口实际返回裸 autorelease，修复后会过度释放崩溃）与生产泄漏
+签名矛盾，可排除。采纳 P2：t=0 采样移到 teardown 主体后、探针轮询 3s→10s。
+
+已知限制（审查记录，范围外未改）：
+- 后台归一化块无 @try：pxNormalizeImage 若抛 ObjC 异常会跳过 image=nil，单帧
+  +1 泄漏（既有行为，CG 调用实际不抛，风险极低）。
+- 超时兜底后相册保存仍可能实际成功，迟到 identifier 被丢弃且保存认领不回滚
+  （既有行为，如需处理应单独提交）。
+
+2026-10-06 第五轮验证记录：
+
+- 修复提交 dc1a0c0，快进合入 main 后运行根目录 build.sh。
+- 宿主测试：723 项检查，0 失败；git diff --check 通过。
+- iOS 16/17 的 1.10.9 双包构建成功，偏好 bundle 版本一致，两包
+  Architecture=iphoneos-arm64e，dylib=arm64+arm64e，layout/plist 校验通过。
+- iOS16 DEB SHA256：833d4b77d5e3b2717dbce604080a954e5f147cce4f6de1312c9f4feccbd56eb0。
+- iOS17 DEB SHA256：a51717909bfa5bc6664d8cf99994172ee26de2456122d5f8bf5a865f1b0050a9。
+- 源码分析：已确认；编译：已确认；包结构：已确认；核心功能/真机回归：未验证。
+- 真机验收（待执行）：长截图观察 syslog `long shot frame ... footprint=` 曲线，
+  逐帧净增应收敛到约 2MB 驻留；结束后 `long shot end memory` 行 t=0/5/30/60
+  footprint 应回落。若所有权方向判断错误，设备表现为抓屏崩溃而非泄漏，
+  首跑务必盯 syslog。
