@@ -57,11 +57,21 @@ NSInteger PXRunLongShotOptionsTests(NSInteger *checkCount) {
     printf("  FAIL: %s (line %d)\n", name, __LINE__); } else printf("  ok: %s\n", name); } while (0)
     printf("[long shot options, target guards, rebound, owned pixels and multi-frame export]\n");
     PXLongShotOptions *defaults = [[PXLongShotOptions alloc] initWithValues:@{}];
-    LS_CHECK(defaults.autoScroll && defaults.maxSlices == 200 && defaults.maxCanvasHeight == 16384,
+    LS_CHECK(defaults.mode == PXLongShotModeAutomatic && defaults.autoScroll && defaults.maxSlices == 200 && defaults.maxCanvasHeight == 16384,
              "external long mode defaults to automatic without a four-frame limit");
     LS_CHECK(defaults.sampleInterval == 0.12 && defaults.idleInterval == 0.5 && defaults.scrollDuration == 0.62 &&
              defaults.settleDuration == 0.7 && defaults.sliceQuality == 0.95 && defaults.outputQuality == 0.9,
              "sampling and encoding defaults preserve existing values");
+    for (NSInteger mode = 0; mode <= 2; mode++) {
+        PXLongShotOptions *o = [[PXLongShotOptions alloc] initWithValues:@{PXKeyLongShotMode:@(mode), PXKeyLongShotAutoScroll:@NO}];
+        LS_CHECK(o.mode == mode && o.autoScroll == (mode != 0), "explicit mode overrides legacy boolean");
+    }
+    for (id invalid in @[@YES, @3, @(-1), @1.5, @"1", @(NAN)]) {
+        PXLongShotOptions *o = [[PXLongShotOptions alloc] initWithValues:@{PXKeyLongShotMode:invalid, PXKeyLongShotAutoScroll:@NO}];
+        LS_CHECK(o.mode == PXLongShotModeAutomatic, "invalid mode returns to default without legacy overriding it");
+    }
+    LS_CHECK([[PXLongShotOptions alloc] initWithValues:@{PXKeyLongShotAutoScroll:@NO}].mode == PXLongShotModeSampling,
+             "legacy manual setting migrates to sampling");
     NSArray *bad = @[@(-1), @(NAN), @(INFINITY), @"0.5", @YES, NSNull.null];
     for (id value in bad) {
         NSMutableDictionary *values = [NSMutableDictionary dictionary];

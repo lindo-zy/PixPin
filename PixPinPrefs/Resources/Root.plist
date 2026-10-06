@@ -47,20 +47,20 @@
 			<key>PostNotification</key>
 			<string>com.pixpin.screenshot/preferences/reload</string>
 		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.pixpin.screenshot</string>
-			<key>key</key>
-			<string>LongShotAutoScroll</string>
-			<key>label</key>
-			<string>长截图入口自动滚动</string>
-			<key>PostNotification</key>
-			<string>com.pixpin.screenshot/preferences/reload</string>
-		</dict>
+        <dict>
+            <key>cell</key><string>PSMultiValueSpecifier</string>
+            <key>defaults</key><string>com.pixpin.screenshot</string>
+            <key>key</key><string>LongShotMode</string>
+            <key>label</key><string>长截图拼接方式</string>
+            <key>default</key><integer>2</integer>
+            <key>values</key><array><integer>0</integer><integer>1</integer><integer>2</integer></array>
+            <key>titles</key><array><string>采样拼接</string><string>智能拼接（推荐）</string><string>自动拼接</string></array>
+            <key>PostNotification</key><string>com.pixpin.screenshot/preferences/reload</string>
+        </dict>
+        <dict>
+            <key>cell</key><string>PSGroupCell</string>
+            <key>footerText</key><string>智能拼接：每点一次「截取」，保存当前段并短滑到下一段，点「完成」收齐末段。自动拼接：点「截取」开始连续短滑，可暂停和继续。采样拼接：点「截取」后自行缓慢滚动，实时采集。三种模式都在右上小窗预览。</string>
+        </dict>
 		<dict>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
