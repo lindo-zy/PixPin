@@ -24,6 +24,7 @@ clang \
     "$ROOT_DIR/Sources/Common/PXLongShotAligner.m" \
     "$ROOT_DIR/Sources/Common/PXLongShotControl.m" \
     "$ROOT_DIR/Sources/Common/PXLongShotOptions.m" \
+    "$ROOT_DIR/Sources/Capture/PXLongShotFrameStore.m" \
     "$ROOT_DIR/Sources/Capture/PXLongShotTarget.m" \
     "$ROOT_DIR/Sources/Capture/PXLongShotHID.m" \
     "$ROOT_DIR/Sources/Common/PXLog.m" \
@@ -33,6 +34,7 @@ clang \
     "$ROOT_DIR/Sources/Editor/PXEditorLayout.m" \
     "$ROOT_DIR/Tests/Unit/PXHostTests.m" \
     "$ROOT_DIR/Tests/Unit/PXLongShotHIDTests.m" \
-    "$ROOT_DIR/Tests/Unit/PXLongShotOptionsTests.m"
+    "$ROOT_DIR/Tests/Unit/PXLongShotOptionsTests.m" \
+    "$ROOT_DIR/Tests/Unit/PXLongShotFrameStoreTests.m"
 
 "$OUT_BIN"

@@ -63,6 +63,7 @@ NSString * const PXKeyAreaRememberLastRect = @"AreaRememberLastRect";
 NSString * const PXKeyAreaLastSelectionRect = @"AreaLastSelectionRect";
 // 全屏标记收起把手位置以 NSStringFromCGPoint 存储；无开关，始终记忆。
 NSString * const PXKeyMarkupHandleOrigin = @"MarkupHandleOrigin";
+NSString * const PXKeyLongShotMode = @"LongShotMode";
 NSString * const PXKeyLongShotAutoScroll = @"LongShotAutoScroll";
 NSString * const PXKeyLongShotKeepFrames = @"LongShotKeepFrames";
 NSString * const PXKeyLongShotSampleInterval = @"LongShotSampleInterval";

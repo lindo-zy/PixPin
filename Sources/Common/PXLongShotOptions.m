@@ -15,15 +15,20 @@ static double PXLongShotNumber(NSDictionary *values, NSString *key, double fallb
 
 @implementation PXLongShotOptions
 + (NSArray<NSString *> *)preferenceKeys {
-    return @[PXKeyLongShotAutoScroll, PXKeyLongShotKeepFrames, PXKeyLongShotSampleInterval, PXKeyLongShotIdleInterval,
+    return @[PXKeyLongShotMode, PXKeyLongShotAutoScroll, PXKeyLongShotKeepFrames, PXKeyLongShotSampleInterval, PXKeyLongShotIdleInterval,
              PXKeyLongShotScrollDuration, PXKeyLongShotSettleDuration, PXKeyLongShotMaxSlices,
              PXKeyLongShotMaxCanvasHeight, PXKeyLongShotSliceQuality, PXKeyLongShotOutputQuality];
 }
 - (instancetype)initWithValues:(NSDictionary<NSString *, id> *)values {
     if ((self = [super init])) {
-        id mode = values[PXKeyLongShotAutoScroll];
-        _autoScroll = ![mode isKindOfClass:NSNumber.class] ||
-            ([mode doubleValue] != 0 && [mode doubleValue] != 1) ? YES : [mode boolValue];
+        // 新键优先；仅新键缺失时迁移旧开关。非法值回到默认自动；打开会话后仍须点截取才运行。
+        id legacy = values[PXKeyLongShotAutoScroll];
+        PXLongShotMode fallback = PXLongShotModeAutomatic;
+        if (!values[PXKeyLongShotMode] && [legacy isKindOfClass:NSNumber.class] &&
+            ([legacy doubleValue] == 0 || [legacy doubleValue] == 1))
+            fallback = [legacy boolValue] ? PXLongShotModeAutomatic : PXLongShotModeSampling;
+        _mode = (PXLongShotMode)PXLongShotNumber(values, PXKeyLongShotMode, fallback, 0, 2, YES);
+        _autoScroll = _mode != PXLongShotModeSampling;
         id keep = values[PXKeyLongShotKeepFrames];
         _keepFrames = [keep isKindOfClass:NSNumber.class] && [keep boolValue]; // 缺省关闭：行为回退安全
         _sampleInterval = PXLongShotNumber(values, PXKeyLongShotSampleInterval, 0.12, 0.08, 1, NO);

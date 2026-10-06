@@ -83,7 +83,8 @@ FOUNDATION_EXPORT NSString * const PXKeySelectionButtonIconStyle;
 FOUNDATION_EXPORT NSString * const PXKeyAreaRememberLastRect;
 FOUNDATION_EXPORT NSString * const PXKeyAreaLastSelectionRect;
 FOUNDATION_EXPORT NSString * const PXKeyMarkupHandleOrigin;
-FOUNDATION_EXPORT NSString * const PXKeyLongShotAutoScroll;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotMode;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotAutoScroll; // 旧配置迁移
 FOUNDATION_EXPORT NSString * const PXKeyLongShotKeepFrames;
 FOUNDATION_EXPORT NSString * const PXKeyLongShotSampleInterval;
 FOUNDATION_EXPORT NSString * const PXKeyLongShotIdleInterval;

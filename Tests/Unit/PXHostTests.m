@@ -17,6 +17,7 @@ static NSInteger PXTestFailures = 0;
 static NSInteger PXTestCount = 0;
 NSInteger PXRunLongShotHIDTests(NSInteger *checkCount);
 NSInteger PXRunLongShotOptionsTests(NSInteger *checkCount);
+NSInteger PXRunLongShotFrameStoreTests(NSInteger *checkCount);
 
 #define PXCheck(condition, name) do { \
     PXTestCount++; \
@@ -708,6 +709,17 @@ static void testLongShotAligner(void) {
     PXCheckInt(match.fixedTopRows, top, "fixed header identified");
     PXCheckInt(match.fixedBottomRows, bottom, "fixed footer identified");
     PXCheckInt(match.shiftRows, 600, "body displacement ignores fixed bars");
+    // 顶部与底部固定栏包含轻微整带亮度噪声，不能在第 0 行就放弃边界识别。
+    for (NSInteger r = 0; r < rows; r++) if (r < top || r >= rows - bottom)
+        for (NSInteger c = 0; c < 64; c++) {
+            uint8_t v = prev[r * 64 + c]; cur[r * 64 + c] = v < 250 ? v + 4 : v - 4;
+        }
+    PXLongShotFrameMatch tolerant = PXLongShotMatchFrames(prev, cur, rows, -1, -1);
+    PXCheck(tolerant.kind == PXLongShotMatchForward && tolerant.shiftRows == 600 &&
+            tolerant.fixedTopRows == top && tolerant.fixedBottomRows == bottom,
+            "fixed bar noise fallback refines exact boundaries without duplicating footer rows");
+    memcpy(cur, prev, (size_t)top * 64);
+    memcpy(cur + (rows-bottom)*64, prev + (rows-bottom)*64, (size_t)bottom*64);
     match = PXLongShotMatchFrames(cur, prev, rows, top, bottom);
     PXCheckInt(match.kind, PXLongShotMatchReverse, "reverse scroll does not append");
     PXCheckInt(PXLongShotMatchFrames(prev, prev, rows, top, bottom).kind,
@@ -1018,6 +1030,9 @@ int main(int argc, const char **argv) {
         NSInteger optionsChecks = 0;
         PXTestFailures += PXRunLongShotOptionsTests(&optionsChecks);
         PXTestCount += optionsChecks;
+        NSInteger frameChecks = 0;
+        PXTestFailures += PXRunLongShotFrameStoreTests(&frameChecks);
+        PXTestCount += frameChecks;
         testManualLongShot();
         testLongShotMemoryBudget();
         printf("\n%d checks, %d failures\n", (int)PXTestCount, (int)PXTestFailures);

@@ -115,6 +115,16 @@
         _specifiers = [self loadSpecifiersFromPlistName:@"Root" target:self];
         _specifiers = [self pxSpecifiersWithURLSchemeEntry];
         NSMutableArray *items = [_specifiers mutableCopy];
+        // 新键缺失时，设置页显示与运行时一致的旧开关迁移值，不写回或覆盖用户配置。
+        id mode = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)PXKeyLongShotMode,
+                                                              (__bridge CFStringRef)PXPreferencesDomain));
+        if (!mode) {
+            id legacy = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)PXKeyLongShotAutoScroll,
+                                                                    (__bridge CFStringRef)PXPreferencesDomain));
+            NSNumber *fallback = [legacy isKindOfClass:NSNumber.class] && [legacy doubleValue] == 0 ? @0 : @2;
+            for (PSSpecifier *item in items)
+                if ([[item propertyForKey:@"key"] isEqual:PXKeyLongShotMode]) [item setProperty:fallback forKey:@"default"];
+        }
         NSUInteger index = items.count;
         for (PSSpecifier *item in items) {
             if ([item.name isEqualToString:@"编辑器按钮排序"]) {

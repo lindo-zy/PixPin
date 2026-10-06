@@ -35,7 +35,7 @@ static NSString *_Nullable pxDarwinSelfPostArmedName = nil;
 @property (nonatomic, strong, nullable) PXCaptureWindow *captureWindow;
 @property (nonatomic, strong, nullable) PXSelectionView *selectionView;
 @property (nonatomic, strong, nullable) PXResultBubble *resultBubble;
-@property (nonatomic, strong, nullable) PXLongShotSession *longShotSession;   // 自动/手动滚动采集会话（主线程）
+@property (nonatomic, strong, nullable) PXLongShotSession *longShotSession;   // 三模式长截图会话（主线程）
 @property (nonatomic, strong) NSMutableArray<PXFloatingSnap *> *floatingSnaps; // 主线程，多图独立保留
 @property (nonatomic, strong, nullable) PXFloatingSnap *editingFloatingSnap;
 @property (nonatomic, strong, nullable) PXCaptureWindow *editorWindow;
@@ -224,7 +224,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
                     return;
                 }
                 if (![task transitionToState:PXCaptureStatePresenting]) return;
-                [self pxStartLongShotForTask:task autoScroll:task.configSnapshot.longShotOptions.autoScroll
+                [self pxStartLongShotForTask:task mode:task.configSnapshot.longShotOptions.mode
                                 displayRect:task.capturedScreenBounds];
             } else if (task.mode == PXCaptureModeFull) {
                 [self pxHandleFullscreenResult:task];
@@ -314,14 +314,14 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }];
 }
 
-#pragma mark - 自动/手动滚动采集会话
+#pragma mark - 三模式长截图会话
 
-- (void)pxStartLongShotForTask:(PXCaptureTask *)task autoScroll:(BOOL)autoScroll displayRect:(CGRect)displayRect {
+- (void)pxStartLongShotForTask:(PXCaptureTask *)task mode:(PXLongShotMode)mode displayRect:(CGRect)displayRect {
     if (![self pxIsTaskCurrent:task] || task.state != PXCaptureStatePresenting) return;
     [self pxTeardownLongShotSession];
     [self pxDestroyCaptureWindow];
     self.longShotSession = [PXLongShotSession startWithTask:task
-                                                 autoScroll:autoScroll
+                                                     mode:mode
                                                  displayRect:displayRect
                                                    delegate:self];
     if (!self.longShotSession) {
@@ -329,12 +329,12 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }
 }
 
-// 选区工具栏「滚动截图」：选区即采集裁片与滑动视口，插件自动滚动到底部或等用户停止。
+// 选区工具栏与外部入口采用同一模式配置；选区同时限定采集裁片与短滑视口。
 - (void)selectionViewDidRequestLong:(PXSelectionView *)view displayRect:(CGRect)displayRect {
     PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
     if (!task || view != self.selectionView) return;
     [self pxPersistSelectionRect:displayRect config:task.configSnapshot];
-    [self pxStartLongShotForTask:task autoScroll:YES displayRect:displayRect];
+    [self pxStartLongShotForTask:task mode:task.configSnapshot.longShotOptions.mode displayRect:displayRect];
 }
 
 /// 外部取消/失败路径的会话清理：会话自毁不回调，任务状态由调用方推进。

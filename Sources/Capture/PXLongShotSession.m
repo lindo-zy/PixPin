@@ -3,76 +3,53 @@
 #import "PXCaptureProvider.h"
 #import "PXLongShotScroller.h"
 #import "PXLongShotTarget.h"
+#import "PXLongShotFrameStore.h"
 #import "../Common/PXLog.h"
-#import "../Common/PXLongShotAligner.h"
-#import "../Common/PXLongShotControl.h"
-#import "../Output/PXLongImageComposer.h"
-#import "../Output/PXLongPreviewCanvas.h"
 #import "../Output/PXTemporaryFileStore.h"
 #import "../Overlay/PXCaptureWindow.h"
 #import "../Overlay/PXLongShotHUD.h"
-#import <objc/message.h>
-#import <stdatomic.h>
 #import <QuartzCore/QuartzCore.h>
-#import <math.h>
+#import <stdatomic.h>
 
-// 判歧帧保留上限：纯诊断证据，超限淘汰最旧；安全边界不开放为用户配置。
-static const NSInteger PXLongShotMaxKeptFrames = 24;
-
+// 一个阶段只有一个在途操作。running 表示用户是否要求继续，finishRequested 优先于 running。
+typedef NS_ENUM(NSInteger, PXLongShotPhase) {
+    PXLongShotPhaseReady, PXLongShotPhaseCapturing, PXLongShotPhaseProcessing,
+    PXLongShotPhaseScrolling, PXLongShotPhaseSettling, PXLongShotPhaseExporting, PXLongShotPhaseFinished
+};
 static dispatch_queue_t PXLongShotImageQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.pixpin.screenshot.longshot.images", DISPATCH_QUEUE_SERIAL); });
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.pixpin.longshot.frames", DISPATCH_QUEUE_SERIAL); });
     return queue;
 }
 @interface PXLongShotSession () <PXLongShotHUDDelegate>
 @property (nonatomic, strong) PXCaptureTask *task;
 @property (nonatomic, copy) NSString *taskID;
-@property (nonatomic, copy) NSString *captureMethod;
-@property (nonatomic, copy) NSString *targetApplicationIdentifier;
 @property (nonatomic, weak) id<PXLongShotSessionDelegate> delegate;
+@property (nonatomic, copy) NSString *target;
 @property (nonatomic, strong) PXCaptureProvider *provider;
 @property (nonatomic, strong) PXLongShotScroller *scroller;
 @property (nonatomic, strong) PXLongShotCancellation *cancellation;
+@property (nonatomic, strong) PXLongShotFrameStore *store;
 @property (nonatomic, strong) PXCaptureWindow *window;
 @property (nonatomic, strong) PXLongShotHUD *hud;
-@property (nonatomic, strong) NSTimer *sampleTimer;
+@property (nonatomic, strong) NSTimer *timer;
 @property (nonatomic, strong) id memoryObserver;
-@property (nonatomic, strong) NSMutableArray<PXLongShotSlice *> *slices;
-@property (nonatomic, strong) NSData *lastSeenSignatures;
-@property (nonatomic, strong) PXLongPreviewCanvas *previewCanvas;
-@property (nonatomic, assign) CGRect displayRect;
-@property (nonatomic, assign) PXLongShotScrollPlan scrollPlan;
-@property (nonatomic, assign) NSInteger fixedTop;
-@property (nonatomic, assign) NSInteger fixedBottom;
-@property (nonatomic, assign) NSInteger sameCount;
-@property (nonatomic, assign) NSInteger unmatchedCount;
-@property (nonatomic, assign) BOOL retryAlignment;
-@property (nonatomic, assign) BOOL alignmentResampled;
-@property (nonatomic, assign) NSInteger keptFrameCount;
-@property (nonatomic, assign) BOOL needsSettledCapture;
-@property (nonatomic, assign) CFTimeInterval lastActivity;
-@property (nonatomic, assign) CFTimeInterval nextSample;
-@property (nonatomic, assign) BOOL autoScroll;
-@property (nonatomic, assign) BOOL busy;
-@property (nonatomic, assign) BOOL scrolling;
-@property (nonatomic, assign) BOOL scrollPreparing;
-@property (nonatomic, assign) BOOL autoStepScheduled;
-@property (nonatomic, assign) NSUInteger flowGeneration;
-@property (nonatomic, assign) PXLongShotReboundState rebound;
-@property (nonatomic, assign) BOOL memoryRecoveryPending;
-@property (nonatomic, assign) BOOL stitching;
-@property (nonatomic, assign) BOOL samplingStopped;
-@property (nonatomic, assign) BOOL finishRequested;
-@property (nonatomic, assign) BOOL finished;
-@property (nonatomic, assign) NSUInteger captureGeneration;
-@property (nonatomic, assign) BOOL capturePending;
-@property (nonatomic, assign) BOOL previewDisabled;
-@property (nonatomic, assign) BOOL memoryWarningReceived;
-@property (nonatomic, assign) BOOL stopAfterCurrentFrame;
-- (void)handleLockStateChanged;
-- (void)pxCheckFrameMemory;
-- (void)pxEvictOldestKeptFrames;
+@property (nonatomic) PXLongShotMode mode;
+@property (nonatomic) PXLongShotPhase phase;
+@property (nonatomic) CGRect displayRect;
+@property (nonatomic) PXLongShotScrollPlan plan;
+@property (nonatomic) NSUInteger generation;
+@property (nonatomic) NSInteger count;
+@property (nonatomic) NSInteger duplicates;
+@property (nonatomic) NSInteger uncertain;
+@property (nonatomic) BOOL running;
+@property (nonatomic) BOOL finishRequested;
+@property (nonatomic) BOOL terminalPause;
+@property (nonatomic) BOOL memoryStopped;
+@property (nonatomic) BOOL previewDisabled;
+@property (nonatomic) CFTimeInterval nextSample;
+- (void)pxCancel;
 @end
 static __weak PXLongShotSession *PXLockSession;
 static atomic_uint_fast64_t PXLockGeneration;
@@ -81,724 +58,353 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
                            const void *object, CFDictionaryRef userInfo) {
     uint_fast64_t generation = atomic_load(&PXLockGeneration);
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (generation == atomic_load(&PXLockGeneration)) [PXLockSession handleLockStateChanged];
+        if (generation == atomic_load(&PXLockGeneration)) [PXLockSession pxCancel];
     });
 }
-
 @implementation PXLongShotSession
-+ (instancetype)startWithTask:(PXCaptureTask *)task autoScroll:(BOOL)autoScroll
-                   displayRect:(CGRect)displayRect
-                     delegate:(id<PXLongShotSessionDelegate>)delegate {
++ (instancetype)startWithTask:(PXCaptureTask *)task mode:(PXLongShotMode)mode
+                  displayRect:(CGRect)displayRect delegate:(id<PXLongShotSessionDelegate>)delegate {
     NSParameterAssert(NSThread.isMainThread);
-    PXLongShotSession *session = [[self alloc] init];
-    session.task = task;
-    session.taskID = task.taskID;
-    session.delegate = delegate;
-    session.provider = [[PXCaptureProvider alloc] init];
-    session.provider.detachesCapturedImage = YES;
-    session.cancellation = [[PXLongShotCancellation alloc] init];
-    session.slices = [NSMutableArray array];
-    session.fixedTop = session.fixedBottom = -1;
-    session.lastActivity = CACurrentMediaTime();
-    session.autoScroll = autoScroll;
-    session.displayRect = displayRect;
-    if (autoScroll) session.scroller = [[PXLongShotScroller alloc] init];
-    session.targetApplicationIdentifier = PXLongShotFrontmostIdentifier(UIApplication.sharedApplication);
-    session.window = [PXCaptureWindow pxCaptureWindow];
-    // Window 的实际表面只占 HUD 面板。全屏 Window 的 UIKit 空命中不能证明跨进程透传。
-    UIEdgeInsets safe = session.window.windowScene.keyWindow.safeAreaInsets;
-    CGRect screenBounds = task.capturedScreenBounds;
-    CGFloat hudWidth = PXLongShotHUDPreviewWidthPt + 16;
-    CGFloat hudHeight = MIN(242, screenBounds.size.height - safe.top - safe.bottom - 20);
-    session.window.frame = CGRectMake(CGRectGetMaxX(screenBounds) - safe.right - 12 - hudWidth,
-                                      CGRectGetMinY(screenBounds) + safe.top + 10, hudWidth, hudHeight);
-    session.window.windowLevel = UIWindowLevelStatusBar;
-    session.window.passesTouchesOutsideHostedContent = YES;
-    session.hud = [[PXLongShotHUD alloc] initWithFrame:session.window.bounds];
-    session.hud.delegate = session;
-    [session.window hostContentView:session.hud];
-    session.window.rootViewController.view.frame = session.window.bounds;
-    session.hud.frame = session.window.bounds;
-    [session.window showAnimated:NO becomeKey:NO];
-    atomic_fetch_add(&PXLockGeneration, 1);
-    PXLockSession = session;
+    PXLongShotSession *s = [self new];
+    s.task = task; s.taskID = task.taskID; s.delegate = delegate; s.mode = mode;
+    s.displayRect = displayRect; s.phase = PXLongShotPhaseReady;
+    s.target = PXLongShotFrontmostIdentifier(UIApplication.sharedApplication);
+    s.provider = [PXCaptureProvider new]; s.provider.detachesCapturedImage = YES;
+    s.cancellation = [PXLongShotCancellation new];
+    // 打开框选时的画面可能已过时；只有用户点截取时才建立第一帧。
+    task.baseImage = nil;
+    s.window = [PXCaptureWindow pxCaptureWindow];
+    UIEdgeInsets safe = s.window.windowScene.keyWindow.safeAreaInsets;
+    CGRect screen = task.capturedScreenBounds;
+    CGFloat width = PXLongShotHUDPreviewWidthPt + 24;
+    CGFloat height = MIN(278, screen.size.height - safe.top - safe.bottom - 20);
+    s.window.frame = CGRectMake(CGRectGetMaxX(screen) - safe.right - width - 12,
+                                CGRectGetMinY(screen) + safe.top + 10, width, height);
+    s.window.windowLevel = UIWindowLevelStatusBar;
+    s.window.passesTouchesOutsideHostedContent = YES;
+    s.hud = [[PXLongShotHUD alloc] initWithFrame:s.window.bounds]; s.hud.delegate = s;
+    [s.window hostContentView:s.hud];
+    s.window.rootViewController.view.frame = s.window.bounds; s.hud.frame = s.window.bounds;
+    [s.hud setModeTitle:mode == PXLongShotModeAutomatic ? @"自动拼接" :
+                        mode == PXLongShotModeSmart ? @"智能拼接" : @"采样拼接"];
+    [s.window showAnimated:NO becomeKey:NO];
+    [s pxShowReady:@"点「截取」开始"];
+    atomic_fetch_add(&PXLockGeneration, 1); PXLockSession = s;
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, PXLockCallback,
                                     PXLockName, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-    __weak PXLongShotSession *weakSession = session;
-    session.memoryObserver = [NSNotificationCenter.defaultCenter
-        addObserverForName:UIApplicationDidReceiveMemoryWarningNotification object:nil queue:NSOperationQueue.mainQueue
-        usingBlock:^(NSNotification *note) { [weakSession pxHandleMemoryWarning]; }];
-    UIImage *firstImage = task.baseImage;
-    task.baseImage = nil;
-    // 先让协调器保存会话，再启动可能失败的异步处理。
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (![session pxIsTaskPresenting]) return;
-        if (![session pxTargetIsCurrent]) { [session pxFail:@"请先打开需要滚动截图的 App"]; return; }
-        if (session.autoScroll) {
-            if (session.scroller.availabilityError) { [session pxFail:session.scroller.availabilityError]; return; }
-            // 手势期间 HUD 整窗隐藏，滑动路径只受选区和屏幕安全区约束。
-            [session.hud layoutIfNeeded];
-            PXLongShotScrollPlan plan;
-            if (!PXLongShotBuildScrollPlan(session.displayRect, task.capturedScreenBounds,
-                                           CGRectZero, &plan)) { // 手势期间 HUD 整窗隐藏，不占用滚动带。
-                [session pxFail:@"选区可滚动高度不足，请选择更大的内容区域"];
-                return;
-            }
-            session.scrollPlan = plan;
-            session.hud.statusText = @"自动滚动截取中，点「完成」停止";
-            PXLogInfo(@"long shot automatic fullscreen started (task %@, rect=%@)", session.taskID,
-                      NSStringFromCGRect(session.displayRect));
-        } else {
-            PXLogInfo(@"long shot manual fullscreen started (task %@)", session.taskID);
-        }
-        session.sampleTimer = [NSTimer timerWithTimeInterval:task.configSnapshot.longShotOptions.sampleInterval repeats:YES block:^(NSTimer *timer) {
-            [weakSession pxTick];
-        }];
-        [NSRunLoop.mainRunLoop addTimer:session.sampleTimer forMode:NSRunLoopCommonModes];
-        if (firstImage) {
-            session.busy = YES;
-            [session pxProcessImage:firstImage generation:++session.captureGeneration];
-        } else [session pxStartCapture];
-    });
-    return session;
+    __weak PXLongShotSession *weak = s;
+    s.memoryObserver = [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
+        object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { [weak pxMemoryWarning]; }];
+    s.timer = [NSTimer timerWithTimeInterval:0.2 repeats:YES block:^(NSTimer *timer) { [weak pxTick]; }];
+    [NSRunLoop.mainRunLoop addTimer:s.timer forMode:NSRunLoopCommonModes];
+    PXLogInfo(@"long shot ready (task %@ mode=%ld rect=%@)", s.taskID, (long)mode, NSStringFromCGRect(displayRect));
+    return s;
 }
-- (BOOL)isFinished { return self.finished; }
-- (BOOL)pxIsTaskPresenting {
-    return !self.finished && !self.cancellation.cancelled && self.task &&
-           [self.task.taskID isEqualToString:self.taskID] && self.task.currentState == PXCaptureStatePresenting;
+- (BOOL)isFinished { return self.phase == PXLongShotPhaseFinished; }
+- (BOOL)pxLive {
+    return !self.isFinished && !self.cancellation.cancelled && self.task.currentState == PXCaptureStatePresenting &&
+           [self.taskID isEqual:self.task.taskID];
 }
-- (BOOL)pxTargetIsCurrent {
-    return PXLongShotTargetIsCurrent(UIApplication.sharedApplication, PXLongShotLockManager(),
-                                     self.targetApplicationIdentifier);
+- (BOOL)pxTargetCurrent {
+    return PXLongShotTargetIsCurrent(UIApplication.sharedApplication, PXLongShotLockManager(), self.target);
+}
+- (void)pxSetPhase:(PXLongShotPhase)phase {
+    self.phase = phase;
+    BOOL active = self.running && self.mode != PXLongShotModeSmart;
+    BOOL enabled = !self.finishRequested && !self.terminalPause && !self.memoryStopped &&
+                   (phase == PXLongShotPhaseReady || active);
+    NSString *title = active ? @"暂停" : (self.count && self.mode != PXLongShotModeSmart ? @"继续" : @"截取");
+    [self.hud setCaptureTitle:title enabled:enabled];
+    [self.hud setFinishing:self.finishRequested || phase == PXLongShotPhaseExporting];
+}
+- (void)pxShowReady:(NSString *)message {
+    [self pxSetPhase:PXLongShotPhaseReady]; self.hud.statusText = message;
 }
 - (void)pxTick {
-    if (![self pxIsTaskPresenting] || self.samplingStopped || self.finishRequested || self.memoryRecoveryPending) return;
-    if (![self pxTargetIsCurrent]) { [self pxPause:@"前台 App 已变化，点「完成」保存已截内容"]; return; }
-    CFTimeInterval now = CACurrentMediaTime();
-    if (self.hud.isPreviewInteracting) self.lastActivity = now;
-    // 自动模式由 滑动→静置→抓取 链条推进，tick 只做存活检查与状态兜底。
-    if (self.autoScroll) return;
-    if (self.busy) return;
-    CFTimeInterval idle = now - self.lastActivity;
-    if (idle >= 6 && self.slices.count) { [self longShotHUDDidTapFinish:self.hud]; return; }
-    self.hud.statusText = idle >= 2
-        ? [NSString stringWithFormat:@"静止 %ld 秒后完成\n滚动可继续", (long)MAX(1, (NSInteger)ceil(6 - idle))]
-        : @"请缓慢向上滑动页面";
-    if (now >= self.nextSample) [self pxStartCapture];
-}
-- (void)pxPause:(NSString *)message {
-    if (![self pxIsTaskPresenting] || self.stitching) return;
-    self.samplingStopped = YES;
-    self.flowGeneration++;
-    self.autoStepScheduled = NO;
-    self.retryAlignment = NO;
-    self.alignmentResampled = NO;
-    [self pxCancelScrolling];
-    [self.sampleTimer invalidate];
-    self.sampleTimer = nil;
-    self.captureGeneration++;
-    self.capturePending = NO;
-    self.busy = NO;
-    PXLogWarn(@"long shot stopped (task %@, slices=%lu): %@", self.taskID, (unsigned long)self.slices.count, message);
-    if (!self.slices.count) [self pxFail:message];
-    else if (self.finishRequested) [self pxStartStitch];
-    else self.hud.statusText = message;
-}
-- (void)pxDisablePreview {
-    self.previewDisabled = YES;
-    // 后台正在使用的画布由该队列的局部强引用保活，退出后释放；禁止并发销毁 CGContext。
-    self.previewCanvas = nil;
-    [self.hud setPreviewImage:nil usedPixelHeight:0];
-}
-- (void)pxRestoreHUD {
-    if ([self pxIsTaskPresenting] && self.window.rootViewController) self.window.hidden = NO;
-}
-- (void)pxCancelScrolling {
-    if (self.scrollPreparing) {
-        self.scrollPreparing = NO;
-        self.scrolling = NO;
-        self.flowGeneration++;
-        [self pxRestoreHUD];
-    } else [self.scroller cancel];
-}
-// 不再抓末帧：资源不足/已完成采样时只处理当前在途帧，然后导出已落盘内容。
-- (void)pxFinishCapturedContent:(NSString *)message {
-    if (![self pxIsTaskPresenting] || self.stitching) return;
-    self.finishRequested = YES;
-    self.samplingStopped = YES;
-    self.flowGeneration++;
-    self.autoStepScheduled = NO;
-    [self.sampleTimer invalidate];
-    self.sampleTimer = nil;
-    [self.hud setFinishing:YES];
-    self.hud.statusText = message;
-    [self pxCancelScrolling];
-    PXLogInfo(@"long shot automatic finish (task %@ slices=%lu): %@", self.taskID,
-              (unsigned long)self.slices.count, message);
-    if (!self.busy && !self.scrolling) [self pxStartStitch];
-}
-- (void)pxHandleMemoryWarning {
-    if (![self pxIsTaskPresenting]) return;
-    BOOL repeated = self.memoryWarningReceived;
-    self.memoryWarningReceived = YES;
-    [self pxDisablePreview];
-    // 先释放预览并切换抓屏路径；不把某种 API 的内存表现当作已验证事实。
-    self.provider.fallbackOnlyCapture = YES;
-    size_t availableBytes = PXLongShotAvailableMemoryBytes();
-    size_t floorBytes = PXLongShotMemoryFloorBytes();
-    PXLogWarn(@"long shot memory pressure (task %@, slices=%lu busy=%d repeated=%d stitching=%d available=%llu floor=%llu)",
-              self.taskID, (unsigned long)self.slices.count, self.busy, repeated, self.stitching,
-              (unsigned long long)availableBytes, (unsigned long long)floorBytes);
-    if (self.stitching || self.samplingStopped || self.finishRequested) return;
-    // SpringBoard 的 jetsam 限额只有几百 MB（实测 iPhone14,2/iOS 16.1 约 400MB），
-    // 警告通常代表限额真的临近，按余量对比动态底线（限额 30%）判定是否熔断；
-    // 余量不可知时退回“反复警告即停”。
-    BOOL exhausted = (availableBytes != 0) ? (availableBytes < floorBytes) : repeated;
-    if (!exhausted) {
-        // 首片还在写盘时必须保留 generation，不能关闭会话；预览保持关闭即可继续。
-        self.hud.statusText = @"已释放预览内存\n继续截取中";
+    if (![self pxLive] || self.phase == PXLongShotPhaseExporting) return;
+    if (![self pxTargetCurrent]) {
+        if (!self.terminalPause) [self pxStop:@"前台 App 已变化\n点完成保存" terminal:YES];
         return;
     }
-    self.stopAfterCurrentFrame = YES;
-    [self pxCancelScrolling];
-    if (!self.busy && !self.scrolling) [self pxCompleteFrame];
+    if (self.running && self.mode == PXLongShotModeAutomatic && self.hud.isPreviewInteracting) {
+        self.running = NO;
+        [self pxSetPhase:self.phase]; self.hud.statusText = @"预览时暂停\n点继续恢复";
+    }
+    if (self.running && self.phase == PXLongShotPhaseReady && self.mode == PXLongShotModeSampling &&
+        CACurrentMediaTime() >= self.nextSample && !self.hud.isPreviewInteracting) [self pxCapture];
 }
-- (void)pxStartCapture {
-    if (self.busy || self.scrolling || self.memoryRecoveryPending || ![self pxIsTaskPresenting]) return;
-    // 暂停后不再采集；完成请求的末段抓取（finishRequested）除外。
-    if (self.samplingStopped && !self.finishRequested) return;
-    if (self.stopAfterCurrentFrame) { [self pxCompleteFrame]; return; }
-    if (![self pxTargetIsCurrent]) { [self pxPause:@"前台 App 已变化，点「完成」保存已截内容"]; return; }
-    size_t available = PXLongShotAvailableMemoryBytes();
-    if (available && available < PXLongShotMemoryFloorBytes()) {
-        [self pxDisablePreview];
-        available = PXLongShotAvailableMemoryBytes();
-        if (available && available < PXLongShotMemoryFloorBytes()) {
-            self.stopAfterCurrentFrame = YES;
-            if (self.slices.count >= 2) [self pxFinishCapturedContent:@"内存紧张，自动完成"];
-            else [self pxPause:@"内存不足，点「完成」保存当前截取"];
-            return;
+- (void)longShotHUDDidTapCapture:(UIView *)hud {
+    if (![self pxLive] || self.finishRequested || self.terminalPause || self.memoryStopped) return;
+    if (self.running && self.mode != PXLongShotModeSmart) {
+        self.running = NO;
+        // 在途帧完成后停；不强行取消写盘或中途抬指导致漏段。
+        [self pxSetPhase:self.phase]; self.hud.statusText = @"已暂停\n点继续或完成";
+        return;
+    }
+    if (self.phase != PXLongShotPhaseReady) return;
+    if (![self pxTargetCurrent]) { [self pxStop:@"请返回原 App\n点完成保存" terminal:YES]; return; }
+    if (self.mode != PXLongShotModeSampling && !self.scroller) {
+        self.scroller = [PXLongShotScroller new];
+        if (self.scroller.availabilityError || !PXLongShotBuildScrollPlan(self.displayRect,
+                self.task.capturedScreenBounds, CGRectZero, &_plan)) {
+            [self pxStop:self.scroller.availabilityError ?: @"选区无法短滑\n请扩大正文区域" terminal:YES]; return;
         }
     }
-    self.busy = YES;
-    self.capturePending = YES;
-    self.needsSettledCapture = NO;
-    NSUInteger generation = ++self.captureGeneration;
-    __weak PXLongShotSession *weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        PXLongShotSession *s = weakSelf;
-        if ([s pxIsTaskPresenting] && s.capturePending && generation == s.captureGeneration)
-            [s pxPause:@"抓屏超时，点「完成」保存已截内容"];
+    self.running = YES; self.duplicates = self.uncertain = 0;
+    [self pxCapture];
+}
+- (void)pxStop:(NSString *)message terminal:(BOOL)terminal {
+    if (![self pxLive] || self.phase == PXLongShotPhaseExporting) return;
+    self.running = NO; self.terminalPause |= terminal;
+    [self pxSetPhase:self.phase]; self.hud.statusText = message;
+    PXLogWarn(@"long shot paused (task %@ phase=%ld count=%ld terminal=%d): %@",
+              self.taskID, (long)self.phase, (long)self.count, terminal, message);
+    if (self.finishRequested && self.phase == PXLongShotPhaseReady) [self pxExport];
+}
+- (BOOL)pxHasMemory {
+    size_t available = PXLongShotAvailableMemoryBytes();
+    return !available || available >= PXLongShotMemoryFloorBytes();
+}
+- (void)pxMemoryWarning {
+    if (![self pxLive]) return;
+    self.previewDisabled = YES; [self.hud setPreviewImage:nil usedPixelHeight:0];
+    self.provider.fallbackOnlyCapture = YES;
+    PXLongShotFrameStore *store = self.store;
+    dispatch_async(PXLongShotImageQueue(), ^{ [store discardPreview]; });
+    if (self.phase == PXLongShotPhaseExporting) return;
+    // 不在资源不足时重抓末帧；已有内容由正在执行的操作释放后导出。
+    if (![self pxHasMemory]) [self pxFinishForMemory];
+}
+- (void)pxFinishForMemory {
+    self.memoryStopped = YES; self.finishRequested = YES; self.running = NO;
+    [self pxSetPhase:self.phase]; self.hud.statusText = @"内存紧张\n保存已截内容";
+    if (self.phase == PXLongShotPhaseReady) [self pxExport];
+}
+- (void)pxCapture {
+    if (![self pxLive] || self.phase != PXLongShotPhaseReady) return;
+    if (self.memoryStopped || self.terminalPause) { if (self.finishRequested) [self pxExport]; return; }
+    if (![self pxTargetCurrent]) { [self pxStop:@"前台 App 已变化\n点完成保存" terminal:YES]; return; }
+    if (![self pxHasMemory]) { [self pxFinishForMemory]; return; }
+    if (!self.store) {
+        NSString *directory = [self.task ensureTemporaryDirectory];
+        if (!directory.length) { [self pxFail:@"临时目录创建失败"]; return; }
+        self.store = [[PXLongShotFrameStore alloc] initWithDirectory:directory options:self.task.configSnapshot.longShotOptions
+                                                    cancellation:self.cancellation scale:self.task.capturedScreenScale];
+    }
+    [self pxSetPhase:PXLongShotPhaseCapturing]; self.hud.statusText = @"正在截取当前段";
+    NSUInteger token = ++self.generation;
+    __weak PXLongShotSession *weak = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        PXLongShotSession *s = weak;
+        if (![s pxLive] || s.generation != token || s.phase != PXLongShotPhaseCapturing) return;
+        s.generation++; // 迟到的抓屏结果不可恢复会话，更不能启动第二次抓屏。
+        [s pxSetPhase:PXLongShotPhaseReady];
+        [s pxStop:@"抓屏超时\n点完成保存" terminal:YES];
     });
     @try {
         [self.provider captureExcludingWindows:@[self.window] completion:^(UIImage *image, BOOL partial, NSString *method, NSError *error) {
-            PXLongShotSession *s = weakSelf;
-            if (![s pxIsTaskPresenting] || generation != s.captureGeneration) return;
-            s.capturePending = NO;
-            if (![s.captureMethod isEqualToString:method]) {
-                s.captureMethod = method;
-                PXLogInfo(@"long shot capture method (task %@): %@", s.taskID, method);
+            PXLongShotSession *s = weak;
+            if (![s pxLive] || s.generation != token || s.phase != PXLongShotPhaseCapturing) return;
+            if (!image || partial || ![s pxTargetCurrent]) {
+                [s pxSetPhase:PXLongShotPhaseReady];
+                [s pxStop:(!image || partial) ? @"抓屏失败\n点完成保存" : @"前台 App 已变化\n点完成保存" terminal:YES];
+                return;
             }
-            if (![s pxTargetIsCurrent]) { [s pxPause:@"前台 App 已变化，点「完成」保存已截内容"]; return; }
-            if (!image || partial) {
-                PXLogWarn(@"long shot grab failed (task %@, method=%@ partial=%d)", s.taskID, method, partial);
-                [s pxPause:@"无法取得完整屏幕，点「完成」保存已截内容"];
-            } else [s pxProcessImage:image generation:generation];
+            PXLogInfo(@"long shot capture (task %@ method=%@ generation=%lu)", s.taskID, method, (unsigned long)token);
+            [s pxProcess:image token:token];
         }];
     } @catch (__unused NSException *exception) {
-        [self pxPause:@"抓屏接口异常，点「完成」保存已截内容"];
+        [self pxSetPhase:PXLongShotPhaseReady]; [self pxStop:@"抓屏接口异常\n点完成保存" terminal:YES];
     }
 }
-- (void)pxProcessImage:(UIImage *)image generation:(NSUInteger)generation {
-    NSInteger width = (NSInteger)CGImageGetWidth(image.CGImage), height = (NSInteger)CGImageGetHeight(image.CGImage);
-    CGRect captureRect = CGRectMake(0, 0, width, height);
-    if (self.autoScroll) {
-        // 选区入口：采集裁片限定在选区内，签名与拼接都在裁片坐标系上进行。
-        captureRect = PXConvertDisplayRectToPixel(self.displayRect, self.task.capturedScreenBounds.size,
-                                                  CGSizeMake(width, height));
-        if (CGRectIsEmpty(captureRect)) { [self pxPause:@"截取区域无效，请重新选择"]; return; }
-    }
-    NSInteger rows = (NSInteger)CGRectGetHeight(captureRect), columns = (NSInteger)CGRectGetWidth(captureRect);
-    PXLongShotSlice *anchor = self.slices.lastObject;
-    NSData *previousSeen = self.lastSeenSignatures;
-    PXLongShotOptions *options = self.task.configSnapshot.longShotOptions;
-    if (anchor && (columns != anchor.pixelWidth || rows != anchor.pixelHeight)) {
-        [self pxPause:@"屏幕尺寸已变化，点「完成」保存已截内容"]; return;
-    }
-    NSString *directory = [self.task ensureTemporaryDirectory];
-    if (!directory.length) { [self pxPause:@"临时目录创建失败"]; return; }
-    NSString *path = [directory stringByAppendingPathComponent:[NSString stringWithFormat:@"longframe_%06lu.jpg", (unsigned long)generation]];
-    NSInteger fixedTop = self.fixedTop, fixedBottom = self.fixedBottom;
-    PXLongShotCancellation *cancellation = self.cancellation;
-    __weak PXLongShotSession *weakSelf = self;
+- (void)pxProcess:(UIImage *)image token:(NSUInteger)token {
+    [self pxSetPhase:PXLongShotPhaseProcessing];
+    CGRect rect = PXConvertDisplayRectToPixel(self.displayRect, self.task.capturedScreenBounds.size,
+                        CGSizeMake(CGImageGetWidth(image.CGImage), CGImageGetHeight(image.CGImage)));
+    PXLongShotFrameStore *store = self.store;
+    __weak PXLongShotSession *weak = self;
     dispatch_async(PXLongShotImageQueue(), ^{
-        @autoreleasepool {
-            if (cancellation.cancelled) return;
-            NSError *error = nil;
-            PXLongShotSlice *slice = [PXLongImageComposer sliceFromScreenImage:image pixelRect:captureRect
-                                      filePath:path options:options cancellation:cancellation error:&error];
-            PXLongShotFrameMatch match = {PXLongShotMatchForward, 0, 0, 0};
-            if (slice && anchor)
-                match = PXLongShotMatchFrames(anchor.rowSignatures.bytes, slice.rowSignatures.bytes, rows, fixedTop, fixedBottom);
-            PXLongShotFrameMatch adjacent = match;
-            if (slice && previousSeen.length == slice.rowSignatures.length && previousSeen != anchor.rowSignatures)
-                adjacent = PXLongShotMatchFrames(previousSeen.bytes, slice.rowSignatures.bytes, rows, fixedTop, fixedBottom);
-            // 未确认与已保存内容衔接时，不能用相邻帧的方向替代拼接可信度。
-            if (match.kind == PXLongShotMatchUncertain) adjacent.kind = PXLongShotMatchUncertain;
-            if (cancellation.cancelled) { [NSFileManager.defaultManager removeItemAtPath:path error:nil]; return; }
-            dispatch_async(dispatch_get_main_queue(), ^{
-                PXLongShotSession *s = weakSelf;
-                if (![s pxIsTaskPresenting] || generation != s.captureGeneration) {
-                    [NSFileManager.defaultManager removeItemAtPath:path error:nil]; return;
-                }
-                if (![s pxTargetIsCurrent]) { [NSFileManager.defaultManager removeItemAtPath:path error:nil];
-                    [s pxPause:@"前台 App 已变化，点「完成」保存已截内容"]; return; }
-                if (!slice) { [s pxPause:error.localizedDescription ?: @"分片处理失败"]; return; }
-                NSInteger top = MAX(0, s.fixedTop), bottom = MAX(0, s.fixedBottom);
-                NSInteger body = rows - top - bottom;
-                BOOL unchanged = s.lastSeenSignatures.length == slice.rowSignatures.length &&
-                    PXLongShotSignaturesAreDuplicate((const uint8_t *)s.lastSeenSignatures.bytes + top * 64, body,
-                                                     (const uint8_t *)slice.rowSignatures.bytes + top * 64, body);
-                s.lastSeenSignatures = slice.rowSignatures;
-                if (!unchanged) { s.lastActivity = CACurrentMediaTime(); s.sameCount = 0; }
-                else s.sameCount++;
-                PXLongShotReboundState rebound = s.rebound;
-                BOOL bounced = PXLongShotUpdateRebound(&rebound, adjacent, body, s.autoScroll && anchor != nil);
-                s.rebound = rebound;
-                if (bounced && s.slices.count >= 2 && !s.finishRequested)
-                    [s pxFinishCapturedContent:@"到底回弹，自动完成"];
-                if (s.autoScroll && s.sameCount >= 2 && !s.finishRequested && s.slices.count >= 2 &&
-                    match.kind == PXLongShotMatchDuplicate) {
-                    // 连续两帧内容未变化：已到页面底部，自动完成（走完成路径收尾）。
-                    PXLogInfo(@"long shot bottom reached (task %@, slices=%lu)", s.taskID,
-                              (unsigned long)s.slices.count);
-                    [s pxFinishCapturedContent:@"内容静止，自动完成"];
-                } else if (s.autoScroll && s.sameCount >= 3 && !s.finishRequested && s.slices.count < 2) {
-                    [NSFileManager.defaultManager removeItemAtPath:path error:nil];
-                    [s pxPause:@"页面没有滚动，请确认正文可滚动或改用手动模式"];
-                    return;
-                }
-                if (anchor && match.kind != PXLongShotMatchForward) {
-                    // 判歧帧改名为保留帧而非删除：它是该页面状态唯一的像素证据，供本会话
-                    // 内排查与后续「保留帧重拼」。同卷内 move 是原子改名，无写入开销；
-                    // 重复帧（同页重复采样）与反向帧（方向已可解释）不带新信息，仍删除。
-                    BOOL kept = NO;
-                    if (match.kind == PXLongShotMatchUncertain && options.keepFrames) {
-                        NSString *keptPath = [[path stringByDeletingLastPathComponent]
-                            stringByAppendingPathComponent:
-                                [NSString stringWithFormat:@"longkept_%06lu.jpg", (unsigned long)generation]];
-                        kept = [NSFileManager.defaultManager moveItemAtPath:path toPath:keptPath error:nil];
-                        if (kept) {
-                            s.keptFrameCount++;
-                            PXLogInfo(@"long shot kept uncertain frame (task %@, generation=%lu, kept=%ld)",
-                                      s.taskID, (unsigned long)generation, (long)s.keptFrameCount);
-                            if (s.keptFrameCount > PXLongShotMaxKeptFrames) [s pxEvictOldestKeptFrames];
-                        }
-                    }
-                    if (!kept) [NSFileManager.defaultManager removeItemAtPath:path error:nil];
-                    s.busy = NO;
-                    s.retryAlignment = match.kind == PXLongShotMatchUncertain;
-                    if (match.kind == PXLongShotMatchUncertain) {
-                        s.unmatchedCount++;
-                        BOOL resampled = s.alignmentResampled;
-                        // 判歧可能来自内容固有歧义（周期性列表/稀疏留白），与瞬态噪声不同源；
-                        // 逐次留下 syslog 才能在真机上区分重采无效与偶发抖动。
-                        PXLogWarn(@"long shot align uncertain (task %@, consecutive=%ld, slices=%lu, resampled=%d)",
-                                  s.taskID, (long)s.unmatchedCount, (unsigned long)s.slices.count, resampled);
-                        if (s.unmatchedCount >= 3) {
-                            // 状态标签宽 96pt、最多两行：每行须控制在 9 个全角字符内，
-                            // 否则折行后第三行被 numberOfLines=2 截掉。保留数为近似值
-                            // （异步淘汰与并发清理可造成 ±1 偏差），按上限收敛防虚报。
-                            NSInteger keptShown = MIN(s.keptFrameCount, PXLongShotMaxKeptFrames);
-                            [s pxPause:keptShown > 0
-                                ? [NSString stringWithFormat:@"无法拼接，已留%ld帧\n点完成保存已截内容", (long)keptShown]
-                                : @"无法可靠拼接，请点「完成」保存已截内容"];
-                            return;
-                        }
-                        if (!s.finishRequested)
-                            s.hud.statusText = resampled ? @"对齐仍有歧义\n小步回滚重试" : @"正在重试对齐\n请放慢滚动";
-                    } else {
-                        s.unmatchedCount = 0;
-                        s.alignmentResampled = NO;
-                        if (match.kind == PXLongShotMatchReverse && !s.finishRequested)
-                            s.hud.statusText = @"反向内容不追加\n请继续向上滑动";
-                    }
-                    [s pxCompleteFrame];
-                    return;
-                }
-                s.unmatchedCount = 0;
-                s.retryAlignment = NO;
-                s.alignmentResampled = NO;
-                if (anchor) {
-                    if (s.fixedTop < 0) { s.fixedTop = match.fixedTopRows; s.fixedBottom = match.fixedBottomRows; }
-                    anchor.cropBottomRows = s.fixedBottom;
-                    [anchor discardAlignmentSignature];
-                    slice.cropTopRows = rows - s.fixedBottom - match.shiftRows;
-                }
-                [s.slices addObject:slice];
-                [s.hud setSliceCount:(NSInteger)s.slices.count];
-                PXLogInfo(@"long shot append (task %@, count=%lu shift=%ld fixed=%ld/%ld)", s.taskID,
-                          (unsigned long)s.slices.count, (long)match.shiftRows, (long)s.fixedTop, (long)s.fixedBottom);
-                [s pxUpdatePreview:generation];
-            });
-        }
-    });
-}
-- (void)pxUpdatePreview:(NSUInteger)generation {
-    if (self.previewDisabled) {
-        self.busy = NO;
-        [self pxCompleteFrame];
-        return;
-    }
-    if (!self.previewCanvas) {
-        CGFloat scale = MAX(1, self.task.capturedScreenScale);
-        self.previewCanvas = [[PXLongPreviewCanvas alloc] initWithWidthPixels:(NSInteger)(PXLongShotHUDPreviewWidthPt * scale)
-                                  maxPixels:500000 uiScale:scale cancellation:self.cancellation];
-    }
-    NSArray *slices = [self.slices copy];
-    PXLongPreviewCanvas *canvas = self.previewCanvas;
-    PXLongShotCancellation *cancellation = self.cancellation;
-    __weak PXLongShotSession *weakSelf = self;
-    dispatch_async(PXLongShotImageQueue(), ^{
-        @autoreleasepool {
-            if (cancellation.cancelled) return;
-            UIImage *preview = [canvas updateWithSlices:slices];
-            NSInteger height = canvas.usedPixelHeight;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                PXLongShotSession *s = weakSelf;
-                if (![s pxIsTaskPresenting] || generation != s.captureGeneration) return;
-                s.busy = NO;
-                if (!s.previewDisabled) {
-                    if (preview) [s.hud setPreviewImage:preview usedPixelHeight:height];
-                    else {
-                        [s pxDisablePreview];
-                        PXLogWarn(@"long shot preview disabled (task %@, slices=%lu)", s.taskID,
-                                  (unsigned long)s.slices.count);
-                    }
-                }
-                [s pxCompleteFrame];
-            });
-        }
-    });
-}
-// 每帧遥测 + 主动熔断：highwater jetsam 可能先于 MemoryWarning 击杀（警告不保证送达
-// 或来得及处理），不能只依赖系统警告采样。逐帧留下 footprint/余量曲线到 syslog；
-// 余量跌破动态底线时与警告 exhausted 路径同口径熔断。
-- (void)pxCheckFrameMemory {
-    size_t availableBytes = PXLongShotAvailableMemoryBytes();
-    size_t floorBytes = PXLongShotMemoryFloorBytes();
-    PXLogInfo(@"long shot mem (task %@, gen=%lu slices=%lu footprint=%llu available=%llu floor=%llu fallback=%d)",
-              self.taskID, (unsigned long)self.captureGeneration, (unsigned long)self.slices.count,
-              (unsigned long long)PXLongShotProcessFootprintBytes(), (unsigned long long)availableBytes,
-              (unsigned long long)floorBytes, self.provider.fallbackOnlyCapture);
-    if (!availableBytes) return;
-    if (availableBytes >= floorBytes) { self.stopAfterCurrentFrame = NO; return; }
-    PXLogWarn(@"long shot proactive memory trip (task %@, available=%llu floor=%llu)",
-              self.taskID, (unsigned long long)availableBytes, (unsigned long long)floorBytes);
-    BOOL canReleasePreview = !self.previewDisabled;
-    [self pxDisablePreview];
-    self.memoryWarningReceived = YES;
-    self.provider.fallbackOnlyCapture = YES;
-    if (canReleasePreview) {
-        // 先让图像队列结束旧预览/快照引用，再复测；期间绝不发送下一次手势或抓屏。
-        self.memoryRecoveryPending = YES;
-        [self pxCancelScrolling];
-        __weak PXLongShotSession *weakSelf = self;
+        __block PXLongShotFrameResult *result;
+        __block NSError *error;
+        @autoreleasepool { result = [store consumeImage:image pixelRect:rect error:&error]; }
+        // 下一块作为释放屏障，当前块持有的抓屏对象先离开队列，才采样余量/进入下一步。
         dispatch_async(PXLongShotImageQueue(), ^{
             dispatch_async(dispatch_get_main_queue(), ^{
-                PXLongShotSession *s = weakSelf;
-                if (![s pxIsTaskPresenting]) return;
-                s.memoryRecoveryPending = NO;
-                [s pxCompleteFrame];
+                PXLongShotSession *s = weak;
+                if (![s pxLive] || s.generation != token) return;
+                [s pxSetPhase:PXLongShotPhaseReady];
+                if (!result) { [s pxStop:error.localizedDescription ?: @"帧处理失败" terminal:YES]; return; }
+                s.count = result.count;
+                [s.hud setSliceCount:s.count];
+                if (result.previewUnavailable) {
+                    s.previewDisabled = YES; [s.hud setPreviewImage:nil usedPixelHeight:0];
+                }
+                if (result.preview && !s.previewDisabled) [s.hud setPreviewImage:result.preview
+                                           usedPixelHeight:CGImageGetHeight(result.preview.CGImage)];
+                PXLogInfo(@"long shot frame (task %@ mode=%ld kind=%ld count=%ld shift=%ld fixed=%ld/%ld footprint=%llu available=%llu)",
+                    s.taskID, (long)s.mode, (long)result.match.kind, (long)s.count, (long)result.match.shiftRows,
+                    (long)result.match.fixedTopRows, (long)result.match.fixedBottomRows,
+                    (unsigned long long)PXLongShotProcessFootprintBytes(), (unsigned long long)PXLongShotAvailableMemoryBytes());
+                [s pxAcceptResult:result];
             });
-        });
-        return;
-    }
-    self.stopAfterCurrentFrame = YES;
-    [self pxCancelScrolling];
-}
-- (void)pxCompleteFrame {
-    if (![self pxIsTaskPresenting] || self.stitching) return;
-    // 用同一串行队列作为释放屏障：不能在处理块的 autoreleasepool 退出前采样内存。
-    self.busy = YES;
-    NSUInteger generation = self.captureGeneration;
-    __weak PXLongShotSession *weakSelf = self;
-    dispatch_async(PXLongShotImageQueue(), ^{
-        dispatch_async(dispatch_get_main_queue(), ^{
-            PXLongShotSession *s = weakSelf;
-            if (![s pxIsTaskPresenting] || s.stitching || generation != s.captureGeneration) return;
-            s.busy = NO;
-            [s pxCompleteFrameAfterRelease];
         });
     });
 }
-- (void)pxCompleteFrameAfterRelease {
-    [self pxCheckFrameMemory];
-    if (self.memoryRecoveryPending) return;
-    PXLongShotOptions *options = self.task.configSnapshot.longShotOptions;
-    self.nextSample = CACurrentMediaTime() + (self.sameCount >= 3 ? options.idleInterval : options.sampleInterval);
-    if (self.finishRequested || self.slices.count >= (NSUInteger)options.maxSlices) { [self pxStartStitch]; return; }
-    if (self.stopAfterCurrentFrame) {
-        if (self.slices.count >= 2) [self pxFinishCapturedContent:@"内存紧张，自动完成"];
-        else [self pxPause:@"内存不足，点「完成」保存当前截取"];
-        return;
-    }
-    if (self.autoScroll && self.retryAlignment && self.alignmentResampled) {
-        // 重采已确认页面静止仍判歧：同页重采只会复现同一结果，小步回滚改变与锚点的
-        // 比较基准；不前滚以免扩大未捕获缺口。总上限仍由 unmatchedCount>=3 把守。
-        PXLongShotScrollPlan corrective;
-        self.alignmentResampled = NO;
-        if (PXLongShotBuildCorrectiveScrollPlan(self.scrollPlan, 1.0 / 3.0, &corrective)) {
-            self.busy = YES;
-            NSUInteger flow = self.flowGeneration;
-            __weak PXLongShotSession *weakSelf = self;
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(options.settleDuration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                PXLongShotSession *s = weakSelf;
-                if (![s pxIsTaskPresenting] || s.flowGeneration != flow) return;
-                s.busy = NO;
-                if (s.samplingStopped && !s.finishRequested) return; // 已暂停：只等用户完成/取消
-                // 静置窗口内点「完成」或内存熔断时不回滚：末段抓取/收尾入口自行分流，
-                // 否则手势被 finishRequested/stopAfterCurrentFrame 拒绝后会话无人推进。
-                if (s.finishRequested || s.stopAfterCurrentFrame) { [s pxStartCapture]; return; }
-                [s pxScheduleGesturePlan:corrective];
-            });
+- (void)pxAcceptResult:(PXLongShotFrameResult *)result {
+    PXLongShotMatchKind kind = result.match.kind;
+    if (self.finishRequested || self.count >= self.task.configSnapshot.longShotOptions.maxSlices) {
+        if (self.finishRequested && !self.memoryStopped &&
+            (kind == PXLongShotMatchUncertain || kind == PXLongShotMatchReverse)) {
+            // 不能把末段丢失伪装成完整成功。用户再次点完成才输出已可靠拼接的部分。
+            self.finishRequested = NO;
+            [self pxStop:@"末段未拼上\n再点完成存已截" terminal:YES];
             return;
         }
-        // 滑动带过窄等无法回滚的情形：退回重采，仍由 unmatchedCount>=3 兜底。
-        PXLogWarn(@"long shot corrective rollback unavailable (task %@, slices=%lu)",
-                  self.taskID, (unsigned long)self.slices.count);
+        [self pxExport]; return;
     }
-    if (self.autoScroll && (self.retryAlignment || self.needsSettledCapture)) {
-        // 对齐未确认时重采当前页面，不能继续滚动扩大未捕获的缺口。
-        if (self.retryAlignment) self.alignmentResampled = YES;
-        self.busy = YES;
-        NSUInteger flow = self.flowGeneration;
-        __weak PXLongShotSession *weakSelf = self;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(options.settleDuration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            PXLongShotSession *s = weakSelf;
-            if ([s pxIsTaskPresenting] && s.flowGeneration == flow) {
-                s.busy = NO;
-                [s pxStartCapture];
-            }
-        });
-    } else if (self.autoScroll) [self pxScheduleAutoScroll];
-}
-// 保留帧超出上限时在串行图像队列上淘汰最旧：文件名 %06lu 零填充，字典序即时间序。
-// 主线程只发起，枚举与删除不占用主线程 I/O；会话取消后任务目录整体删除，无需续做。
-- (void)pxEvictOldestKeptFrames {
-    NSString *directory = [self.task existingTemporaryDirectory];
-    if (directory.length == 0) return;
-    __weak PXLongShotSession *weakSelf = self;
-    dispatch_async(PXLongShotImageQueue(), ^{
-        @autoreleasepool {
-            PXLongShotSession *s = weakSelf;
-            if (!s || s.cancellation.cancelled) return;
-            NSFileManager *fm = NSFileManager.defaultManager;
-            NSArray<NSString *> *entries = [fm contentsOfDirectoryAtPath:directory error:nil];
-            NSMutableArray<NSString *> *kept = [NSMutableArray array];
-            for (NSString *entry in entries)
-                if ([entry hasPrefix:@"longkept_"]) [kept addObject:entry];
-            NSInteger excess = (NSInteger)kept.count - PXLongShotMaxKeptFrames;
-            if (excess <= 0) return;
-            [kept sortUsingSelector:@selector(compare:)];
-            for (NSInteger i = 0; i < excess; i++)
-                [fm removeItemAtPath:[directory stringByAppendingPathComponent:kept[i]] error:nil];
-            PXLogInfo(@"long shot evicted %ld kept frames (task %@)", (long)excess, s.taskID);
+    if (![self pxHasMemory]) { [self pxFinishForMemory]; return; }
+    if (self.terminalPause || !self.running) {
+        [self pxShowReady:self.terminalPause ? @"采集已停止\n点完成保存" : @"已暂停\n点继续或完成"]; return;
+    }
+    if (kind == PXLongShotMatchUncertain) {
+        self.uncertain++;
+        // 自动/智能只允许原地静置重采一次，绝不再前滚或盲目反向回滚。
+        if (self.uncertain < 2 && self.mode != PXLongShotModeSampling) { [self pxSettleThenCapture:YES]; return; }
+        if (self.mode == PXLongShotModeSampling && self.uncertain < 3) {
+            self.nextSample = CACurrentMediaTime() + self.task.configSnapshot.longShotOptions.idleInterval; return;
         }
-    });
+        [self pxStop:@"未找到可靠重叠\n稍回滑后点截取" terminal:NO]; return;
+    }
+    self.uncertain = 0;
+    if (kind == PXLongShotMatchReverse) {
+        [self pxStop:@"画面发生回退\n恢复位置后继续" terminal:NO]; return;
+    }
+    self.duplicates = kind == PXLongShotMatchDuplicate ? self.duplicates + 1 : 0;
+    if (self.mode == PXLongShotModeAutomatic && self.duplicates >= 2) {
+        // 只能声称内容未变，不能把 HID 发出成功当作实际到达页底。
+        [self pxStop:@"内容未继续前进\n点完成或继续" terminal:NO]; return;
+    }
+    if (self.mode == PXLongShotModeSampling) {
+        self.nextSample = CACurrentMediaTime() + (self.duplicates ? self.task.configSnapshot.longShotOptions.idleInterval :
+                                                                 self.task.configSnapshot.longShotOptions.sampleInterval);
+        self.hud.statusText = @"请缓慢上滑页面\n点完成结束"; return;
+    }
+    [self pxScroll];
 }
-#pragma mark - 自动滚动（选区工具栏入口）
-- (void)pxScheduleAutoScroll {
-    [self pxScheduleGesturePlan:self.scrollPlan];
-}
-
-// 常规步进与对齐判歧后的纠正性回滚共用调度与防重入；差别只在滑动带方向与距离。
-- (void)pxScheduleGesturePlan:(PXLongShotScrollPlan)plan {
-    if (![self pxIsTaskPresenting] || self.finishRequested || self.stitching || self.samplingStopped ||
-        self.memoryRecoveryPending || self.autoStepScheduled) return;
-    self.autoStepScheduled = YES;
-    NSUInteger flow = self.flowGeneration;
-    __weak PXLongShotSession *weakSession = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        PXLongShotSession *s = weakSession;
-        if (s.flowGeneration == flow) {
-            s.autoStepScheduled = NO;
-            [s pxRunGesturePlan:plan];
-        }
-    });
-}
-- (void)pxRunGesturePlan:(PXLongShotScrollPlan)plan {
-    if (![self pxIsTaskPresenting] || self.finishRequested || self.stitching || self.samplingStopped ||
-        self.stopAfterCurrentFrame || self.memoryRecoveryPending) return;
-    if (self.busy || self.scrolling) return;
-    if (self.hud.isPreviewInteracting) { [self pxScheduleGesturePlan:plan]; return; }
-    if (![self pxTargetIsCurrent]) { [self pxPause:@"前台 App 已变化，点「完成」保存已截内容"]; return; }
-    self.scrolling = YES;
-    self.scrollPreparing = YES;
-    NSUInteger flow = self.flowGeneration;
-    self.window.hidden = YES;
-    [CATransaction flush];
-    __weak PXLongShotSession *weakSelf = self;
-    // 合成器必须先移走本方表面，避免系统在 UIKit 命中之前把事件选给 SpringBoard。
+- (void)pxScroll {
+    if (![self pxLive] || !self.running || self.phase != PXLongShotPhaseReady || self.finishRequested) return;
+    if (![self pxTargetCurrent]) { [self pxStop:@"前台 App 已变化\n点完成保存" terminal:YES]; return; }
+    [self pxSetPhase:PXLongShotPhaseScrolling]; self.hud.statusText = @"短滑到下一段";
+    self.window.hidden = YES; [CATransaction flush];
+    NSUInteger token = self.generation;
+    __weak PXLongShotSession *weak = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 / 60.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      PXLongShotSession *prepared = weakSelf;
-      if (![prepared pxIsTaskPresenting] || prepared.flowGeneration != flow || !prepared.scrollPreparing) return;
-      prepared.scrollPreparing = NO;
-      [prepared.scroller scrollWithPlan:plan duration:prepared.task.configSnapshot.longShotOptions.scrollDuration completion:^(BOOL completed) {
-        PXLongShotSession *s = weakSelf;
-        if (!s) return;
-        s.scrolling = NO;
-        [s pxRestoreHUD];
-        if (![s pxIsTaskPresenting]) return;
-        if (s.flowGeneration != flow || s.memoryRecoveryPending || s.stopAfterCurrentFrame) {
-            if (s.finishRequested && !s.busy) [s pxStartStitch];
+        PXLongShotSession *s = weak;
+        if (![s pxLive] || s.generation != token) return;
+        if (s.finishRequested || !s.running || s.terminalPause || s.memoryStopped) {
+            s.window.hidden = NO; [s pxSetPhase:PXLongShotPhaseReady];
+            if (s.finishRequested) [s pxExport]; else [s pxShowReady:@"已暂停\n点继续或完成"];
             return;
         }
-        if (!completed && !s.finishRequested && !s.samplingStopped && !s.stopAfterCurrentFrame)
-            { [s pxPause:@"自动滚动失败，点「完成」保存已截内容"]; return; }
-        // 抬指后等动画与合成器稳定再抓取；完成请求不跳过这次末段抓取。
-        s.busy = YES; // 静置属于本轮工作，不能在尚未抓屏时启动第二次手势。
-        s.needsSettledCapture = YES;
-        NSTimeInterval settle = s.task.configSnapshot.longShotOptions.settleDuration;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(settle * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            PXLongShotSession *t = weakSelf;
-            if (![t pxIsTaskPresenting] || t.flowGeneration != flow ||
-                (t.samplingStopped && !t.finishRequested)) return;
-            t.busy = NO;
-            [t pxStartCapture];
-        });
-      }];
+        [s.scroller scrollWithPlan:s.plan duration:s.task.configSnapshot.longShotOptions.scrollDuration completion:^(BOOL completed) {
+            PXLongShotSession *t = weak;
+            if (![t pxLive] || t.generation != token) return;
+            t.window.hidden = NO;
+            [t pxSetPhase:PXLongShotPhaseReady];
+            if (t.memoryStopped || t.terminalPause) { if (t.finishRequested) [t pxExport]; return; }
+            if (!completed) { [t pxStop:@"短滑失败\n点完成保存" terminal:YES]; return; }
+            [t pxSettleThenCapture:t.mode == PXLongShotModeAutomatic || t.finishRequested];
+        }];
+    });
+}
+- (void)pxSettleThenCapture:(BOOL)capture {
+    [self pxSetPhase:PXLongShotPhaseSettling]; self.hud.statusText = @"等待画面稳定";
+    NSUInteger token = self.generation;
+    __weak PXLongShotSession *weak = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(self.task.configSnapshot.longShotOptions.settleDuration * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{
+        PXLongShotSession *s = weak;
+        if (![s pxLive] || s.generation != token) return;
+        [s pxSetPhase:PXLongShotPhaseReady];
+        if (s.memoryStopped || s.terminalPause) { if (s.finishRequested) [s pxExport]; return; }
+        if (s.finishRequested || (capture && s.running)) { [s pxCapture]; return; }
+        s.running = NO;
+        [s pxShowReady:s.mode == PXLongShotModeSmart ? @"点截取下一段\n或点完成收尾" : @"已暂停\n点继续或完成"];
     });
 }
 - (void)longShotHUDDidTapFinish:(UIView *)hud {
-    if (self.finishRequested || ![self pxIsTaskPresenting]) return;
-    BOOL wasStopped = self.samplingStopped;
-    self.finishRequested = YES;
-    self.samplingStopped = YES;
-    [self.sampleTimer invalidate];
-    self.sampleTimer = nil;
-    [self.hud setFinishing:YES];
-    self.hud.statusText = @"正在收齐当前段…";
-    PXLogInfo(@"long shot finish requested (task %@ busy=%d scrolling=%d)", self.taskID, self.busy, self.scrolling);
-    if (self.scrollPreparing) {
-        [self pxCancelScrolling];
-        [self pxStartStitch];
-        return;
+    if (![self pxLive] || self.finishRequested) return;
+    self.finishRequested = YES; self.running = NO; [self pxSetPhase:self.phase];
+    self.hud.statusText = @"收齐当前段后保存";
+    if (self.phase == PXLongShotPhaseReady) {
+        if (self.terminalPause || self.memoryStopped)
+            [self pxExport];
+        else [self pxCapture];
     }
-    if (self.scrolling) { [self.scroller cancel]; return; } // 抬指后由完成回调收末段。
-    if (!self.busy) {
-        // 资源保护已停止的会话直接保存，不为“完成”再分配一张整屏位图。
-        if (wasStopped) [self pxStartStitch];
-        else if ([self pxTargetIsCurrent]) [self pxStartCapture];
-        else [self pxStartStitch];
-    }
+    // processing 自行收尾；scrolling/settling 在手势完整结束后收一次尾帧。
 }
-- (void)longShotHUDDidTapCancel:(UIView *)hud {
-    if (self.finished) return;
-    id<PXLongShotSessionDelegate> delegate = self.delegate;
-    PXLogInfo(@"long shot cancelled (task %@)", self.taskID);
-    [self pxTeardownRemovingFiles:YES];
-    [delegate longShotSessionDidCancel:self];
-}
-- (void)handleLockStateChanged { [self longShotHUDDidTapCancel:self.hud]; }
-
-- (void)pxStartStitch {
-    if (self.busy || self.stitching || ![self pxIsTaskPresenting]) return;
-    if (self.slices.count == 0) { [self pxFail:@"没有可保存的长截图内容"]; return; }
-    self.busy = YES;
-    self.stitching = YES;
-    self.flowGeneration++;
-    self.autoStepScheduled = NO;
-    self.retryAlignment = NO;
-    self.alignmentResampled = NO;
-    self.samplingStopped = YES;
-    [self.sampleTimer invalidate];
-    self.sampleTimer = nil;
-    self.finishRequested = YES;
-    [self.hud setFinishing:YES];
-    self.hud.statusText = @"长图拼接中…";
-    // 导出前丢弃预览，避免画布与 HUD 纹理叠加在正式拼接的内存峰值上。
-    [self pxDisablePreview];
-    NSString *directory = [self.task ensureTemporaryDirectory];
-    if (directory.length == 0) { [self pxFail:@"临时目录创建失败"]; return; }
-    NSURL *url = [NSURL fileURLWithPath:[directory stringByAppendingPathComponent:@"longshot.jpg"]];
-    NSArray<PXLongShotSlice *> *slices = [self.slices copy];
-    CGFloat screenScale = self.task.capturedScreenScale;
-    PXLongShotOptions *options = self.task.configSnapshot.longShotOptions;
-    PXLongShotCancellation *cancellation = self.cancellation;
-    // 画布上限按任务限额收缩（SpringBoard 限额仅几百 MB），余量预算在拼接内逐片适配。
-    NSInteger maxPixels = PXLongShotStitchPixelCap(PXLongShotProcessMemoryLimitBytes(),
-                                                   PXLongShotMaxCanvasPixels);
-    __weak PXLongShotSession *weakSelf = self;
+- (void)pxExport {
+    if (![self pxLive] || self.phase != PXLongShotPhaseReady) return;
+    if (!self.count) { [self pxFail:@"没有可保存的截图内容"]; return; }
+    self.finishRequested = YES; self.running = NO;
+    [self pxSetPhase:PXLongShotPhaseExporting]; self.hud.statusText = @"正在拼接长图";
+    [self.timer invalidate]; self.timer = nil;
+    [self.hud setPreviewImage:nil usedPixelHeight:0];
+    NSURL *url = [NSURL fileURLWithPath:[[self.task existingTemporaryDirectory] stringByAppendingPathComponent:@"longshot.jpg"]];
+    PXLongShotFrameStore *store = self.store;
+    __weak PXLongShotSession *weak = self;
     dispatch_async(PXLongShotImageQueue(), ^{
         @autoreleasepool {
-            if (cancellation.cancelled) return;
-            CGSize size = CGSizeZero;
-            NSError *error = nil;
-            UIImage *image = [PXLongImageComposer composedImageWithSlices:slices screenScale:screenScale
-                                                                outputURL:url maxPixels:maxPixels options:options cancellation:cancellation
-                                                            progressBlock:^(NSInteger done, NSInteger total) {
+            NSError *error; CGSize size = CGSizeZero;
+            UIImage *image = [store exportToURL:url pixelSize:&size progress:^(NSInteger done, NSInteger total) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    PXLongShotSession *session = weakSelf;
-                    if (!session || ![session pxIsTaskPresenting]) return;
-                    session.hud.statusText = done >= total ? @"长图编码中…"
-                        : [NSString stringWithFormat:@"拼接中 %ld/%ld 段…", (long)MAX(0, done - total / 2), (long)(total / 2)];
+                    PXLongShotSession *s = weak;
+                    if ([s pxLive] && s.phase == PXLongShotPhaseExporting)
+                        s.hud.statusText = done >= total ? @"正在编码长图" : @"正在拼接长图";
                 });
-            } outPixelSize:&size error:&error];
-            if (cancellation.cancelled) return;
+            } error:&error];
             dispatch_async(dispatch_get_main_queue(), ^{
-                PXLongShotSession *session = weakSelf;
-                if (!session || ![session pxIsTaskPresenting]) return;
-                session.busy = NO;
-                if (!image) { [session pxFail:error.localizedDescription ?: @"长图拼接失败"]; return; }
-                PXLogInfo(@"long shot stitched (task %@, %.0fx%.0f px)", session.task.taskID, size.width, size.height);
-                id<PXLongShotSessionDelegate> delegate = session.delegate;
-                [session pxTeardownRemovingFiles:NO];
-                [delegate longShotSessionDidFinish:session resultImage:image];
+                PXLongShotSession *s = weak;
+                if (![s pxLive]) return;
+                if (!image) { [s pxFail:error.localizedDescription ?: @"长图导出失败"]; return; }
+                PXLogInfo(@"long shot exported (task %@ count=%ld size=%@)", s.taskID, (long)s.count, NSStringFromCGSize(size));
+                id<PXLongShotSessionDelegate> delegate = s.delegate;
+                [s pxTeardown:NO]; [delegate longShotSessionDidFinish:s resultImage:image];
             });
         }
     });
 }
-
-
-- (void)pxFail:(NSString *)message {
-    if (self.finished) return;
+- (void)longShotHUDDidTapCancel:(UIView *)hud { [self pxCancel]; }
+- (void)pxCancel {
+    if (self.isFinished) return;
     id<PXLongShotSessionDelegate> delegate = self.delegate;
+    [self pxTeardown:YES]; [delegate longShotSessionDidCancel:self];
+}
+- (void)pxFail:(NSString *)message {
+    if (self.isFinished) return;
     PXLogWarn(@"long shot failed (task %@): %@", self.taskID, message);
-    [self pxTeardownRemovingFiles:YES];
-    [delegate longShotSessionDidFail:self message:message];
+    id<PXLongShotSessionDelegate> delegate = self.delegate;
+    [self pxTeardown:YES]; [delegate longShotSessionDidFail:self message:message];
 }
 - (void)teardownForExternalCancel {
-    if (NSThread.isMainThread) [self pxTeardownRemovingFiles:YES];
-    else dispatch_async(dispatch_get_main_queue(), ^{ [self pxTeardownRemovingFiles:YES]; });
+    if (NSThread.isMainThread) [self pxTeardown:YES];
+    else dispatch_async(dispatch_get_main_queue(), ^{ [self pxTeardown:YES]; });
 }
-- (void)pxTeardownRemovingFiles:(BOOL)remove {
-    if (self.finished) return;
-    self.finished = YES;
-    self.cancellation.cancelled = YES;
-    self.captureGeneration++;
-    self.flowGeneration++;
-    [self pxCancelScrolling]; // 同步抬指；dealloc 前必须结束滑动。
-    self.scroller = nil;
-    [self.sampleTimer invalidate];
-    self.sampleTimer = nil;
+- (void)pxTeardown:(BOOL)remove {
+    if (self.isFinished) return;
+    self.phase = PXLongShotPhaseFinished; self.generation++; self.cancellation.cancelled = YES;
+    [self.scroller cancel]; self.scroller = nil;
+    [self.timer invalidate]; self.timer = nil;
     if (self.memoryObserver) [NSNotificationCenter.defaultCenter removeObserver:self.memoryObserver];
     self.memoryObserver = nil;
-    atomic_fetch_add(&PXLockGeneration, 1);
-    PXLockSession = nil;
-    CFNotificationCenterRemoveObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, PXLockName, NULL);
-    self.hud.delegate = nil;
-    [self.window hideAndDestroyWithCompletion:nil];
-    self.hud = nil;
-    self.window = nil;
-    self.slices = nil;
-    self.previewCanvas = nil;
-    self.lastSeenSignatures = nil;
-    self.task = nil;
-    self.delegate = nil;
+    if (PXLockSession == self) {
+        atomic_fetch_add(&PXLockGeneration, 1); PXLockSession = nil;
+        CFNotificationCenterRemoveObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, PXLockName, NULL);
+    }
+    self.hud.delegate = nil; [self.window hideAndDestroyWithCompletion:nil];
+    self.window = nil; self.hud = nil; self.store = nil; self.task = nil; self.delegate = nil;
     if (remove) {
         NSString *taskID = self.taskID;
-        // 最后一个写盘/预览任务退出后再清理一次，覆盖取消与写盘交错的情况。
         dispatch_async(PXLongShotImageQueue(), ^{ [PXTemporaryFileStore removeTaskDirectory:taskID]; });
     }
 }

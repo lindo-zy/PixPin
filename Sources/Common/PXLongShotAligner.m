@@ -93,6 +93,29 @@ static NSInteger PXFindShift(const uint8_t *prev, const uint8_t *cur, NSInteger 
     return bestDelta;
 }
 
+// 首次严格识别失败时允许固定栏中的局部状态图标/压缩噪声；连续 8 行的均值
+// 必须稳定。此宽容只用于候选正文边界，位移仍受完整重叠验证和独立次峰约束。
+static NSInteger PXStableEdge(const uint8_t *prev, const uint8_t *cur, NSInteger rows, BOOL bottom) {
+    NSInteger limit = bottom ? rows / 4 : rows / 3;
+    for (NSInteger r = 0; r < limit; r++) {
+        CGFloat cost = 0;
+        for (NSInteger j = 0; j < 8; j++) {
+            NSInteger y = bottom ? rows - 1 - r - j : r + j;
+            cost += PXRowDifference(prev + y * PXLongShotSigWidth, cur + y * PXLongShotSigWidth);
+        }
+        if (cost / 8 > 5.0) {
+            // 窗口前瞻找到边界后逐行精化，避免每一段残留 7 行固定页脚。
+            while (r < limit) {
+                NSInteger y = bottom ? rows - 1 - r : r;
+                if (PXRowDifference(prev + y * PXLongShotSigWidth, cur + y * PXLongShotSigWidth) > 5.0) break;
+                r++;
+            }
+            return r;
+        }
+    }
+    return limit;
+}
+
 PXLongShotFrameMatch PXLongShotMatchFrames(const uint8_t *prev, const uint8_t *cur,
                                           NSInteger rows, NSInteger fixedTop, NSInteger fixedBottom) {
     PXLongShotFrameMatch result = {PXLongShotMatchUncertain, 0, 0, 0};
@@ -128,6 +151,12 @@ PXLongShotFrameMatch PXLongShotMatchFrames(const uint8_t *prev, const uint8_t *c
     } else if (reverse && (!forward || reverseCost + 1.5 < forwardCost)) {
         result.kind = PXLongShotMatchReverse;
         result.shiftRows = reverse;
+    }
+    if (result.kind == PXLongShotMatchUncertain && (fixedTop < 0 || fixedBottom < 0)) {
+        NSInteger tolerantTop = fixedTop < 0 ? PXStableEdge(prev, cur, rows, NO) : top;
+        NSInteger tolerantBottom = fixedBottom < 0 ? PXStableEdge(prev, cur, rows, YES) : bottom;
+        if (tolerantTop != top || tolerantBottom != bottom)
+            return PXLongShotMatchFrames(prev, cur, rows, tolerantTop, tolerantBottom);
     }
     return result;
 }

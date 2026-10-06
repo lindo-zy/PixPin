@@ -7,6 +7,8 @@ const CGFloat PXLongShotHUDPreviewWidthPt = 88.0;
 @property (nonatomic, strong) UIImageView *imageView;
 @property (nonatomic, strong) UILabel *status;
 @property (nonatomic, strong) UILabel *counter;
+@property (nonatomic, strong) UILabel *modeLabel;
+@property (nonatomic, strong) UIButton *captureButton;
 @property (nonatomic, strong) UIButton *finishButton;
 @property (nonatomic, strong) UIButton *cancelButton;
 @property (nonatomic, assign) BOOL previewDragging;
@@ -42,6 +44,12 @@ const CGFloat PXLongShotHUDPreviewWidthPt = 88.0;
         _status.textAlignment = NSTextAlignmentCenter;
         _status.text = @"请缓慢向上滑动页面";
         [_panel.contentView addSubview:_status];
+        _modeLabel = [[UILabel alloc] init];
+        _modeLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+        _modeLabel.textColor = UIColor.whiteColor;
+        _modeLabel.textAlignment = NSTextAlignmentCenter;
+        [_panel.contentView addSubview:_modeLabel];
+        _captureButton = [self pxButton:@"截取" color:UIColor.systemYellowColor selector:@selector(pxCapture)];
         _finishButton = [self pxButton:@"完成" color:UIColor.systemGreenColor selector:@selector(pxFinish)];
         _cancelButton = [self pxButton:@"取消" color:UIColor.systemRedColor selector:@selector(pxCancel)];
         [self setSliceCount:0];
@@ -63,14 +71,23 @@ const CGFloat PXLongShotHUDPreviewWidthPt = 88.0;
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width;
     CGFloat height = self.bounds.size.height;
-    CGFloat previewHeight = MAX(40, height - 132);
-    self.panel.frame = self.bounds; // HUD 自身就是小窗，不创建覆盖 App 的透明全屏表面。
-    self.preview.frame = CGRectMake(8, 8, width - 16, previewHeight);
-    self.counter.frame = CGRectMake(4, previewHeight + 10, width - 8, 14);
-    self.status.frame = CGRectMake(4, previewHeight + 25, width - 8, 28);
-    self.finishButton.frame = CGRectMake(8, height - 76, width - 16, 32);
-    self.cancelButton.frame = CGRectMake(8, height - 38, width - 16, 30);
+    CGFloat previewHeight = MAX(30, height - 154);
+    self.panel.frame = self.bounds;
+    self.modeLabel.frame = CGRectMake(4, 5, width - 8, 17);
+    self.preview.frame = CGRectMake(12, 26, width - 24, previewHeight);
+    self.counter.frame = CGRectMake(4, previewHeight + 29, width - 8, 14);
+    self.status.frame = CGRectMake(4, previewHeight + 45, width - 8, 30);
+    CGFloat buttonWidth = (width - 20) / 2;
+    self.cancelButton.frame = CGRectMake(8, height - 72, buttonWidth, 30);
+    self.finishButton.frame = CGRectMake(12 + buttonWidth, height - 72, buttonWidth, 30);
+    self.captureButton.frame = CGRectMake(8, height - 36, width - 16, 30);
 }
+- (void)setModeTitle:(NSString *)title { self.modeLabel.text = title; }
+- (void)setCaptureTitle:(NSString *)title enabled:(BOOL)enabled {
+    [self.captureButton setTitle:title forState:UIControlStateNormal];
+    self.captureButton.enabled = enabled; self.captureButton.alpha = enabled ? 1 : 0.4;
+}
+- (void)pxCapture { [self.delegate longShotHUDDidTapCapture:self]; }
 - (void)pxFinish { [self.delegate longShotHUDDidTapFinish:self]; }
 - (void)pxCancel { [self.delegate longShotHUDDidTapCancel:self]; }
 - (void)setFinishing:(BOOL)finishing { self.finishButton.enabled = !finishing; }

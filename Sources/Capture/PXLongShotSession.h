@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import "../Common/PXGeometry.h"
+#import "../Common/PXLongShotOptions.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -15,17 +16,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)longShotSessionDidFail:(PXLongShotSession *)session message:(NSString *)message;
 @end
 
-/// 自动/手动滚动采集会话：主线程推进，串行后台对齐/预览/导出。
-/// 每个回调验证会话代次、任务 ID 和取消标记；分片文件只存任务临时目录。
-/// autoScroll=YES：插件合成上滑自动采集，裁片限定在 displayRect（全屏或选区）。
-/// 有进展后连续静止或可靠回弹自动完成；没有进展则明确提示无法滚动。
+/// 三种采集策略共用逐段管线；主线程状态机、串行后台帧存储和导出。
+/// 创建后等待「截取」；智能每次保存当前段后短滑，自动重复同一步骤，采样由用户滚动。
+/// displayRect 在所有模式中都限定采集范围，任务首屏快照不作为稍后截取的第一帧。
 @interface PXLongShotSession : NSObject
-
-/// 创建并展示会话窗口（主线程调用）。任务须处于 Presenting。
-/// autoScroll=NO：用户手动滚动，displayRect 不参与裁切，采全屏。
 + (instancetype)startWithTask:(PXCaptureTask *)task
-                   autoScroll:(BOOL)autoScroll
-                   displayRect:(CGRect)displayRect
+                         mode:(PXLongShotMode)mode
+                  displayRect:(CGRect)displayRect
                      delegate:(id<PXLongShotSessionDelegate>)delegate;
 
 /// 外部取消（Darwin cancel / 失败路径）：只清理自身，不回调 delegate。幂等。
