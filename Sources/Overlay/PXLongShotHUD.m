@@ -61,11 +61,10 @@ const CGFloat PXLongShotHUDPreviewWidthPt = 88.0;
 }
 - (void)layoutSubviews {
     [super layoutSubviews];
-    UIEdgeInsets safe = self.safeAreaInsets;
-    CGFloat width = PXLongShotHUDPreviewWidthPt + 16;
-    CGFloat height = MIN(242, self.bounds.size.height - safe.top - safe.bottom - 20);
+    CGFloat width = self.bounds.size.width;
+    CGFloat height = self.bounds.size.height;
     CGFloat previewHeight = MAX(40, height - 132);
-    self.panel.frame = CGRectMake(self.bounds.size.width - safe.right - 12 - width, safe.top + 10, width, height);
+    self.panel.frame = self.bounds; // HUD 自身就是小窗，不创建覆盖 App 的透明全屏表面。
     self.preview.frame = CGRectMake(8, 8, width - 16, previewHeight);
     self.counter.frame = CGRectMake(4, previewHeight + 10, width - 8, 14);
     self.status.frame = CGRectMake(4, previewHeight + 25, width - 8, 28);

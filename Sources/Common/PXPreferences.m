@@ -11,6 +11,7 @@
 @property (nonatomic, readwrite) BOOL screenshotHaptic;
 @property (nonatomic, readwrite) BOOL areaRememberLastRect;
 @property (nonatomic, readwrite) CGFloat editorDefaultLineWidth;
+@property (nonatomic, strong, readwrite) PXLongShotOptions *longShotOptions;
 @end
 
 @implementation PXConfig
@@ -24,6 +25,7 @@
         _screenshotHaptic = YES;
         _areaRememberLastRect = NO;
         _editorDefaultLineWidth = PXDefaultEditorLineWidth;
+        _longShotOptions = [[PXLongShotOptions alloc] initWithValues:@{}];
     }
     return self;
 }
@@ -89,6 +91,13 @@ static PXConfig *_currentConfig = nil;
 
     CGFloat lineWidth = PXPrefDouble(PXKeyEditorDefaultLineWidth, PXDefaultEditorLineWidth);
     config.editorDefaultLineWidth = MAX(0.5, MIN(16.0, lineWidth));
+    NSMutableDictionary *longValues = [NSMutableDictionary dictionary];
+    for (NSString *key in PXLongShotOptions.preferenceKeys) {
+        id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key,
+                                              (__bridge CFStringRef)PXPreferencesDomain));
+        if (value) longValues[key] = value;
+    }
+    config.longShotOptions = [[PXLongShotOptions alloc] initWithValues:longValues];
 
     @synchronized(self) {
         _currentConfig = config;

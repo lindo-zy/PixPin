@@ -1,20 +1,15 @@
 #import "PXLongShotScroller.h"
 #import "PXLongShotHID.h"
+#import "PXLongShotTarget.h"
 #import "../Common/PXLog.h"
 #import <dlfcn.h>
 #import <objc/message.h>
 #import <mach/mach_time.h>
 #import <QuartzCore/QuartzCore.h>
+#import <math.h>
 
 typedef CFTypeRef PXHIDClientRef;
 static PXLongShotHIDFunctions PXHIDFunctions;
-
-static id PXLongShotReadObject(id object, NSString *name) {
-    SEL selector = NSSelectorFromString(name);
-    if (!object || ![object respondsToSelector:selector]) return nil;
-    @try { return ((id (*)(id, SEL))objc_msgSend)(object, selector); }
-    @catch (__unused NSException *exception) { return nil; }
-}
 
 @interface PXLongShotScroller () {
     PXHIDClientRef _client;
@@ -26,6 +21,7 @@ static id PXLongShotReadObject(id object, NSString *name) {
 @property (nonatomic, assign) PXLongShotScrollPlan plan;
 @property (nonatomic, assign) CGPoint lastPoint;
 @property (nonatomic, assign) CFTimeInterval startedAt;
+@property (nonatomic, assign) NSTimeInterval duration;
 @property (nonatomic, assign) BOOL fingerDown;
 @end
 
@@ -56,11 +52,8 @@ static id PXLongShotReadObject(id object, NSString *name) {
             if (!_client) _availabilityError = @"自动滚动事件通道创建失败";
             PXLogInfo(@"long shot scroll HID client (created=%d typedFallback=%d)", _client != NULL, typedFallback);
         }
-        id application = PXLongShotReadObject(UIApplication.sharedApplication, @"_accessibilityFrontMostApplication");
-        id identifier = PXLongShotReadObject(application, @"bundleIdentifier");
-        if ([identifier isKindOfClass:NSString.class] && [identifier length] > 0) {
-            _targetApplicationIdentifier = [identifier copy];
-        } else if (!_availabilityError) {
+        _targetApplicationIdentifier = PXLongShotFrontmostIdentifier(UIApplication.sharedApplication);
+        if (!_targetApplicationIdentifier && !_availabilityError) {
             _availabilityError = @"请先打开需要长截图的 App";
         }
         if (!_availabilityError && ![self targetApplicationIsCurrent]) {
@@ -72,16 +65,8 @@ static id PXLongShotReadObject(id object, NSString *name) {
 
 - (BOOL)targetApplicationIsCurrent {
     NSParameterAssert([NSThread isMainThread]);
-    if (!self.targetApplicationIdentifier) return NO;
-    id manager = PXLongShotReadObject(NSClassFromString(@"SBLockScreenManager"), @"sharedInstance");
-    SEL lockedSelector = NSSelectorFromString(@"isUILocked");
-    if (!manager || ![manager respondsToSelector:lockedSelector]) return NO;
-    @try {
-        if (((BOOL (*)(id, SEL))objc_msgSend)(manager, lockedSelector)) return NO;
-    } @catch (__unused NSException *exception) { return NO; }
-    id application = PXLongShotReadObject(UIApplication.sharedApplication, @"_accessibilityFrontMostApplication");
-    id identifier = PXLongShotReadObject(application, @"bundleIdentifier");
-    return [identifier isKindOfClass:NSString.class] && [identifier isEqual:self.targetApplicationIdentifier];
+    return PXLongShotTargetIsCurrent(UIApplication.sharedApplication, PXLongShotLockManager(),
+                                     self.targetApplicationIdentifier);
 }
 
 - (BOOL)pxSendPoint:(CGPoint)point touching:(BOOL)touching transition:(BOOL)transition cancelled:(BOOL)cancelled {
@@ -96,13 +81,16 @@ static id PXLongShotReadObject(id object, NSString *name) {
                                    CGPointMake(x, y), touching, transition, cancelled);
 }
 
-- (void)scrollWithPlan:(PXLongShotScrollPlan)plan completion:(void (^)(BOOL))completion {
+- (void)scrollWithPlan:(PXLongShotScrollPlan)plan duration:(NSTimeInterval)duration completion:(void (^)(BOOL))completion {
     NSParameterAssert([NSThread isMainThread]);
-    if (self.displayLink || self.availabilityError || ![self targetApplicationIsCurrent]) {
+    if (self.displayLink || self.availabilityError || !isfinite(duration) || duration < 0.25 || duration > 2 ||
+        !isfinite(plan.start.x) || !isfinite(plan.start.y) || !isfinite(plan.end.x) || !isfinite(plan.end.y) ||
+        plan.start.y <= plan.end.y || ![self targetApplicationIsCurrent]) {
         completion(NO);
         return;
     }
     self.plan = plan;
+    self.duration = duration;
     self.lastPoint = plan.start;
     self.completion = completion;
     PXLogInfo(@"long shot scroll begin (target=%@ start=%@ end=%@)", self.targetApplicationIdentifier,
@@ -122,12 +110,12 @@ static id PXLongShotReadObject(id object, NSString *name) {
 - (void)pxTick:(CADisplayLink *)link {
     if (![self targetApplicationIsCurrent]) { [self pxFinish:NO]; return; }
     CFTimeInterval elapsed = CACurrentMediaTime() - self.startedAt;
-    CGFloat t = MIN(MAX(elapsed / 0.50, 0.0), 1.0);
+    CGFloat t = MIN(MAX(elapsed / (self.duration - 0.12), 0.0), 1.0);
     CGFloat p = t * t * (3.0 - 2.0 * t); // 两端零速度，随后按住 0.12s，抑制惯性甩屏。
     CGPoint point = CGPointMake(self.plan.start.x, self.plan.start.y + (self.plan.end.y - self.plan.start.y) * p);
     self.lastPoint = point;
     if (![self pxSendPoint:point touching:YES transition:NO cancelled:NO]) { [self pxFinish:NO]; return; }
-    if (elapsed >= 0.62) [self pxFinish:YES];
+    if (elapsed >= self.duration) [self pxFinish:YES];
 }
 
 - (void)pxFinish:(BOOL)completed {

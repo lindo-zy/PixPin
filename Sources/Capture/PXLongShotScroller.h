@@ -9,7 +9,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, readonly, nullable) NSString *availabilityError;
 @property (nonatomic, copy, readonly, nullable) NSString *targetApplicationIdentifier;
 - (BOOL)targetApplicationIsCurrent;
-- (void)scrollWithPlan:(PXLongShotScrollPlan)plan completion:(void (^)(BOOL completed))completion;
+- (void)scrollWithPlan:(PXLongShotScrollPlan)plan duration:(NSTimeInterval)duration
+            completion:(void (^)(BOOL completed))completion;
 - (void)cancel;
 @end
 

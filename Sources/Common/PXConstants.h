@@ -19,7 +19,7 @@ FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureArea;        // com.pixpin.sc
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureFreeze;      // com.pixpin.screenshot/capture/freeze
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureInstant;     // com.pixpin.screenshot/capture/instant
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureMarkup;      // com.pixpin.screenshot/capture/markup
-FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureLong;        // com.pixpin.screenshot/capture/long（全屏手动滚动、自动采集）
+FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureLong;        // com.pixpin.screenshot/capture/long（全屏自动滚动，可切换手动）
 FOUNDATION_EXPORT CFStringRef const PXDarwinCaptureCancel;      // com.pixpin.screenshot/capture/cancel
 FOUNDATION_EXPORT CFStringRef const PXDarwinPreferencesReload;  // com.pixpin.screenshot/preferences/reload
 
@@ -83,6 +83,15 @@ FOUNDATION_EXPORT NSString * const PXKeySelectionButtonIconStyle;
 FOUNDATION_EXPORT NSString * const PXKeyAreaRememberLastRect;
 FOUNDATION_EXPORT NSString * const PXKeyAreaLastSelectionRect;
 FOUNDATION_EXPORT NSString * const PXKeyMarkupHandleOrigin;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotAutoScroll;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotSampleInterval;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotIdleInterval;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotScrollDuration;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotSettleDuration;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotMaxSlices;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotMaxCanvasHeight;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotSliceQuality;
+FOUNDATION_EXPORT NSString * const PXKeyLongShotOutputQuality;
 
 // MARK: - 默认值
 

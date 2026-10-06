@@ -54,6 +54,14 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
                                           filePath:(NSString *)filePath
                                       cancellation:(PXLongShotCancellation *)cancellation
                                              error:(NSError **)error {
+    return [self sliceFromScreenImage:screenImage pixelRect:pixelRect filePath:filePath
+                              options:[[PXLongShotOptions alloc] initWithValues:@{}]
+                         cancellation:cancellation error:error];
+}
++ (nullable PXLongShotSlice *)sliceFromScreenImage:(UIImage *)screenImage
+                                         pixelRect:(CGRect)pixelRect filePath:(NSString *)filePath
+                                           options:(PXLongShotOptions *)options
+                                      cancellation:(PXLongShotCancellation *)cancellation error:(NSError **)error {
     if (cancellation.cancelled || !screenImage.CGImage || filePath.length == 0) return nil;
     CGImageRef source = screenImage.CGImage;
     NSInteger srcW = (NSInteger)CGImageGetWidth(source);
@@ -101,7 +109,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
 
     if (cancellation.cancelled) { CGImageRelease(cropped); return nil; }
     BOOL written = PXLongShotWriteJPEG(cropped, [NSURL fileURLWithPath:filePath],
-                                       PXLongShotSliceJPEGQuality);
+                                       options.sliceQuality);
     CGImageRelease(cropped);
     if (!written) {
         if (error) *error = PXLongShotError(@"分片写入磁盘失败");
@@ -126,6 +134,16 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
                                 progressBlock:(nullable void (^)(NSInteger done, NSInteger total))progressBlock
                                  outPixelSize:(CGSize *)outPixelSize
                                         error:(NSError **)error {
+    return [self composedImageWithSlices:slices screenScale:screenScale outputURL:outputURL maxPixels:maxPixels
+                                options:[[PXLongShotOptions alloc] initWithValues:@{}] cancellation:cancellation
+                          progressBlock:progressBlock outPixelSize:outPixelSize error:error];
+}
++ (nullable UIImage *)composedImageWithSlices:(NSArray<PXLongShotSlice *> *)slices
+                                  screenScale:(CGFloat)screenScale outputURL:(NSURL *)outputURL
+                                    maxPixels:(NSInteger)maxPixels options:(PXLongShotOptions *)options
+                                 cancellation:(PXLongShotCancellation *)cancellation
+                                progressBlock:(nullable void (^)(NSInteger done, NSInteger total))progressBlock
+                                 outPixelSize:(CGSize *)outPixelSize error:(NSError **)error {
     if (cancellation.cancelled) return nil;
     if (slices.count == 0) {
         if (error) *error = PXLongShotError(@"没有可拼接的分片");
@@ -164,7 +182,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
     CGFloat scale = 1.0;
     // 分配失败时按半量预算重试；不追加重复分片，也不丢弃图尾。
     while (!cancellation.cancelled) {
-        if (!PXLongShotCanvasGeometry(slices[0].pixelWidth, totalHeight, PXLongShotMaxCanvasHeight,
+        if (!PXLongShotCanvasGeometry(slices[0].pixelWidth, totalHeight, options.maxCanvasHeight,
                                       pixelBudget, &canvasSize, &scale)) break;
         canvas = CGBitmapContextCreate(NULL, (NSUInteger)canvasSize.width, (NSUInteger)canvasSize.height, 8, 0,
                                       colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
@@ -223,7 +241,7 @@ static BOOL PXLongShotWriteJPEG(CGImageRef image, NSURL *url, CGFloat quality) {
     }
 
     if (cancellation.cancelled) { CGImageRelease(composed); return nil; }
-    BOOL written = PXLongShotWriteJPEG(composed, outputURL, PXLongShotOutputJPEGQuality);
+    BOOL written = PXLongShotWriteJPEG(composed, outputURL, options.outputQuality);
     if (outPixelSize) *outPixelSize = CGSizeMake(canvasW, canvasH);
     CGImageRelease(composed);
     if (!written) {

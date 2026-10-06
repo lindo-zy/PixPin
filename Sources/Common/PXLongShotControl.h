@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import "PXLongShotAligner.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -16,6 +17,16 @@ typedef struct {
     CGPoint start;
     CGPoint end;
 } PXLongShotScrollPlan;
+typedef struct {
+    BOOL progressed;
+    NSInteger reverseFrames;
+    NSInteger reverseRows;
+} PXLongShotReboundState;
+/// 使用相邻采样帧（不是最后追加帧）判断连续回退；手动模式不自动完成。
+BOOL PXLongShotUpdateRebound(PXLongShotReboundState *state, PXLongShotFrameMatch adjacentMatch,
+                             NSInteger bodyRows, BOOL automatic);
+/// 返回 +1 的独立 RGBA 位图，不持有源图/IOSurface 的 provider。
+CGImageRef _Nullable PXLongShotCreateOwnedBitmap(CGImageRef source) CF_RETURNS_RETAINED;
 
 /// availableBytes 为当前进程余量；0 表示无法取得有效余量（SpringBoard 可能不是 app）。
 /// 预算包含位图快照/编码的额外峰值，并保留 16MiB 给抓屏与系统；最低降到 256K 像素。

@@ -9,6 +9,35 @@
 @implementation PXLongShotCancellation
 @end
 
+CGImageRef PXLongShotCreateOwnedBitmap(CGImageRef source) {
+    if (!source) return NULL;
+    size_t width = CGImageGetWidth(source), height = CGImageGetHeight(source);
+    if (!width || !height) return NULL;
+    CGColorSpaceRef color = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(NULL, width, height, 8, 0, color,
+                                                   kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(color);
+    if (!context) return NULL;
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), source);
+    CGImageRef owned = CGBitmapContextCreateImage(context);
+    CGContextRelease(context);
+    return owned;
+}
+
+BOOL PXLongShotUpdateRebound(PXLongShotReboundState *state, PXLongShotFrameMatch match,
+                             NSInteger bodyRows, BOOL automatic) {
+    if (!state) return NO;
+    if (!automatic || bodyRows < 128) { *state = (PXLongShotReboundState){0}; return NO; }
+    if (match.kind == PXLongShotMatchReverse && state->progressed && match.shiftRows > 0) {
+        state->reverseFrames++;
+        state->reverseRows += match.shiftRows;
+        return state->reverseFrames >= 2 && state->reverseRows >= (NSInteger)ceil(bodyRows * 0.15);
+    }
+    if (match.kind == PXLongShotMatchForward) state->progressed = YES;
+    state->reverseFrames = state->reverseRows = 0;
+    return NO;
+}
+
 static const size_t PXLongShotMinFloorBytes = 48ull * 1024 * 1024;
 
 size_t PXLongShotAvailableMemoryBytes(void) {

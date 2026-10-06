@@ -15,14 +15,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)longShotSessionDidFail:(PXLongShotSession *)session message:(NSString *)message;
 @end
 
-/// 全屏手动滚动、自动采集会话：主线程推进，串行后台对齐/预览/导出。
+/// 自动/手动滚动采集会话：主线程推进，串行后台对齐/预览/导出。
 /// 每个回调验证会话代次、任务 ID 和取消标记；分片文件只存任务临时目录。
-/// autoScroll=YES（选区工具栏入口）：插件合成上滑自动采集，采集裁片限定在
-/// displayRect；连续两帧内容未变化视为页面底部自动完成，完成键随时停止。
+/// autoScroll=YES：插件合成上滑自动采集，裁片限定在 displayRect（全屏或选区）。
+/// 有进展后连续静止或可靠回弹自动完成；没有进展则明确提示无法滚动。
 @interface PXLongShotSession : NSObject
 
 /// 创建并展示会话窗口（主线程调用）。任务须处于 Presenting。
-/// autoScroll=NO：用户手动滚动（外部 URL 入口），displayRect 传 CGRectNull 采全屏。
+/// autoScroll=NO：用户手动滚动，displayRect 不参与裁切，采全屏。
 + (instancetype)startWithTask:(PXCaptureTask *)task
                    autoScroll:(BOOL)autoScroll
                    displayRect:(CGRect)displayRect

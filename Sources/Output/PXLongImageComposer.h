@@ -2,6 +2,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <UIKit/UIKit.h>
 #import "../Common/PXLongShotControl.h"
+#import "../Common/PXLongShotOptions.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -43,6 +44,17 @@ FOUNDATION_EXPORT const NSInteger PXLongShotCopyMaxPixelHeight;
 // MARK: - 裁片与拼接
 
 @interface PXLongImageComposer : NSObject
+
++ (nullable PXLongShotSlice *)sliceFromScreenImage:(UIImage *)screenImage
+                                         pixelRect:(CGRect)pixelRect filePath:(NSString *)filePath
+                                           options:(PXLongShotOptions *)options
+                                      cancellation:(PXLongShotCancellation *)cancellation error:(NSError **)error;
++ (nullable UIImage *)composedImageWithSlices:(NSArray<PXLongShotSlice *> *)slices
+                                  screenScale:(CGFloat)screenScale outputURL:(NSURL *)outputURL
+                                    maxPixels:(NSInteger)maxPixels options:(PXLongShotOptions *)options
+                                 cancellation:(PXLongShotCancellation *)cancellation
+                                progressBlock:(nullable void (^)(NSInteger done, NSInteger total))progressBlock
+                                 outPixelSize:(nullable CGSize *)outPixelSize error:(NSError **)error;
 
 /// 从整屏抓图裁出 pixelRect（顶部原点像素坐标）写入 JPEG 文件并计算行签名。
 /// 后台队列调用；抓图结果按 IOSurface 惰性子图处理，必须先解码成独立位图。

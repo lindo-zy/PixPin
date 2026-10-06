@@ -389,42 +389,48 @@ isLocked
 - 默认结果动作
 - 是否显示中间提示
 
-### 5.5 全屏滚动截图（区域自动滚动 / 全屏手动滚动）
+### 5.5 滚动截图（区域自动滚动 / 全屏自动或手动滚动）
 
 外部 URL/通知在首次完整抓屏后直接进入 PXLongShotSession，复用首帧；
-autoScroll=NO（手动模式）不创建选区，不读写选区偏好。
+外部入口默认 autoScroll=YES；LongShotAutoScroll 关闭后为手动模式。两者均不创建选区，
+不读写选区偏好，参数在任务创建时取不可变 PXLongShotOptions 快照。
 区域工具栏「滚动截图」按钮（仅区域模式，目录 id=long）走同一条会话但 autoScroll=YES：
 选区经 PXConvertDisplayRectToPixel 成为采集裁片，PXLongShotBuildScrollPlan 在
-选区∩安全区内、HUD 小窗（hud.panelFrame）下缘以下规划竖直上滑路径；
+选区∩安全区内规划竖直上滑路径；HUD Window 的实际表面只覆盖面板矩形，发送手势前
+整窗隐藏并等合成器两帧，抬指后恢复，不依赖跨进程的 UIKit 空命中；
 PXLongShotScroller 经 dlsym 的 IOHIDEventSystemClient 合成单指上滑（两端零速度，
 按住 0.62s），可用性缺失或前台 App 变化时安全拒绝。
 自动模式循环 = 滑动 → 0.45s 静置 → 抓取 → 对齐追加 → pxCompleteFrame 再滑动；
-连续两帧内容未变化（sameCount≥2）判定页面底部，自动走完成路径收尾；
+已有向前进展后连续两帧内容未变化（sameCount≥2）自动完成；相邻帧先前进后
+连续两次反向、累计回退超过正文 15% 也自动完成。开始后一直无进展则明确暂停提示；
 完成键在滑动中先 cancel 抬指，静置后收末段。手动模式不注入 HID，不修改前台 App 滚动位置。
 
 右上 PXLongShotHUD 集中显示累计长图预览、段数、状态、完成/取消；
-窗口不抢 key，面板外触摸穿透。手动模式采样 tick 在主线程 CommonModes 运行，
+窗口不抢 key，Window 的实际大小只覆盖面板。手动模式采样 tick 在主线程 CommonModes 运行，
 busy 覆盖抓屏、后台对齐和预览；活动时处理完成后至少间隔 0.12s；
 连续相同帧降至 0.5s，空闲约 6s 自动完成。
 前台 App、锁屏、旋转和内存状态均检查；首帧不完整直接失败。
 PXCaptureProvider 检查 _snapshotExcludingWindows:withRect: 的方法签名；
-不可用时隐藏传入窗口、等待合成器，再抓取并在 finally 中恢复，后台归一化前恢复。
+每次均隐藏传入窗口、等待合成器，再抓取并在 finally 中恢复。连续采集结果复制为
+独立 RGBA 位图，源表面与临时对象释放后才通知会话。
 已销毁窗口不能通过旧回调复活。
 
 PXLongShotMatchFrames 识别固定首尾条带，以全正文分布采样搜索位移并密集验证；
-多解、无纹理、低可信返回 Uncertain，三次重试仍失败则停止追加。
+多解、无纹理、低可信返回 Uncertain；自动模式保持当前页面重采，不继续发下一次手势，
+三次重试仍失败则停止追加。
 Duplicate 和 Reverse 不追加；固定边界在首个向前匹配后锁定。
 首帧保留顶部，先前末帧去掉页脚，新帧只保留新增正文及当前页脚。
 帧文件保持全屏原始尺寸，预览与导出共用 cropTopRows/cropBottomRows 和
 PXLongShotDrawTile，未显示部分通过上下文 clip 排除。
-旧帧完成对齐后释放签名，仅保留最近帧/活动检测签名，最多 200 帧。
+旧帧完成对齐后释放签名，仅保留最近帧/活动检测签名，默认最多 200 帧，配置范围 2–500。
 低清预览增量覆盖旧页脚再追加正文，缩放时重放；画布按内容增长，最高 500K 像素。
 HUD 快照只复制有效行，不共享可变画布。预览资源限制只释放预览，采集继续。
 系统内存警告只释放预览并保留正在处理的首片，不作废 generation；是否停止后续采集
 按 os_proc_available_memory 自身余量对比动态底线判定（底线 = 任务限额 30%，限额由
 available + phys_footprint 估算；实测 iPhone14,2/iOS 16.1 的 SpringBoard 限额仅约
 400MB，固定阈值在该限额下形同虚设）。限额不可知时退回“反复警告即停”。熔断后当前
-分片入列保留小窗供完成/取消，暂停后点完成不再抓取整屏。ShellX 同为分片落盘 + 行
+分片先入列，后台位图释放后复测内存。余量仍不足且已有两片则自动导出，单片则保留
+小窗供完成/取消；资源完成不再抓末帧。ShellX 同为分片落盘 + 行
 签名架构，其保护同为限额制（os_proc_available_memory），不按全局警告次数熔断。
 导出前释放预览，画布像素上限按任务限额收缩（限额/64，400MB 限额 ≈ 25MB 画布，
 最低 1M 像素，未知限额维持 8M）；预算由 PXLongShotCanvasPixelBudget 按实时余量

@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "PXGeometry.h"
+#import "PXLongShotOptions.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -13,6 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL screenshotHaptic;
 @property (nonatomic, readonly) BOOL areaRememberLastRect;
 @property (nonatomic, readonly) CGFloat editorDefaultLineWidth;
+@property (nonatomic, strong, readonly) PXLongShotOptions *longShotOptions;
 
 @end
 

@@ -35,7 +35,7 @@ static NSString *_Nullable pxDarwinSelfPostArmedName = nil;
 @property (nonatomic, strong, nullable) PXCaptureWindow *captureWindow;
 @property (nonatomic, strong, nullable) PXSelectionView *selectionView;
 @property (nonatomic, strong, nullable) PXResultBubble *resultBubble;
-@property (nonatomic, strong, nullable) PXLongShotSession *longShotSession;   // 全屏手动滚动采集会话（主线程）
+@property (nonatomic, strong, nullable) PXLongShotSession *longShotSession;   // 自动/手动滚动采集会话（主线程）
 @property (nonatomic, strong) NSMutableArray<PXFloatingSnap *> *floatingSnaps; // 主线程，多图独立保留
 @property (nonatomic, strong, nullable) PXFloatingSnap *editingFloatingSnap;
 @property (nonatomic, strong, nullable) PXCaptureWindow *editorWindow;
@@ -224,7 +224,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
                     return;
                 }
                 if (![task transitionToState:PXCaptureStatePresenting]) return;
-                [self pxStartLongShotForTask:task autoScroll:NO displayRect:CGRectNull];
+                [self pxStartLongShotForTask:task autoScroll:task.configSnapshot.longShotOptions.autoScroll
+                                displayRect:task.capturedScreenBounds];
             } else if (task.mode == PXCaptureModeFull) {
                 [self pxHandleFullscreenResult:task];
             } else {
@@ -313,7 +314,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }];
 }
 
-#pragma mark - 全屏手动滚动采集会话
+#pragma mark - 自动/手动滚动采集会话
 
 - (void)pxStartLongShotForTask:(PXCaptureTask *)task autoScroll:(BOOL)autoScroll displayRect:(CGRect)displayRect {
     if (![self pxIsTaskCurrent:task] || task.state != PXCaptureStatePresenting) return;

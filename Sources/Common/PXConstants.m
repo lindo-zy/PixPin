@@ -63,6 +63,15 @@ NSString * const PXKeyAreaRememberLastRect = @"AreaRememberLastRect";
 NSString * const PXKeyAreaLastSelectionRect = @"AreaLastSelectionRect";
 // 全屏标记收起把手位置以 NSStringFromCGPoint 存储；无开关，始终记忆。
 NSString * const PXKeyMarkupHandleOrigin = @"MarkupHandleOrigin";
+NSString * const PXKeyLongShotAutoScroll = @"LongShotAutoScroll";
+NSString * const PXKeyLongShotSampleInterval = @"LongShotSampleInterval";
+NSString * const PXKeyLongShotIdleInterval = @"LongShotIdleInterval";
+NSString * const PXKeyLongShotScrollDuration = @"LongShotScrollDuration";
+NSString * const PXKeyLongShotSettleDuration = @"LongShotSettleDuration";
+NSString * const PXKeyLongShotMaxSlices = @"LongShotMaxSlices";
+NSString * const PXKeyLongShotMaxCanvasHeight = @"LongShotMaxCanvasHeight";
+NSString * const PXKeyLongShotSliceQuality = @"LongShotSliceQuality";
+NSString * const PXKeyLongShotOutputQuality = @"LongShotOutputQuality";
 
 const NSInteger PXDefaultResultAction = 0;
 const CGFloat PXDefaultEditorLineWidth = 4.0;

@@ -1,5 +1,6 @@
 #import "PXCaptureProvider.h"
 #import "../Common/PXLog.h"
+#import "../Common/PXLongShotControl.h"
 #import <dlfcn.h>
 #import <QuartzCore/QuartzCore.h>
 #import <string.h>
@@ -70,7 +71,7 @@ static void PXResolveScreenCaptureSymbols(void) {
         invocation.target = screen;
         invocation.selector = selector;
         NSArray *excluded = windows;
-        CGRect rect = screen.bounds;
+        CGRect rect = CGRectNull; // 整屏，与本地参考实现的调用契约一致。
         [invocation setArgument:&excluded atIndex:2];
         [invocation setArgument:&rect atIndex:3];
         [invocation invoke];
@@ -85,10 +86,8 @@ static void PXResolveScreenCaptureSymbols(void) {
                     completion:(void (^)(UIImage *, BOOL, NSString *, NSError *))completion {
     NSParameterAssert(completion);
     void (^begin)(void) = ^{
-        UIImage *excludedImage = (windows.count && !self.fallbackOnlyCapture)
-            ? [self pxSnapshotExcludingWindows:windows] : nil;
         NSMutableArray<NSDictionary *> *hidden = [NSMutableArray array];
-        if (windows.count && !excludedImage) {
+        if (windows.count) {
             for (UIWindow *window in windows) {
                 if (window.hidden || !window.rootViewController) continue;
                 [hidden addObject:@{@"window": window, @"controller": window.rootViewController}];
@@ -96,13 +95,26 @@ static void PXResolveScreenCaptureSymbols(void) {
             }
             [CATransaction flush];
         }
+        BOOL detach = self.detachesCapturedImage;
         void (^grabBlock)(void) = ^{
+          @autoreleasepool {
+            if (detach && windows.count) {
+                BOOL liveWindow = NO;
+                for (UIWindow *window in windows) if (window.rootViewController) { liveWindow = YES; break; }
+                if (!liveWindow) {
+                    dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, NO, @"cancelled", nil); });
+                    return;
+                }
+            }
             NSString *method = [[self class] resolvedCaptureMethod];
-            UIImage *image = excludedImage;
+            __block UIImage *image = nil;
             BOOL isPartial = NO;
-            if (image) method = @"private-excluding-windows";
 
             @try {
+                if (windows.count && !self.fallbackOnlyCapture) {
+                    image = [self pxSnapshotExcludingWindows:windows];
+                    if (image) method = @"private-excluding-windows";
+                }
                 if (!image && _PXCreateScreenUIImage) {
                     image = _PXCreateScreenUIImage();
                     if (image) method = @"private-uicreate";
@@ -148,14 +160,24 @@ static void PXResolveScreenCaptureSymbols(void) {
 
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 NSError *normalizeError = nil;
-                UIImage *normalized = [self pxNormalizeImage:image
+                UIImage *normalized = nil;
+                @autoreleasepool {
+                    normalized = [self pxNormalizeImage:image
                                             targetPixelSize:targetPixelSize
                                                 screenScale:screenScale
                                                       error:&normalizeError];
+                    if (detach && normalized) {
+                        normalized = [self pxOwnedBitmapImage:normalized];
+                        if (!normalized) normalizeError = [NSError errorWithDomain:PXCaptureErrorDomain
+                            code:PXCaptureErrorCaptureFailed userInfo:@{NSLocalizedDescriptionKey:@"抓屏位图复制失败"}];
+                    }
+                    image = nil;
+                } // 源表面与归一化临时对象先释放，再通知会话处理下一帧。
                 dispatch_async(dispatch_get_main_queue(), ^{
                     completion(normalized, isPartial, method, normalizeError);
                 });
             });
+          }
         };
         if (hidden.count) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 / 60.0 * NSEC_PER_SEC)),
@@ -217,6 +239,16 @@ static void PXResolveScreenCaptureSymbols(void) {
 }
 
 #pragma mark - 归一化
+
+- (UIImage *)pxOwnedBitmapImage:(UIImage *)image {
+    CGImageRef source = image.CGImage;
+    if (!source) return nil;
+    CGImageRef owned = PXLongShotCreateOwnedBitmap(source);
+    if (!owned) return nil;
+    UIImage *result = [UIImage imageWithCGImage:owned scale:image.scale orientation:UIImageOrientationUp];
+    CGImageRelease(owned);
+    return result;
+}
 
 - (UIImage *)pxNormalizeImage:(UIImage *)image
               targetPixelSize:(CGSize)targetPixelSize
