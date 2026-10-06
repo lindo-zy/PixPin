@@ -92,7 +92,7 @@ NSInteger PXRunLongShotFrameStoreTests(NSInteger *checkCount) {
     UIImage *shadowOutput = [shadowStore exportToURL:[NSURL fileURLWithPath:[shadowDir stringByAppendingPathComponent:@"shadow.jpg"]]
                                           pixelSize:&size progress:nil error:nil];
     CGColorSpaceRef shadowColor = CGColorSpaceCreateDeviceRGB();
-    CGContextRef decoded = CGBitmapContextCreate(NULL, 384, 1320, 8, 0, shadowColor, kCGImageAlphaPremultipliedLast);
+    CGContextRef decoded = CGBitmapContextCreate(NULL, 384, 1320, 8, 0, shadowColor, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(shadowColor);
     BOOL clean = shadowOutput && decoded;
     if (clean) {

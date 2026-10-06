@@ -813,8 +813,8 @@ static void testManualLongShot(void) {
         NSInteger seamWidth = (NSInteger)ceil(117 * seamScale);
         NSInteger used = (NSInteger)ceil(8 * 99 * seamScale);
         CGColorSpaceRef seamSpace = CGColorSpaceCreateDeviceRGB();
-        CGContextRef seamTile = CGBitmapContextCreate(NULL, 117, 300, 8, 0, seamSpace, kCGImageAlphaPremultipliedLast);
-        CGContextRef seamCanvas = CGBitmapContextCreate(NULL, seamWidth, used, 8, 0, seamSpace, kCGImageAlphaPremultipliedLast);
+        CGContextRef seamTile = CGBitmapContextCreate(NULL, 117, 300, 8, 0, seamSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+        CGContextRef seamCanvas = CGBitmapContextCreate(NULL, seamWidth, used, 8, 0, seamSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
         CGColorSpaceRelease(seamSpace);
         if (seamTile && seamCanvas) {
             CGContextSetRGBFillColor(seamTile, 243.0 / 255, 243.0 / 255, 243.0 / 255, 1);

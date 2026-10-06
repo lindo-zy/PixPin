@@ -312,7 +312,7 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
         if (s.memoryStopped || s.terminalPause) { if (s.finishRequested) [s pxExport]; return; }
         if (!completed) { [s pxStop:@"短滑失败\n点完成保存" terminal:YES]; return; }
         [s pxSettleThenCapture:s.mode == PXLongShotModeAutomatic || s.finishRequested];
-    });
+    }];
 }
 - (void)pxSettleThenCapture:(BOOL)capture {
     [self pxSetPhase:PXLongShotPhaseSettling]; self.hud.statusText = @"等待画面稳定";
