@@ -398,6 +398,7 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
         atomic_fetch_add(&PXLockGeneration, 1); PXLockSession = nil;
         CFNotificationCenterRemoveObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, PXLockName, NULL);
     }
+    [self.provider endVisibleWindowExclusion];
     self.hud.delegate = nil; [self.window hideAndDestroyWithCompletion:nil];
     self.window = nil; self.hud = nil; self.store = nil; self.task = nil; self.delegate = nil;
     if (remove) {

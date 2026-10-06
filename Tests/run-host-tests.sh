@@ -15,6 +15,7 @@ clang \
     -framework Foundation \
     -framework CoreGraphics \
     -framework ImageIO \
+    -framework QuartzCore \
     -o "$OUT_BIN" \
     "$ROOT_DIR/Sources/Common/PXGeometry.m" \
     "$ROOT_DIR/Sources/Common/PXConstants.m" \
@@ -25,16 +26,20 @@ clang \
     "$ROOT_DIR/Sources/Common/PXLongShotControl.m" \
     "$ROOT_DIR/Sources/Common/PXLongShotOptions.m" \
     "$ROOT_DIR/Sources/Capture/PXLongShotFrameStore.m" \
+    "$ROOT_DIR/Sources/Capture/PXCaptureProvider.m" \
+    "$ROOT_DIR/Sources/Capture/PXCaptureLayerExclusion.m" \
     "$ROOT_DIR/Sources/Capture/PXLongShotTarget.m" \
     "$ROOT_DIR/Sources/Capture/PXLongShotHID.m" \
     "$ROOT_DIR/Sources/Common/PXLog.m" \
     "$ROOT_DIR/Sources/Output/PXLongImageComposer.m" \
     "$ROOT_DIR/Sources/Output/PXLongPreviewCanvas.m" \
     "$ROOT_DIR/Tests/Support/PXUIKitImageStub.m" \
+    "$ROOT_DIR/Tests/Support/PXCaptureUIKitStub.m" \
     "$ROOT_DIR/Sources/Editor/PXEditorLayout.m" \
     "$ROOT_DIR/Tests/Unit/PXHostTests.m" \
     "$ROOT_DIR/Tests/Unit/PXLongShotHIDTests.m" \
     "$ROOT_DIR/Tests/Unit/PXLongShotOptionsTests.m" \
+    "$ROOT_DIR/Tests/Unit/PXCaptureProviderTests.m" \
     "$ROOT_DIR/Tests/Unit/PXLongShotFrameStoreTests.m"
 
 "$OUT_BIN"

@@ -25,4 +25,5 @@
 }
 - (void)dealloc { if (_color) CGColorRelease(_color); }
 - (CGColorRef)CGColor { return _color; }
+- (void)setFill {}
 @end
