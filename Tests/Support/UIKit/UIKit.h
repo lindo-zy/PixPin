@@ -8,6 +8,7 @@ typedef NS_ENUM(NSInteger, UIImageOrientation) { UIImageOrientationUp };
 @property (nonatomic, readonly) CGFloat scale;
 @property (nonatomic, readonly) CGSize size;
 + (instancetype)imageWithCGImage:(CGImageRef)image scale:(CGFloat)scale orientation:(UIImageOrientation)orientation;
+- (instancetype)initWithCGImage:(CGImageRef)image scale:(CGFloat)scale orientation:(UIImageOrientation)orientation;
 @end
 @interface UIColor : NSObject
 @property (nonatomic, readonly) CGColorRef CGColor;

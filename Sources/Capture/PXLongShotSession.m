@@ -61,6 +61,30 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
         if (generation == atomic_load(&PXLockGeneration)) [PXLockSession pxCancel];
     });
 }
+// 会话收尾后的进程内存回收观测：0/5/30/60 秒各记一行 footprint/available（仅 syslog）。
+// dispatch_after 只捕获 taskID 字符串与代数，不持有会话，观测自身不延长任务生命周期。
+static void PXLongShotLogEndMemory(NSString *taskID, NSUInteger generation, NSInteger seconds) {
+    PXLogInfo(@"long shot end memory (task %@ gen=%lu t=%lds footprint=%llu available=%llu)",
+              taskID, (unsigned long)generation, (long)seconds,
+              (unsigned long long)PXLongShotProcessFootprintBytes(),
+              (unsigned long long)PXLongShotAvailableMemoryBytes());
+}
+
+static void PXLongShotScheduleEndMemoryLogs(NSString *taskID, NSUInteger generation) {
+    static const NSInteger PXEndMemoryDelays[] = {0, 5, 30, 60};
+    for (NSUInteger i = 0; i < sizeof(PXEndMemoryDelays) / sizeof(PXEndMemoryDelays[0]); i++) {
+        NSInteger delay = PXEndMemoryDelays[i];
+        NSString *capturedTaskID = [taskID copy];
+        if (delay == 0) {
+            PXLongShotLogEndMemory(capturedTaskID, generation, delay);
+            continue;
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            PXLongShotLogEndMemory(capturedTaskID, generation, delay);
+        });
+    }
+}
 @implementation PXLongShotSession
 + (instancetype)startWithTask:(PXCaptureTask *)task mode:(PXLongShotMode)mode
                   displayRect:(CGRect)displayRect delegate:(id<PXLongShotSessionDelegate>)delegate {
@@ -389,6 +413,9 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
 }
 - (void)pxTeardown:(BOOL)remove {
     if (self.isFinished) return;
+    // 在自增前取值：gen 仍与最后一次采集的 generation 日志对应。
+    NSString *endTaskID = self.taskID;
+    NSUInteger endGeneration = self.generation;
     self.phase = PXLongShotPhaseFinished; self.generation++; self.cancellation.cancelled = YES;
     [self.scroller cancel]; self.scroller = nil;
     [self.timer invalidate]; self.timer = nil;
@@ -405,5 +432,7 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
         NSString *taskID = self.taskID;
         dispatch_async(PXLongShotImageQueue(), ^{ [PXTemporaryFileStore removeTaskDirectory:taskID]; });
     }
+    // t=0 在资源释放后采样，5/30/60 秒观察进程回收趋势。
+    PXLongShotScheduleEndMemoryLogs(endTaskID, endGeneration);
 }
 @end

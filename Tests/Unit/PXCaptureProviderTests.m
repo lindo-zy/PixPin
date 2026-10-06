@@ -16,8 +16,19 @@
 static UIImage *PXPrivateCaptureFixture;
 static BOOL PXDisablePrimaryCapture;
 static NSInteger PXScreenCaptureCalls, PXLegacyCaptureCalls;
+static NSPointerArray *PXCaptureProbes;   // 弱引用探针：仅观察 mock 产出图像的销毁时机
 // 由真实 PXCaptureProvider 的 dlsym 解析这两个宿主符号。
-UIImage *_UICreateScreenUIImage(void) { PXScreenCaptureCalls++; return PXDisablePrimaryCapture ? nil : PXPrivateCaptureFixture; }
+// _UICreateScreenUIImage 按真实接口惯例返回 +1（NS_RETURNS_RETAINED），每次独立新建：
+// provider 若未按 +1 接管所有权，探针将常驻不销毁（逐帧原图泄漏回归测试）。
+UIImage *_UICreateScreenUIImage(void) NS_RETURNS_RETAINED;
+UIImage *_UICreateScreenUIImage(void) {
+    PXScreenCaptureCalls++;
+    if (PXDisablePrimaryCapture) return nil;
+    UIImage *image = [[UIImage alloc] initWithCGImage:PXPrivateCaptureFixture.CGImage
+                                                scale:1 orientation:UIImageOrientationUp];
+    [PXCaptureProbes addPointer:(__bridge void *)image];
+    return image;
+}
 CGImageRef UIGetScreenImage(void) {
     PXLegacyCaptureCalls++;
     return CGImageRetain(PXPrivateCaptureFixture.CGImage);
@@ -74,6 +85,7 @@ NSInteger PXRunCaptureProviderTests(NSInteger *checkCount) {
     CGContextSetRGBFillColor(context, 0.8, 0.8, 0.8, 1); CGContextFillRect(context, CGRectMake(0,0,64,256));
     CGImageRef cg = CGBitmapContextCreateImage(context); CGContextRelease(context);
     PXPrivateCaptureFixture = [UIImage imageWithCGImage:cg scale:1 orientation:UIImageOrientationUp]; CGImageRelease(cg);
+    PXCaptureProbes = [NSPointerArray weakObjectsPointerArray];
     UIWindow *window = [UIWindow new]; window.layer = layer; window.rootViewController = [NSObject new];
     PXCaptureProvider *provider = [PXCaptureProvider new]; provider.keepsExcludedWindowsVisible = YES;
     provider.detachesCapturedImage = YES;
@@ -97,6 +109,14 @@ NSInteger PXRunCaptureProviderTests(NSInteger *checkCount) {
     window.rootViewController = [NSObject new]; window.layer = [NSObject new];
     CAP_CHECK(!PXWaitCapture(provider, window, NO) && PXScreenCaptureCalls == 3 && PXLegacyCaptureCalls == 1,
               "unsupported exclusion never captures HUD into unprotected full screen");
+    // 逐帧原图销毁：以上每帧从 mock 以 +1 取得的抓屏原图都必须已在帧生命周期内释放。
+    BOOL probesReleased = NO;
+    NSDate *probeDeadline = [NSDate dateWithTimeIntervalSinceNow:10];
+    while (!probesReleased && probeDeadline.timeIntervalSinceNow > 0) {
+        [NSRunLoop.mainRunLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+        probesReleased = PXCaptureProbes.allObjects.count == 0;
+    }
+    CAP_CHECK(probesReleased, "+1 screen image returned by private API is released within frame lifecycle");
     [provider endVisibleWindowExclusion]; PXPrivateCaptureFixture = nil;
     *checkCount = checks; return failures;
 }

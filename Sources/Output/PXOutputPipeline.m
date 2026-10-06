@@ -150,15 +150,23 @@ static BOOL PXOutputAllowedForState(PXCaptureState state) {
             // 保留临时副本，避免任务永久卡在 exporting。settled 只在主线程读写（回调链固定主线程）。
             static const NSTimeInterval PXPhotoSaveTimeout = 15.0;
             __block BOOL settled = NO;
+            // 超时块经 pendingCompletion 间接持有回调，taskID 单独拷贝：保存结束后
+            // saveCompletion 立即置空回调，任务与结果图不被 15 秒计时扣到结束才释放。
+            __block void (^pendingCompletion)(BOOL, NSString *) = completion;
+            NSString *timedOutTaskID = [task.taskID copy];
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(PXPhotoSaveTimeout * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 if (settled) return;
                 settled = YES;
-                PXLogError(@"photo save timed out (task %@), temp kept", task.taskID);
-                completion(NO, @"相册保存超时，已保留临时副本");
+                void (^fire)(BOOL, NSString *) = pendingCompletion;
+                pendingCompletion = nil;
+                if (!fire) return;
+                PXLogError(@"photo save timed out (task %@), temp kept", timedOutTaskID);
+                fire(NO, @"相册保存超时，已保留临时副本");
             });
 
             void (^saveCompletion)(NSString *, NSError *) = ^(NSString *identifier, NSError *error) {
+                pendingCompletion = nil;   // 保存已结束：立即释放超时兜底持有的回调
                 if (settled) return;   // 超时已兜底，丢弃迟到回调
                 settled = YES;
                 if (error) {

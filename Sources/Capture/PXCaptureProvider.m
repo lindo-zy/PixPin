@@ -9,13 +9,17 @@
 NSString * const PXCaptureErrorDomain = @"com.pixpin.screenshot.capture";
 
 // 私有接口运行期解析，不做链接期依赖；全部不可用时走公开回退路径并标记 partial。
-static UIImage *(*_PXCreateScreenUIImage)(void) = NULL;
+// _UICreateScreenUIImage 按惯例声明返回 +1 对象（公开声明范例标注 NS_RETURNS_RETAINED）：
+// 函数指针类型必须带同一约定，否则 ARC 按 +0 处理，每帧调用泄漏一次接口交出的引用
+// （@3x 全屏 RGBA 约 12MB/帧），且复制独立位图、落盘、销毁会话都无法释放它。
+typedef UIImage * _Nullable (*PXCreateScreenUIImageFn)(void) NS_RETURNS_RETAINED;
+static PXCreateScreenUIImageFn _PXCreateScreenUIImage = NULL;
 static CGImageRef (*_PXGetScreenImage)(void) = NULL;
 
 static void PXResolveScreenCaptureSymbols(void) {
     void *symbol = dlsym(RTLD_DEFAULT, "_UICreateScreenUIImage");
     if (symbol) {
-        _PXCreateScreenUIImage = (UIImage *(*)(void))symbol;
+        _PXCreateScreenUIImage = (PXCreateScreenUIImageFn)symbol;
     } else {
         PXLogWarn(@"_UICreateScreenUIImage unavailable");
     }
