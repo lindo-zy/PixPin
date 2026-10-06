@@ -83,9 +83,10 @@ static PXLongShotHIDFunctions PXHIDFunctions;
 
 - (void)scrollWithPlan:(PXLongShotScrollPlan)plan duration:(NSTimeInterval)duration completion:(void (^)(BOOL))completion {
     NSParameterAssert([NSThread isMainThread]);
+    // 上滑前进而下滑回滚；只要求竖直方向有最小位移，方向本身不设限。
     if (self.displayLink || self.availabilityError || !isfinite(duration) || duration < 0.25 || duration > 2 ||
         !isfinite(plan.start.x) || !isfinite(plan.start.y) || !isfinite(plan.end.x) || !isfinite(plan.end.y) ||
-        plan.start.y <= plan.end.y || ![self targetApplicationIsCurrent]) {
+        fabs(plan.start.y - plan.end.y) < 8.0 || ![self targetApplicationIsCurrent]) {
         completion(NO);
         return;
     }
