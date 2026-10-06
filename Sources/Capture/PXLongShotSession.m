@@ -45,6 +45,7 @@ static dispatch_queue_t PXLongShotImageQueue(void) {
 @property (nonatomic, assign) NSInteger sameCount;
 @property (nonatomic, assign) NSInteger unmatchedCount;
 @property (nonatomic, assign) BOOL retryAlignment;
+@property (nonatomic, assign) BOOL alignmentResampled;
 @property (nonatomic, assign) BOOL needsSettledCapture;
 @property (nonatomic, assign) CFTimeInterval lastActivity;
 @property (nonatomic, assign) CFTimeInterval nextSample;
@@ -185,6 +186,8 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
     self.samplingStopped = YES;
     self.flowGeneration++;
     self.autoStepScheduled = NO;
+    self.retryAlignment = NO;
+    self.alignmentResampled = NO;
     [self pxCancelScrolling];
     [self.sampleTimer invalidate];
     self.sampleTimer = nil;
@@ -376,10 +379,17 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
                     s.retryAlignment = match.kind == PXLongShotMatchUncertain;
                     if (match.kind == PXLongShotMatchUncertain) {
                         s.unmatchedCount++;
+                        BOOL resampled = s.alignmentResampled;
+                        // 判歧可能来自内容固有歧义（周期性列表/稀疏留白），与瞬态噪声不同源；
+                        // 逐次留下 syslog 才能在真机上区分重采无效与偶发抖动。
+                        PXLogWarn(@"long shot align uncertain (task %@, consecutive=%ld, slices=%lu, resampled=%d)",
+                                  s.taskID, (long)s.unmatchedCount, (unsigned long)s.slices.count, resampled);
                         if (s.unmatchedCount >= 3) { [s pxPause:@"无法可靠拼接，请点「完成」保存已截内容"]; return; }
-                        if (!s.finishRequested) s.hud.statusText = @"正在重试对齐\n请放慢滚动";
+                        if (!s.finishRequested)
+                            s.hud.statusText = resampled ? @"对齐仍有歧义\n小步回滚重试" : @"正在重试对齐\n请放慢滚动";
                     } else {
                         s.unmatchedCount = 0;
+                        s.alignmentResampled = NO;
                         if (match.kind == PXLongShotMatchReverse && !s.finishRequested)
                             s.hud.statusText = @"反向内容不追加\n请继续向上滑动";
                     }
@@ -388,6 +398,7 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
                 }
                 s.unmatchedCount = 0;
                 s.retryAlignment = NO;
+                s.alignmentResampled = NO;
                 if (anchor) {
                     if (s.fixedTop < 0) { s.fixedTop = match.fixedTopRows; s.fixedBottom = match.fixedBottomRows; }
                     anchor.cropBottomRows = s.fixedBottom;
@@ -502,8 +513,34 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
         else [self pxPause:@"内存不足，点「完成」保存当前截取"];
         return;
     }
+    if (self.autoScroll && self.retryAlignment && self.alignmentResampled) {
+        // 重采已确认页面静止仍判歧：同页重采只会复现同一结果，小步回滚改变与锚点的
+        // 比较基准；不前滚以免扩大未捕获缺口。总上限仍由 unmatchedCount>=3 把守。
+        PXLongShotScrollPlan corrective;
+        self.alignmentResampled = NO;
+        if (PXLongShotBuildCorrectiveScrollPlan(self.scrollPlan, 1.0 / 3.0, &corrective)) {
+            self.busy = YES;
+            NSUInteger flow = self.flowGeneration;
+            __weak PXLongShotSession *weakSelf = self;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(options.settleDuration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                PXLongShotSession *s = weakSelf;
+                if (![s pxIsTaskPresenting] || s.flowGeneration != flow) return;
+                s.busy = NO;
+                if (s.samplingStopped && !s.finishRequested) return; // 已暂停：只等用户完成/取消
+                // 静置窗口内点「完成」或内存熔断时不回滚：末段抓取/收尾入口自行分流，
+                // 否则手势被 finishRequested/stopAfterCurrentFrame 拒绝后会话无人推进。
+                if (s.finishRequested || s.stopAfterCurrentFrame) { [s pxStartCapture]; return; }
+                [s pxScheduleGesturePlan:corrective];
+            });
+            return;
+        }
+        // 滑动带过窄等无法回滚的情形：退回重采，仍由 unmatchedCount>=3 兜底。
+        PXLogWarn(@"long shot corrective rollback unavailable (task %@, slices=%lu)",
+                  self.taskID, (unsigned long)self.slices.count);
+    }
     if (self.autoScroll && (self.retryAlignment || self.needsSettledCapture)) {
         // 对齐未确认时重采当前页面，不能继续滚动扩大未捕获的缺口。
+        if (self.retryAlignment) self.alignmentResampled = YES;
         self.busy = YES;
         NSUInteger flow = self.flowGeneration;
         __weak PXLongShotSession *weakSelf = self;
@@ -518,6 +555,11 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
 }
 #pragma mark - 自动滚动（选区工具栏入口）
 - (void)pxScheduleAutoScroll {
+    [self pxScheduleGesturePlan:self.scrollPlan];
+}
+
+// 常规步进与对齐判歧后的纠正性回滚共用调度与防重入；差别只在滑动带方向与距离。
+- (void)pxScheduleGesturePlan:(PXLongShotScrollPlan)plan {
     if (![self pxIsTaskPresenting] || self.finishRequested || self.stitching || self.samplingStopped ||
         self.memoryRecoveryPending || self.autoStepScheduled) return;
     self.autoStepScheduled = YES;
@@ -527,15 +569,15 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
         PXLongShotSession *s = weakSession;
         if (s.flowGeneration == flow) {
             s.autoStepScheduled = NO;
-            [s pxScrollOnce];
+            [s pxRunGesturePlan:plan];
         }
     });
 }
-- (void)pxScrollOnce {
+- (void)pxRunGesturePlan:(PXLongShotScrollPlan)plan {
     if (![self pxIsTaskPresenting] || self.finishRequested || self.stitching || self.samplingStopped ||
         self.stopAfterCurrentFrame || self.memoryRecoveryPending) return;
     if (self.busy || self.scrolling) return;
-    if (self.hud.isPreviewInteracting) { [self pxScheduleAutoScroll]; return; }
+    if (self.hud.isPreviewInteracting) { [self pxScheduleGesturePlan:plan]; return; }
     if (![self pxTargetIsCurrent]) { [self pxPause:@"前台 App 已变化，点「完成」保存已截内容"]; return; }
     self.scrolling = YES;
     self.scrollPreparing = YES;
@@ -548,7 +590,7 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
       PXLongShotSession *prepared = weakSelf;
       if (![prepared pxIsTaskPresenting] || prepared.flowGeneration != flow || !prepared.scrollPreparing) return;
       prepared.scrollPreparing = NO;
-      [prepared.scroller scrollWithPlan:prepared.scrollPlan duration:prepared.task.configSnapshot.longShotOptions.scrollDuration completion:^(BOOL completed) {
+      [prepared.scroller scrollWithPlan:plan duration:prepared.task.configSnapshot.longShotOptions.scrollDuration completion:^(BOOL completed) {
         PXLongShotSession *s = weakSelf;
         if (!s) return;
         s.scrolling = NO;
@@ -613,6 +655,8 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
     self.stitching = YES;
     self.flowGeneration++;
     self.autoStepScheduled = NO;
+    self.retryAlignment = NO;
+    self.alignmentResampled = NO;
     self.samplingStopped = YES;
     [self.sampleTimer invalidate];
     self.sampleTimer = nil;

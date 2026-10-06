@@ -146,6 +146,22 @@ BOOL PXLongShotBuildScrollPlan(CGRect viewport, CGRect screenBounds, CGRect prot
     return YES;
 }
 
+BOOL PXLongShotBuildCorrectiveScrollPlan(PXLongShotScrollPlan forwardPlan, CGFloat fraction,
+                                         PXLongShotScrollPlan *correctPlan) {
+    if (!correctPlan || !isfinite(fraction) || fraction <= 0.0 || fraction >= 1.0 ||
+        !isfinite(forwardPlan.start.x) || !isfinite(forwardPlan.start.y) ||
+        !isfinite(forwardPlan.end.x) || !isfinite(forwardPlan.end.y) ||
+        forwardPlan.start.y <= forwardPlan.end.y) return NO;
+    CGFloat distance = (forwardPlan.start.y - forwardPlan.end.y) * fraction;
+    // 回滑起点略低于原终点，避免与前一次抬指点重叠；终点不越过原起点，保持在滑动带内。
+    CGFloat top = forwardPlan.end.y + 2.0;
+    CGFloat bottom = MIN(forwardPlan.start.y - 8.0, top + distance);
+    if (bottom - top < 24.0) return NO;
+    correctPlan->start = CGPointMake(forwardPlan.start.x, top);
+    correctPlan->end = CGPointMake(forwardPlan.start.x, bottom);
+    return YES;
+}
+
 CGRect PXLongShotTileRect(CGFloat canvasHeight, NSInteger offset, NSInteger width,
                          NSInteger height, CGFloat scale) {
     return CGRectMake(0, canvasHeight - ((CGFloat)offset + (CGFloat)height) * scale,

@@ -112,6 +112,28 @@ NSInteger PXRunLongShotOptionsTests(NSInteger *checkCount) {
     PXLongShotUpdateRebound(&state, (PXLongShotFrameMatch){PXLongShotMatchDuplicate,0,0,0}, 1000, YES);
     LS_CHECK(state.reverseRows == 0 && state.reverseFrames == 0, "duplicate frame breaks consecutive reverse evidence");
 
+    PXLongShotScrollPlan forwardBand = {CGPointMake(200, 810), CGPointMake(200, 490)};
+    PXLongShotScrollPlan rollback = {0};
+    LS_CHECK(PXLongShotBuildCorrectiveScrollPlan(forwardBand, 1.0 / 3.0, &rollback) &&
+             rollback.start.x == 200 && rollback.start.y == 492 &&
+             fabs(rollback.end.y - 598.667) < 0.01,
+             "corrective plan rolls back one third of the band as a downward swipe");
+    LS_CHECK(rollback.start.y < rollback.end.y && rollback.end.y < forwardBand.start.y,
+             "corrective swipe stays inside the original gesture band");
+    LS_CHECK(!PXLongShotBuildCorrectiveScrollPlan(forwardBand, 1.0 / 3.0, NULL) &&
+             !PXLongShotBuildCorrectiveScrollPlan((PXLongShotScrollPlan){CGPointMake(200, NAN), CGPointMake(200, 490)},
+                                                  1.0 / 3.0, &rollback) &&
+             !PXLongShotBuildCorrectiveScrollPlan((PXLongShotScrollPlan){CGPointMake(200, 400), CGPointMake(200, 490)},
+                                                  1.0 / 3.0, &rollback),
+             "invalid forward plans and reversed bands refuse corrective derivation");
+    LS_CHECK(!PXLongShotBuildCorrectiveScrollPlan((PXLongShotScrollPlan){CGPointMake(200, 505), CGPointMake(200, 490)},
+                                                  1.0 / 3.0, &rollback),
+             "bands too short for a meaningful rollback are rejected");
+    LS_CHECK(!PXLongShotBuildCorrectiveScrollPlan(forwardBand, NAN, &rollback) &&
+             !PXLongShotBuildCorrectiveScrollPlan(forwardBand, 0.0, &rollback) &&
+             !PXLongShotBuildCorrectiveScrollPlan(forwardBand, 1.0, &rollback),
+             "fraction must be strictly between zero and one");
+
     NSInteger released = 0;
     uint8_t *pixels = malloc(16 * 16 * 4);
     memset(pixels, 255, 16 * 16 * 4);

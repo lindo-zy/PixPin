@@ -12,7 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
 #ifdef __cplusplus
 extern "C" {
 #endif
-/// 单次自动滚动的滑动路径：竖直上滑，start 靠下、end 靠上。
+/// 单次自动滚动的滑动路径：竖直滑动，start 为落指点、end 为抬指点。
+/// start 靠下（上滑）为前进步进；start 靠上（下滑）为对齐判歧后的纠正性回滚。
 typedef struct {
     CGPoint start;
     CGPoint end;
@@ -55,6 +56,12 @@ BOOL PXLongShotCanvasGeometry(NSInteger width, NSInteger totalHeight, NSInteger 
 /// 滑动带压到 protectedRect 下缘以下（HUD 小窗悬在右上），带高不足 80pt 返回 NO。
 BOOL PXLongShotBuildScrollPlan(CGRect viewport, CGRect screenBounds, CGRect protectedRect,
                               PXLongShotScrollPlan *plan);
+
+/// 由前向上滑计划派生一次小步下滑的回滚计划（距离为原步长的 fraction 倍）：
+/// 对齐判歧后重采无法解开内容固有的歧义，只有改变与锚点的比较基准才可能恢复。
+/// 回滑限制在原滑动带内；输入非法或回退距离不足 24pt 返回 NO。
+BOOL PXLongShotBuildCorrectiveScrollPlan(PXLongShotScrollPlan forwardPlan, CGFloat fraction,
+                                         PXLongShotScrollPlan *correctPlan);
 
 /// 原始像素坐标统一缩放后转换到 CG 底部原点，预览与最终拼接共用。
 CGRect PXLongShotTileRect(CGFloat canvasHeight, NSInteger offset, NSInteger width,
