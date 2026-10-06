@@ -313,9 +313,18 @@ static void testShellXTriggers(void) {
         PXCheck([triggers[expected] isEqualToString:expected], expected.UTF8String);
     }
     // 区域/即时/冻结/关闭四个官方触发名与本方 SHELLX 兼容别名同名：自发通知会被自己的
-    // 观察者收到，外调方必须做自发自收抑制（协调器按名武装一次）；这条检查钉住该前提。
-    PXCheck([(__bridge NSString *)PXShellXTriggerArea isEqualToString:(__bridge NSString *)PXDarwinShellXOpen],
-            "area trigger shares shellx alias name, self-post suppression required");
+    // 观察者收到，外调方必须做自发自收抑制（协调器按名武装一次）；两侧常量各自钉住
+    // 字面量之外，再逐对钉住相等，防单侧漂移破坏抑制前提。
+    NSDictionary<NSString *, NSString *> *pairedAliases = @{
+        (__bridge NSString *)PXShellXTriggerArea: (__bridge NSString *)PXDarwinShellXOpen,
+        (__bridge NSString *)PXShellXTriggerInstant: (__bridge NSString *)PXDarwinShellXOpenInstant,
+        (__bridge NSString *)PXShellXTriggerFreeze: (__bridge NSString *)PXDarwinShellXOpenFreeze,
+        (__bridge NSString *)PXShellXTriggerClose: (__bridge NSString *)PXDarwinShellXClose,
+    };
+    for (NSString *trigger in pairedAliases) {
+        PXCheck([trigger isEqualToString:pairedAliases[trigger]],
+                "trigger shares shellx alias name, self-post suppression required");
+    }
 
     // URL 路由必须与 SHELLX 插件文档第 3 节逐字一致：走 SpringBoard URL 分发层由
     // SHELLX 拦截，路由写错的症状是打开设置页而不是触发功能。
@@ -479,6 +488,26 @@ static void testSelectionOrder(void) {
     // SHELLX 扩展组是目录的子集：工具栏按运行时可用性整体增删，目录解析无需特判。
     NSArray<NSString *> *shellx = [PXEditorOrder shellxSelectionIdentifiers];
     PXCheckInt(shellx.count, 14, "shellx group count");
+    // id→动作映射逐项钉死：漏配或错配的按钮点击会静默掉进本方输出动作分支或调错功能。
+    NSDictionary<NSString *, NSNumber *> *shellxActions = [PXEditorOrder shellxSelectionActionMap];
+    PXCheckInt(shellxActions.count, shellx.count, "shellx action map count");
+    NSDictionary<NSString *, NSNumber *> *expectedActions = @{
+        @"shellxarea": @(PXShellXActionArea),
+        @"shellxinstant": @(PXShellXActionInstant),
+        @"shellxfreeze": @(PXShellXActionFreeze),
+        @"shellxshot": @(PXShellXActionAssistive),
+        @"shellxclose": @(PXShellXActionClose),
+        @"shellxhistory": @(PXShellXActionHistory),
+        @"shellxopenlast": @(PXShellXActionOpenLast),
+        @"shellxlong": @(PXShellXActionLongShot),
+        @"shellxfull": @(PXShellXActionFullShot),
+        @"shellxmark": @(PXShellXActionMark),
+        @"shellxedit": @(PXShellXActionEdit),
+        @"shellxai2": @(PXShellXActionAI2),
+        @"shellxtranslate": @(PXShellXActionTranslate),
+        @"shellxscan": @(PXShellXActionScan),
+    };
+    PXCheck([shellxActions isEqualToDictionary:expectedActions], "shellx action map exact");
     for (NSString *identifier in shellx) {
         PXCheck([defaults containsObject:identifier], "shellx id inside selection catalog");
         PXCheck([PXEditorOrder displayNameForSelectionIdentifier:identifier].length > 0, "selection display name");

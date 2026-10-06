@@ -6,30 +6,6 @@
 static const CGFloat PXSelectionMinimumSize = 44.0;   // 点；过小选区会产出无意义的细条裁剪
 static const CGFloat PXHandleHitRadius = 36.0;
 
-/// SHELLX 扩展键 id → 外调动作。键集合必须与 PXEditorOrder shellxSelectionIdentifiers
-/// 一致：目录里加了按钮而映射漏配时，点击会静默掉进本方输出动作分支。
-static NSDictionary<NSString *, NSNumber *> *PXShellXActionMap(void) {
-    static NSDictionary<NSString *, NSNumber *> *map;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        map = @{@"shellxarea": @(PXShellXActionArea),
-                @"shellxinstant": @(PXShellXActionInstant),
-                @"shellxfreeze": @(PXShellXActionFreeze),
-                @"shellxshot": @(PXShellXActionAssistive),
-                @"shellxclose": @(PXShellXActionClose),
-                @"shellxhistory": @(PXShellXActionHistory),
-                @"shellxopenlast": @(PXShellXActionOpenLast),
-                @"shellxlong": @(PXShellXActionLongShot),
-                @"shellxfull": @(PXShellXActionFullShot),
-                @"shellxmark": @(PXShellXActionMark),
-                @"shellxedit": @(PXShellXActionEdit),
-                @"shellxai2": @(PXShellXActionAI2),
-                @"shellxtranslate": @(PXShellXActionTranslate),
-                @"shellxscan": @(PXShellXActionScan)};
-    });
-    return map;
-}
-
 typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     PXSelectionDragModeNone = 0,
     PXSelectionDragModeMove = 1,
@@ -437,8 +413,8 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         return;
     }
     // SHELLX 扩展键：交给协调器外调，不走本方输出动作。
-    // id→动作映射与 PXEditorOrder shellxSelectionIdentifiers 一一对应，缺一即静默失效。
-    NSNumber *shellxAction = PXShellXActionMap()[identifier];
+    // id→动作映射（PXEditorOrder）与 shellxSelectionIdentifiers 一一对应，缺一即静默失效。
+    NSNumber *shellxAction = [PXEditorOrder shellxSelectionActionMap][identifier];
     if (shellxAction) {
         if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestShellXAction:action:)]) {
             [self.delegate selectionViewDidRequestShellXAction:self action:(PXShellXAction)shellxAction.integerValue];

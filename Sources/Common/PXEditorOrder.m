@@ -69,6 +69,28 @@
     return identifiers;
 }
 
++ (NSDictionary<NSString *, NSNumber *> *)shellxSelectionActionMap {
+    static NSDictionary<NSString *, NSNumber *> *map;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        map = @{@"shellxarea": @(PXShellXActionArea),
+                @"shellxinstant": @(PXShellXActionInstant),
+                @"shellxfreeze": @(PXShellXActionFreeze),
+                @"shellxshot": @(PXShellXActionAssistive),
+                @"shellxclose": @(PXShellXActionClose),
+                @"shellxhistory": @(PXShellXActionHistory),
+                @"shellxopenlast": @(PXShellXActionOpenLast),
+                @"shellxlong": @(PXShellXActionLongShot),
+                @"shellxfull": @(PXShellXActionFullShot),
+                @"shellxmark": @(PXShellXActionMark),
+                @"shellxedit": @(PXShellXActionEdit),
+                @"shellxai2": @(PXShellXActionAI2),
+                @"shellxtranslate": @(PXShellXActionTranslate),
+                @"shellxscan": @(PXShellXActionScan)};
+    });
+    return map;
+}
+
 + (NSDictionary<NSString *, NSString *> *)actionDisplayNames {
     static NSDictionary<NSString *, NSString *> *names;
     static dispatch_once_t onceToken;

@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import "PXShellXBridge.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -30,6 +31,9 @@ typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
 /// 翻译/扫码）：仅在 SHELLX 在场且总开关打开时由调用方保留在工具栏，其余场合从顺序中
 /// 整体剔除（设置页不受此限制）。
 + (NSArray<NSString *> *)shellxSelectionIdentifiers;
+/// SHELLX 扩展按钮 id → 外调动作映射。键集合必须与 shellxSelectionIdentifiers 一致：
+/// 目录加了按钮而映射漏配时，点击会静默掉进本方输出动作分支，宿主测试钉住这一前提。
++ (NSDictionary<NSString *, NSNumber *> *)shellxSelectionActionMap;
 
 + (NSString *)displayNameForActionIdentifier:(NSString *)identifier;
 + (NSString *)displayNameForToolIdentifier:(NSString *)identifier;
