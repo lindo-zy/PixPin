@@ -15,7 +15,7 @@ static double PXLongShotNumber(NSDictionary *values, NSString *key, double fallb
 
 @implementation PXLongShotOptions
 + (NSArray<NSString *> *)preferenceKeys {
-    return @[PXKeyLongShotMode, PXKeyLongShotAutoScroll, PXKeyLongShotKeepFrames, PXKeyLongShotSampleInterval, PXKeyLongShotIdleInterval,
+    return @[PXKeyLongShotMode, PXKeyLongShotAutoScroll, PXKeyLongShotSampleInterval, PXKeyLongShotIdleInterval,
              PXKeyLongShotScrollDuration, PXKeyLongShotSettleDuration, PXKeyLongShotMaxSlices,
              PXKeyLongShotMaxCanvasHeight, PXKeyLongShotSliceQuality, PXKeyLongShotOutputQuality];
 }
@@ -29,8 +29,6 @@ static double PXLongShotNumber(NSDictionary *values, NSString *key, double fallb
             fallback = [legacy boolValue] ? PXLongShotModeAutomatic : PXLongShotModeSampling;
         _mode = (PXLongShotMode)PXLongShotNumber(values, PXKeyLongShotMode, fallback, 0, 2, YES);
         _autoScroll = _mode != PXLongShotModeSampling;
-        id keep = values[PXKeyLongShotKeepFrames];
-        _keepFrames = [keep isKindOfClass:NSNumber.class] && [keep boolValue]; // 缺省关闭：行为回退安全
         _sampleInterval = PXLongShotNumber(values, PXKeyLongShotSampleInterval, 0.12, 0.08, 1, NO);
         _idleInterval = PXLongShotNumber(values, PXKeyLongShotIdleInterval, 0.5, _sampleInterval, 2, NO);
         if (_idleInterval < _sampleInterval) _idleInterval = _sampleInterval;

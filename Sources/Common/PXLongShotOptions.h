@@ -10,7 +10,6 @@ typedef NS_ENUM(NSInteger, PXLongShotMode) {
 @interface PXLongShotOptions : NSObject
 @property (nonatomic, readonly) PXLongShotMode mode;
 @property (nonatomic, readonly) BOOL autoScroll; // 兼容旧调用者：智能与自动均使用短滑
-@property (nonatomic, readonly) BOOL keepFrames;
 @property (nonatomic, readonly) NSTimeInterval sampleInterval;
 @property (nonatomic, readonly) NSTimeInterval idleInterval;
 @property (nonatomic, readonly) NSTimeInterval scrollDuration;
