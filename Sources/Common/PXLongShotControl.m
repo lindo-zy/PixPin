@@ -133,12 +133,22 @@ BOOL PXLongShotBuildScrollPlan(CGRect viewport, CGRect screenBounds, CGRect prot
     CGRect rect = CGRectIntersection(viewport, safe);
     if (CGRectIsNull(rect) || CGRectGetHeight(rect) < 80.0 || CGRectGetWidth(rect) < 20.0) return NO;
     if (!CGRectIsEmpty(protectedRect)) {
-        // HUD 小窗是触摸宿主：滑动带整体压到其下缘以下，防止合成滑动落在预览视图上。
-        CGFloat bandTop = CGRectGetMaxY(protectedRect) + 12.0;
-        CGFloat bandBottom = CGRectGetMaxY(rect);
-        if (bandBottom - MAX(CGRectGetMinY(rect), bandTop) < 80.0) return NO;
-        rect.origin.y = MAX(CGRectGetMinY(rect), bandTop);
-        rect.size.height = bandBottom - rect.origin.y;
+        CGRect obstacle = CGRectInset(protectedRect, -12, -12);
+        // 右上小窗通常不覆盖正文中线，保留居中起滑，避免被迫向底栏靠近。
+        if (CGRectIntersectsRect(rect, obstacle) && CGRectGetMidX(rect) >= CGRectGetMinX(obstacle) &&
+            CGRectGetMidX(rect) <= CGRectGetMaxX(obstacle)) {
+            CGFloat leftWidth = MAX(0, CGRectGetMinX(obstacle) - CGRectGetMinX(rect));
+            CGFloat rightWidth = MAX(0, CGRectGetMaxX(rect) - CGRectGetMaxX(obstacle));
+            if (MAX(leftWidth, rightWidth) >= 20) {
+                if (leftWidth >= rightWidth) rect.size.width = leftWidth;
+                else { rect.origin.x = CGRectGetMaxX(obstacle); rect.size.width = rightWidth; }
+            } else {
+                CGFloat bandBottom = CGRectGetMaxY(rect);
+                rect.origin.y = MAX(CGRectGetMinY(rect), CGRectGetMaxY(obstacle));
+                rect.size.height = bandBottom - rect.origin.y;
+                if (rect.size.height < 80) return NO;
+            }
+        }
     }
     CGFloat distance = MIN((CGRectGetHeight(rect) - 20.0) * 0.60, 320.0);
     // 起滑点居中于滑动带：带底上方 10pt 在全屏模式下落在微信等 App 的 tabBar/输入栏，
@@ -177,8 +187,16 @@ void PXLongShotDrawTile(CGContextRef context, CGImageRef image, CGFloat canvasHe
                        NSInteger cropTop, NSInteger cropBottom, CGFloat scale) {
     NSInteger visible = height - cropTop - cropBottom;
     if (!context || !image || visible <= 0 || cropTop < 0 || cropBottom < 0 || scale <= 0) return;
+    // 相邻段共用同一累计坐标的舍入，裁切边界不落在半个像素上。
+    // 否则缩放后两次 clip 的覆盖率会把黑色底混入接缝，形成周期灰线。
+    CGFloat top = ceil(offset * scale);
+    CGFloat bottom = ceil((offset + visible) * scale);
+    CGFloat drawWidth = ceil(width * scale);
     CGContextSaveGState(context);
-    CGContextClipToRect(context, PXLongShotTileRect(canvasHeight, offset, width, visible, scale));
-    CGContextDrawImage(context, PXLongShotTileRect(canvasHeight, offset - cropTop, width, height, scale), image);
+    CGContextSetShouldAntialias(context, NO);
+    CGContextClipToRect(context, CGRectMake(0, canvasHeight - bottom, drawWidth, bottom - top));
+    CGRect tile = PXLongShotTileRect(canvasHeight, offset - cropTop, width, height, scale);
+    tile.size.width = drawWidth;
+    CGContextDrawImage(context, tile, image);
     CGContextRestoreGState(context);
 }

@@ -96,8 +96,13 @@ static NSData *PXFrameSignature(CGImageRef source, CGRect rect) {
                     [NSFileManager.defaultManager removeItemAtPath:path error:nil];
                     PXFrameError(error, @"拼接边界无效"); return nil;
                 }
-                anchor.cropBottomRows = self.fixedBottom;
-                slice.cropTopRows = crop;
+                // 接缝移到两帧共享正文的内侧，避开视口底缘的阴影/模糊栏。
+                // 两侧裁切等量变化，累计高度仍只增加实际滚动位移。
+                NSInteger overlap = slice.pixelHeight - self.fixedTop - self.fixedBottom - match.shiftRows;
+                NSInteger inset = MIN(MAX(0, overlap / 2),
+                                      MAX(0, anchor.pixelHeight - anchor.cropTopRows - self.fixedBottom - 1));
+                anchor.cropBottomRows = self.fixedBottom + inset;
+                slice.cropTopRows = crop - inset;
             }
             [self.slices addObject:slice];
             self.anchorSignature = signature;

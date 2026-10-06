@@ -86,8 +86,9 @@ static void PXResolveScreenCaptureSymbols(void) {
                     completion:(void (^)(UIImage *, BOOL, NSString *, NSError *))completion {
     NSParameterAssert(completion);
     void (^begin)(void) = ^{
+        BOOL keepVisible = self.keepsExcludedWindowsVisible && windows.count > 0;
         NSMutableArray<NSDictionary *> *hidden = [NSMutableArray array];
-        if (windows.count) {
+        if (windows.count && !keepVisible) {
             for (UIWindow *window in windows) {
                 if (window.hidden || !window.rootViewController) continue;
                 [hidden addObject:@{@"window": window, @"controller": window.rootViewController}];
@@ -106,7 +107,7 @@ static void PXResolveScreenCaptureSymbols(void) {
                     return;
                 }
             }
-            NSString *method = [[self class] resolvedCaptureMethod];
+            NSString *method = keepVisible ? @"private-excluding-windows" : [[self class] resolvedCaptureMethod];
             __block UIImage *image = nil;
             BOOL isPartial = NO;
 
@@ -115,11 +116,11 @@ static void PXResolveScreenCaptureSymbols(void) {
                     image = [self pxSnapshotExcludingWindows:windows];
                     if (image) method = @"private-excluding-windows";
                 }
-                if (!image && _PXCreateScreenUIImage) {
+                if (!image && !keepVisible && _PXCreateScreenUIImage) {
                     image = _PXCreateScreenUIImage();
                     if (image) method = @"private-uicreate";
                 }
-                if (!image && _PXGetScreenImage) {
+                if (!image && !keepVisible && _PXGetScreenImage) {
                     CGImageRef screenCG = _PXGetScreenImage();
                     if (screenCG) {
                         image = [UIImage imageWithCGImage:screenCG];
@@ -127,7 +128,7 @@ static void PXResolveScreenCaptureSymbols(void) {
                         if (image) method = @"private-uigetscreen";
                     }
                 }
-                if (!image) {
+                if (!image && !keepVisible) {
                     image = [self pxGrabBySnapshotFallback];
                     isPartial = (image != nil);
                     method = @"fallback-snapshot";
@@ -145,7 +146,7 @@ static void PXResolveScreenCaptureSymbols(void) {
             if (!image) {
                 NSError *error = [NSError errorWithDomain:PXCaptureErrorDomain
                                                      code:PXCaptureErrorCaptureFailed
-                                                 userInfo:@{NSLocalizedDescriptionKey: @"所有抓取路径均未取得屏幕图像"}];
+                                                 userInfo:@{NSLocalizedDescriptionKey: keepVisible ? @"当前系统无法在浮窗可见时排除浮窗抓屏" : @"所有抓取路径均未取得屏幕图像"}];
                 self.lastCaptureMethod = method;
                 dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, NO, method, error); });
                 return;
