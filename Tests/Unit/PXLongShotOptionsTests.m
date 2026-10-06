@@ -31,7 +31,7 @@ static UIImage *PXMovingFrame(NSInteger offset) {
     const size_t width = 128, height = 600;
     CGColorSpaceRef color = CGColorSpaceCreateDeviceRGB();
     CGContextRef context = CGBitmapContextCreate(NULL, width, height, 8, width * 4, color,
-                                                   kCGImageAlphaPremultipliedLast);
+                                                   (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(color);
     if (!context) return nil;
     uint8_t *bytes = CGBitmapContextGetData(context);
@@ -117,7 +117,7 @@ NSInteger PXRunLongShotOptionsTests(NSInteger *checkCount) {
     memset(pixels, 255, 16 * 16 * 4);
     CGDataProviderRef provider = CGDataProviderCreateWithData(&released, pixels, 16 * 16 * 4, PXOwnedProviderRelease);
     CGColorSpaceRef color = CGColorSpaceCreateDeviceRGB();
-    CGImageRef source = CGImageCreate(16, 16, 8, 32, 64, color, kCGImageAlphaPremultipliedLast, provider, NULL, NO,
+    CGImageRef source = CGImageCreate(16, 16, 8, 32, 64, color, (CGBitmapInfo)kCGImageAlphaPremultipliedLast, provider, NULL, NO,
                                       kCGRenderingIntentDefault);
     CGColorSpaceRelease(color); CGDataProviderRelease(provider);
     CGImageRef owned = PXLongShotCreateOwnedBitmap(source);

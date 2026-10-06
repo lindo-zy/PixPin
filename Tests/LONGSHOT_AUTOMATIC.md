@@ -67,6 +67,8 @@ Options 适配器、Common 行为/位图逻辑、Composer、HUD、偏好键和�
 
 - 滚动仅由上一轮完成后启动；autoStepScheduled 避免重复调度，静置保持 busy。
 - 对齐失败期间重采而不发新手势；needsSettledCapture 防止内存恢复时跳过尚未抓取段。
+  静止完成还要求当前采样与末保存锚点重复，未对齐页面静止不会伪报到底；不可信衔接
+  也不作为回弹完成的方向证据。
 - 首片内存警告保留 generation，后台工作结束后再决定停机；安全底线保持原值。
 - 完成与取消清理 displayLink、Timer、Observer 和弱会话注册；后台临时文件在串行
   队列末尾再清理，确保迟到写盘不残留。窗口恢复检查原 controller，销毁后不会复活。

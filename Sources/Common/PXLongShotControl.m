@@ -15,7 +15,7 @@ CGImageRef PXLongShotCreateOwnedBitmap(CGImageRef source) {
     if (!width || !height) return NULL;
     CGColorSpaceRef color = CGColorSpaceCreateDeviceRGB();
     CGContextRef context = CGBitmapContextCreate(NULL, width, height, 8, 0, color,
-                                                   kCGImageAlphaPremultipliedLast);
+                                                   (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(color);
     if (!context) return NULL;
     CGContextDrawImage(context, CGRectMake(0, 0, width, height), source);

@@ -335,6 +335,8 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
             PXLongShotFrameMatch adjacent = match;
             if (slice && previousSeen.length == slice.rowSignatures.length && previousSeen != anchor.rowSignatures)
                 adjacent = PXLongShotMatchFrames(previousSeen.bytes, slice.rowSignatures.bytes, rows, fixedTop, fixedBottom);
+            // 未确认与已保存内容衔接时，不能用相邻帧的方向替代拼接可信度。
+            if (match.kind == PXLongShotMatchUncertain) adjacent.kind = PXLongShotMatchUncertain;
             if (cancellation.cancelled) { [NSFileManager.defaultManager removeItemAtPath:path error:nil]; return; }
             dispatch_async(dispatch_get_main_queue(), ^{
                 PXLongShotSession *s = weakSelf;
@@ -355,8 +357,10 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
                 PXLongShotReboundState rebound = s.rebound;
                 BOOL bounced = PXLongShotUpdateRebound(&rebound, adjacent, body, s.autoScroll && anchor != nil);
                 s.rebound = rebound;
-                if (bounced && !s.finishRequested) [s pxFinishCapturedContent:@"到底回弹，自动完成"];
-                if (s.autoScroll && s.sameCount >= 2 && !s.finishRequested && s.slices.count >= 2) {
+                if (bounced && s.slices.count >= 2 && !s.finishRequested)
+                    [s pxFinishCapturedContent:@"到底回弹，自动完成"];
+                if (s.autoScroll && s.sameCount >= 2 && !s.finishRequested && s.slices.count >= 2 &&
+                    match.kind == PXLongShotMatchDuplicate) {
                     // 连续两帧内容未变化：已到页面底部，自动完成（走完成路径收尾）。
                     PXLogInfo(@"long shot bottom reached (task %@, slices=%lu)", s.taskID,
                               (unsigned long)s.slices.count);
