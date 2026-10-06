@@ -16,6 +16,9 @@
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
+// 判歧帧保留上限：纯诊断证据，超限淘汰最旧；安全边界不开放为用户配置。
+static const NSInteger PXLongShotMaxKeptFrames = 24;
+
 static dispatch_queue_t PXLongShotImageQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t once;
@@ -46,6 +49,7 @@ static dispatch_queue_t PXLongShotImageQueue(void) {
 @property (nonatomic, assign) NSInteger unmatchedCount;
 @property (nonatomic, assign) BOOL retryAlignment;
 @property (nonatomic, assign) BOOL alignmentResampled;
+@property (nonatomic, assign) NSInteger keptFrameCount;
 @property (nonatomic, assign) BOOL needsSettledCapture;
 @property (nonatomic, assign) CFTimeInterval lastActivity;
 @property (nonatomic, assign) CFTimeInterval nextSample;
@@ -68,6 +72,7 @@ static dispatch_queue_t PXLongShotImageQueue(void) {
 @property (nonatomic, assign) BOOL stopAfterCurrentFrame;
 - (void)handleLockStateChanged;
 - (void)pxCheckFrameMemory;
+- (void)pxEvictOldestKeptFrames;
 @end
 static __weak PXLongShotSession *PXLockSession;
 static atomic_uint_fast64_t PXLockGeneration;
@@ -374,7 +379,23 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
                     return;
                 }
                 if (anchor && match.kind != PXLongShotMatchForward) {
-                    [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+                    // 判歧帧改名为保留帧而非删除：它是该页面状态唯一的像素证据，供本会话
+                    // 内排查与后续「保留帧重拼」。同卷内 move 是原子改名，无写入开销；
+                    // 重复帧（同页重复采样）与反向帧（方向已可解释）不带新信息，仍删除。
+                    BOOL kept = NO;
+                    if (match.kind == PXLongShotMatchUncertain && options.keepFrames) {
+                        NSString *keptPath = [[path stringByDeletingLastPathComponent]
+                            stringByAppendingPathComponent:
+                                [NSString stringWithFormat:@"longkept_%06lu.jpg", (unsigned long)generation]];
+                        kept = [NSFileManager.defaultManager moveItemAtPath:path toPath:keptPath error:nil];
+                        if (kept) {
+                            s.keptFrameCount++;
+                            PXLogInfo(@"long shot kept uncertain frame (task %@, generation=%lu, kept=%ld)",
+                                      s.taskID, (unsigned long)generation, (long)s.keptFrameCount);
+                            if (s.keptFrameCount > PXLongShotMaxKeptFrames) [s pxEvictOldestKeptFrames];
+                        }
+                    }
+                    if (!kept) [NSFileManager.defaultManager removeItemAtPath:path error:nil];
                     s.busy = NO;
                     s.retryAlignment = match.kind == PXLongShotMatchUncertain;
                     if (match.kind == PXLongShotMatchUncertain) {
@@ -384,7 +405,16 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
                         // 逐次留下 syslog 才能在真机上区分重采无效与偶发抖动。
                         PXLogWarn(@"long shot align uncertain (task %@, consecutive=%ld, slices=%lu, resampled=%d)",
                                   s.taskID, (long)s.unmatchedCount, (unsigned long)s.slices.count, resampled);
-                        if (s.unmatchedCount >= 3) { [s pxPause:@"无法可靠拼接，请点「完成」保存已截内容"]; return; }
+                        if (s.unmatchedCount >= 3) {
+                            // 状态标签宽 96pt、最多两行：每行须控制在 9 个全角字符内，
+                            // 否则折行后第三行被 numberOfLines=2 截掉。保留数为近似值
+                            // （异步淘汰与并发清理可造成 ±1 偏差），按上限收敛防虚报。
+                            NSInteger keptShown = MIN(s.keptFrameCount, PXLongShotMaxKeptFrames);
+                            [s pxPause:keptShown > 0
+                                ? [NSString stringWithFormat:@"无法拼接，已留%ld帧\n点完成保存已截内容", (long)keptShown]
+                                : @"无法可靠拼接，请点「完成」保存已截内容"];
+                            return;
+                        }
                         if (!s.finishRequested)
                             s.hud.statusText = resampled ? @"对齐仍有歧义\n小步回滚重试" : @"正在重试对齐\n请放慢滚动";
                     } else {
@@ -552,6 +582,30 @@ static void PXLockCallback(CFNotificationCenterRef center, void *observer, CFStr
             }
         });
     } else if (self.autoScroll) [self pxScheduleAutoScroll];
+}
+// 保留帧超出上限时在串行图像队列上淘汰最旧：文件名 %06lu 零填充，字典序即时间序。
+// 主线程只发起，枚举与删除不占用主线程 I/O；会话取消后任务目录整体删除，无需续做。
+- (void)pxEvictOldestKeptFrames {
+    NSString *directory = [self.task existingTemporaryDirectory];
+    if (directory.length == 0) return;
+    __weak PXLongShotSession *weakSelf = self;
+    dispatch_async(PXLongShotImageQueue(), ^{
+        @autoreleasepool {
+            PXLongShotSession *s = weakSelf;
+            if (!s || s.cancellation.cancelled) return;
+            NSFileManager *fm = NSFileManager.defaultManager;
+            NSArray<NSString *> *entries = [fm contentsOfDirectoryAtPath:directory error:nil];
+            NSMutableArray<NSString *> *kept = [NSMutableArray array];
+            for (NSString *entry in entries)
+                if ([entry hasPrefix:@"longkept_"]) [kept addObject:entry];
+            NSInteger excess = (NSInteger)kept.count - PXLongShotMaxKeptFrames;
+            if (excess <= 0) return;
+            [kept sortUsingSelector:@selector(compare:)];
+            for (NSInteger i = 0; i < excess; i++)
+                [fm removeItemAtPath:[directory stringByAppendingPathComponent:kept[i]] error:nil];
+            PXLogInfo(@"long shot evicted %ld kept frames (task %@)", (long)excess, s.taskID);
+        }
+    });
 }
 #pragma mark - 自动滚动（选区工具栏入口）
 - (void)pxScheduleAutoScroll {

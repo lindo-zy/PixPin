@@ -49,6 +49,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// 任务数据目录（临时文件），惰性创建。
 - (NSString *)ensureTemporaryDirectory;
+/// 已存在的任务数据目录；不创建。枚举/清理类调用用这个，避免让本应消失的目录复活。
+- (nullable NSString *)existingTemporaryDirectory;
 
 NS_ASSUME_NONNULL_END
 

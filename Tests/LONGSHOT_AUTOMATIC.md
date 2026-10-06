@@ -54,6 +54,7 @@ Options 适配器、Common 行为/位图逻辑、Composer、HUD、偏好键和�
 | 键 | 默认 | 可用范围 |
 |---|---:|---:|
 | LongShotAutoScroll | true | bool（设置页开关） |
+| LongShotKeepFrames | false | bool（设置页开关：对齐判歧帧改名为 longkept_*.jpg 保留，上限 24 帧淘汰最旧） |
 | LongShotSampleInterval | 0.12 秒 | 0.08–1 |
 | LongShotIdleInterval | 0.5 秒 | sampleInterval–2 |
 | LongShotScrollDuration | 0.62 秒 | 0.25–2 |
@@ -70,6 +71,10 @@ Options 适配器、Common 行为/位图逻辑、Composer、HUD、偏好键和�
   重采只会复现同一结果）则按原步长 1/3 做一次下滑回滚改变与锚点的比较基准，回滑
   保持在原滑动带内，unmatchedCount>=3 的暂停上限不变；每次判歧都留 syslog（含连续
   次数与是否已重采），真机可区分内容歧义与瞬态抖动。Scroller 校验放行下滑手势。
+  开启 LongShotKeepFrames 后判歧帧在同任务目录改名为 longkept_* 保留（捕获与推导
+  解耦，对齐 ShellX 双落盘思想的最小形态）：同卷改名零写入开销，超 24 帧在串行图像
+  队列淘汰最旧；重复帧与反向帧不带新信息仍删除；保留帧随任务目录在终态统一清理，
+  本版不含重拼入口。
   needsSettledCapture 防止内存恢复时跳过尚未抓取段。静止完成还要求当前采样与末
   保存锚点重复，未对齐页面静止不会伪报到底；不可信衔接也不作为回弹完成的方向证据。
 - 首片内存警告保留 generation，后台工作结束后再决定停机；安全底线保持原值。

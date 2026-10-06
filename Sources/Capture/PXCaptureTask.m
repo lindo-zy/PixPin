@@ -75,6 +75,10 @@
     return [PXTemporaryFileStore directoryForTaskID:self.taskID create:YES];
 }
 
+- (nullable NSString *)existingTemporaryDirectory {
+    return [PXTemporaryFileStore directoryForTaskID:self.taskID create:NO];
+}
+
 - (NSString *)description {
     return [NSString stringWithFormat:@"<PXCaptureTask %@ mode=%@ state=%@>",
             self.taskID, PXStringFromCaptureMode(self.mode), PXStringFromCaptureState(self.state)];

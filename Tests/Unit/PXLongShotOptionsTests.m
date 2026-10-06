@@ -112,6 +112,15 @@ NSInteger PXRunLongShotOptionsTests(NSInteger *checkCount) {
     PXLongShotUpdateRebound(&state, (PXLongShotFrameMatch){PXLongShotMatchDuplicate,0,0,0}, 1000, YES);
     LS_CHECK(state.reverseRows == 0 && state.reverseFrames == 0, "duplicate frame breaks consecutive reverse evidence");
 
+    LS_CHECK(!defaults.keepFrames, "keeping uncertain frames defaults to off");
+    LS_CHECK([[PXLongShotOptions alloc] initWithValues:@{PXKeyLongShotKeepFrames:@YES}].keepFrames &&
+             ![[PXLongShotOptions alloc] initWithValues:@{PXKeyLongShotKeepFrames:@NO}].keepFrames &&
+             ![[PXLongShotOptions alloc] initWithValues:@{PXKeyLongShotKeepFrames:@"yes"}].keepFrames &&
+             ![[PXLongShotOptions alloc] initWithValues:@{}].keepFrames,
+             "keep-frames switch accepts plist booleans and ignores missing or non-number values");
+    LS_CHECK([PXLongShotOptions.preferenceKeys containsObject:PXKeyLongShotKeepFrames],
+             "keep-frames key participates in preference reload");
+
     PXLongShotScrollPlan forwardBand = {CGPointMake(200, 810), CGPointMake(200, 490)};
     PXLongShotScrollPlan rollback = {0};
     LS_CHECK(PXLongShotBuildCorrectiveScrollPlan(forwardBand, 1.0 / 3.0, &rollback) &&
