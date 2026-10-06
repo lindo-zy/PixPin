@@ -25,8 +25,11 @@ typedef NS_ENUM(NSInteger, PXCaptureError) {
 /// 最近一次抓屏实际使用的策略（主线程更新）。
 @property (nonatomic, copy, readonly, nullable) NSString *lastCaptureMethod;
 /// 内存保护降级开关（主线程读写）：跳过窗口排除 API，尝试整屏私有抓屏。
-/// 两种路径均先隐藏自有窗口；API 的设备内存表现仍需真机验证。
+/// 普通路径先隐藏自有窗口；保持可见模式仅允许窗口排除 API，降级时返回失败。
 @property (nonatomic, assign) BOOL fallbackOnlyCapture;
+/// 长截图浮窗保持可见：仅使用真正排除窗口的快照接口，不回退到会摄入浮窗的整屏抓取。
+/// 默认 NO，不改变其他截图调用方。
+@property (nonatomic, assign) BOOL keepsExcludedWindowsVisible;
 /// 连续采集专用：把抓屏表面绘制为独立 RGBA 位图，在回调前释放源图和临时对象。
 @property (nonatomic, assign) BOOL detachesCapturedImage;
 
@@ -36,7 +39,8 @@ typedef NS_ENUM(NSInteger, PXCaptureError) {
                                         NSError *error))completion;
 
 /// 长截图专用：优先运行期检查 _snapshotExcludingWindows:withRect:；
-/// 每次先隐藏传入窗口并等两帧；抓屏后恢复，销毁的窗口不会被重新显示。
+/// 默认先隐藏传入窗口并等两帧；keepsExcludedWindowsVisible 为 YES 时始终可见。
+/// 排除能力失效时保持可见模式返回错误，不能用隐藏窗口或摄入浮窗替代。
 - (void)captureExcludingWindows:(NSArray<UIWindow *> *)windows
                     completion:(void (^)(UIImage *image, BOOL isPartial,
                                           NSString *captureMethod, NSError *error))completion;

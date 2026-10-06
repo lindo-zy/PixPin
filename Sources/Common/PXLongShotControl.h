@@ -53,7 +53,7 @@ BOOL PXLongShotCanvasGeometry(NSInteger width, NSInteger totalHeight, NSInteger 
                              NSInteger maxPixels, CGSize *size, CGFloat *scale);
 
 /// 在 viewport∩screenBounds 安全区内规划一条避开 protectedRect 的竖直上滑：
-/// 滑动带压到 protectedRect 下缘以下（HUD 小窗悬在右上），带高不足 80pt 返回 NO。
+/// 优先保留正文中线；小窗挡路时移到左右空带，无空带则尝试下方，带高不足 80pt 返回 NO。
 /// 起滑点居中于滑动带：贴带底起滑会落进微信等 App 的 tabBar/输入栏，触摸被底栏
 /// 消费、正文不滚（ShellX 起滑 0.60·H，手势全程在屏幕中部）。
 BOOL PXLongShotBuildScrollPlan(CGRect viewport, CGRect screenBounds, CGRect protectedRect,
@@ -69,7 +69,8 @@ BOOL PXLongShotBuildCorrectiveScrollPlan(PXLongShotScrollPlan forwardPlan, CGFlo
 CGRect PXLongShotTileRect(CGFloat canvasHeight, NSInteger offset, NSInteger width,
                          NSInteger height, CGFloat scale);
 
-/// 全帧只绘制 [cropTop, height-cropBottom)，与预览和导出共用裁切几何。
+/// 全帧只绘制 [cropTop, height-cropBottom)，相邻裁切边界统一舍入到整数像素。
+/// 与预览和导出共用；缩放时不把抗锯齿裁切的黑底混入接缝。
 void PXLongShotDrawTile(CGContextRef context, CGImageRef image, CGFloat canvasHeight,
                        NSInteger offset, NSInteger width, NSInteger height,
                        NSInteger cropTop, NSInteger cropBottom, CGFloat scale);

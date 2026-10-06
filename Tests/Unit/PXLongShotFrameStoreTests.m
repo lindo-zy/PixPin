@@ -2,7 +2,7 @@
 #import "../../Sources/Common/PXConstants.h"
 #import <ImageIO/ImageIO.h>
 
-static UIImage *PXStoreTestFrame(NSInteger offset, BOOL blank) {
+static UIImage *PXStoreTestFrameWithShadow(NSInteger offset, BOOL blank, BOOL shadow) {
     const NSInteger width = 384, height = 720;
     CGColorSpaceRef color = CGColorSpaceCreateDeviceRGB();
     CGContextRef context = CGBitmapContextCreate(NULL, width, height, 8, width * 4, color,
@@ -14,10 +14,15 @@ static UIImage *PXStoreTestFrame(NSInteger offset, BOOL blank) {
         hash ^= hash >> 16; hash *= 0x7feb352d; hash ^= hash >> 15; hash *= 0x846ca68b; hash ^= hash >> 16;
         uint8_t *p = pixels + (y * width + x) * 4;
         p[0] = p[1] = p[2] = blank ? 255 : (uint8_t)hash; p[3] = 255;
+        if (shadow && x < 40 && y >= 72 && y < 648)
+            p[0] = p[1] = p[2] = y >= 636 ? 90 : 243;
     }
     CGImageRef image = CGBitmapContextCreateImage(context); CGContextRelease(context);
     UIImage *result = [UIImage imageWithCGImage:image scale:1 orientation:UIImageOrientationUp];
     CGImageRelease(image); return result;
+}
+static UIImage *PXStoreTestFrame(NSInteger offset, BOOL blank) {
+    return PXStoreTestFrameWithShadow(offset, blank, NO);
 }
 NSInteger PXRunLongShotFrameStoreTests(NSInteger *checkCount) {
     NSInteger checks = 0, failures = 0;
@@ -73,6 +78,33 @@ NSInteger PXRunLongShotFrameStoreTests(NSInteger *checkCount) {
     FS_CHECK(cropFirst.count == 1 && cropNext.count == 2 && cropNext.match.shiftRows == 120 && cropNext.totalHeight == 620,
              "non-origin region signature preserves motion and exact crop height");
     [NSFileManager.defaultManager removeItemAtPath:cropDir error:nil];
+    // 视口底缘的阴影不能在每次拼接处重复，只保留最后一帧真实底缘。
+    NSString *shadowDir = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    [NSFileManager.defaultManager createDirectoryAtPath:shadowDir withIntermediateDirectories:YES attributes:nil error:nil];
+    PXLongShotFrameStore *shadowStore = [[PXLongShotFrameStore alloc] initWithDirectory:shadowDir options:options
+                                                          cancellation:[PXLongShotCancellation new] scale:1];
+    PXLongShotFrameResult *shadowResult = nil;
+    for (NSInteger i = 0; i < 6; i++) @autoreleasepool {
+        shadowResult = [shadowStore consumeImage:PXStoreTestFrameWithShadow(i * 120, NO, YES) pixelRect:rect error:nil];
+    }
+    FS_CHECK(shadowResult.count == 6 && shadowResult.totalHeight == 1320,
+             "interior overlap seams preserve exact accumulated scroll height");
+    UIImage *shadowOutput = [shadowStore exportToURL:[NSURL fileURLWithPath:[shadowDir stringByAppendingPathComponent:@"shadow.jpg"]]
+                                          pixelSize:&size progress:nil error:nil];
+    CGColorSpaceRef shadowColor = CGColorSpaceCreateDeviceRGB();
+    CGContextRef decoded = CGBitmapContextCreate(NULL, 384, 1320, 8, 0, shadowColor, kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(shadowColor);
+    BOOL clean = shadowOutput && decoded;
+    if (clean) {
+        CGContextDrawImage(decoded, CGRectMake(0, 0, 384, 1320), shadowOutput.CGImage);
+        uint8_t *pixels = CGBitmapContextGetData(decoded);
+        size_t stride = CGBitmapContextGetBytesPerRow(decoded);
+        for (NSInteger y = 90; y < 1220; y++)
+            if (abs(pixels[y * stride + 8 * 4] - 243) > 3) clean = NO;
+    }
+    FS_CHECK(clean, "viewport bottom shadows never repeat inside the composed body");
+    if (decoded) CGContextRelease(decoded);
+    [NSFileManager.defaultManager removeItemAtPath:shadowDir error:nil];
     // 可选用户视频诊断：只从本地读取；不把私人画面复制进仓库或产物。
     NSString *reference = NSProcessInfo.processInfo.environment[@"PX_LONGSHOT_REFERENCE_FRAMES"];
     if (reference.length) {

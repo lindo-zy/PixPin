@@ -806,6 +806,37 @@ static void testManualLongShot(void) {
     if (tileContext) CGContextRelease(tileContext);
     if (output) CGContextRelease(output);
 
+    // 非整数缩放：浅色分片接缝和最后一行不能混入黑色画布。
+    const CGFloat seamScales[] = {109.0 / 117, 0.37, 0.226};
+    for (NSInteger sample = 0; sample < 3; sample++) {
+        CGFloat seamScale = seamScales[sample];
+        NSInteger seamWidth = (NSInteger)ceil(117 * seamScale);
+        NSInteger used = (NSInteger)ceil(8 * 99 * seamScale);
+        CGColorSpaceRef seamSpace = CGColorSpaceCreateDeviceRGB();
+        CGContextRef seamTile = CGBitmapContextCreate(NULL, 117, 300, 8, 0, seamSpace, kCGImageAlphaPremultipliedLast);
+        CGContextRef seamCanvas = CGBitmapContextCreate(NULL, seamWidth, used, 8, 0, seamSpace, kCGImageAlphaPremultipliedLast);
+        CGColorSpaceRelease(seamSpace);
+        if (seamTile && seamCanvas) {
+            CGContextSetRGBFillColor(seamTile, 243.0 / 255, 243.0 / 255, 243.0 / 255, 1);
+            CGContextFillRect(seamTile, CGRectMake(0, 0, 117, 300));
+            CGContextSetRGBFillColor(seamCanvas, 0, 0, 0, 1);
+            CGContextFillRect(seamCanvas, CGRectMake(0, 0, seamWidth, used));
+            CGImageRef source = CGBitmapContextCreateImage(seamTile);
+            for (NSInteger i = 0; i < 8; i++)
+                PXLongShotDrawTile(seamCanvas, source, used, i * 99, 117, 300,
+                                   i == 7 ? 201 : 100, i == 7 ? 0 : 101, seamScale);
+            const uint8_t *bytes = CGBitmapContextGetData(seamCanvas);
+            size_t stride = CGBitmapContextGetBytesPerRow(seamCanvas);
+            BOOL seamless = YES;
+            for (NSInteger y = 0; y < used; y++) for (NSInteger x = 0; x < seamWidth; x++)
+                if (abs(bytes[y * stride + x * 4] - 243) > 1) seamless = NO;
+            PXCheck(seamless, "fractional scaled tiles have no dark seams or black tail across the full width");
+            CGImageRelease(source);
+        } else PXCheck(NO, "fractional seam contexts available");
+        if (seamTile) CGContextRelease(seamTile);
+        if (seamCanvas) CGContextRelease(seamCanvas);
+    }
+
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
     CGContextRef context = CGBitmapContextCreate(NULL, 958, 16384, 8, 0, space, kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(space);
@@ -837,8 +868,8 @@ static void testLongShotScrollPlan(void) {
     PXCheck(PXLongShotBuildScrollPlan(bounds, bounds, panel, &plan), "portrait fullscreen has usable band");
     PXCheck(CGRectContainsPoint(bounds, plan.start) && CGRectContainsPoint(bounds, plan.end),
             "swipe stays on screen");
-    PXCheck(plan.start.y >= CGRectGetMaxY(panel) + 12, "swipe starts below HUD panel");
-    PXCheck(plan.end.y > CGRectGetMaxY(panel), "swipe never crosses HUD panel");
+    PXCheck(plan.start.x < CGRectGetMinX(panel) - 12, "swipe stays left of visible HUD panel");
+    PXCheck(plan.start.y == 582 && plan.end.y == 262, "visible HUD preserves centered swipe away from tab bars");
     PXCheck(plan.start.y > plan.end.y && plan.start.y - plan.end.y <= 320, "upward drag is bounded");
     PXCheck(plan.start.y - plan.end.y >= 80, "drag distance is meaningful");
 
@@ -856,7 +887,7 @@ static void testLongShotScrollPlan(void) {
     PXCheck(!PXLongShotBuildScrollPlan(CGRectNull, bounds, panel, &plan), "null viewport is rejected");
     PXCheck(!PXLongShotBuildScrollPlan(viewport, bounds, panel, NULL), "null plan is rejected");
     PXCheck(PXLongShotBuildScrollPlan(CGRectMake(20, 40, 700, 700), CGRectMake(0, 0, 844, 390), panel, &plan),
-            "landscape path stays below HUD panel");
+            "landscape has usable corridor around visible HUD panel");
 }
 
 static void testLongCaptureRouting(void) {
