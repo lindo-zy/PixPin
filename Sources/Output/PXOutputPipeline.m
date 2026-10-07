@@ -76,7 +76,11 @@
                     return;
                 }
                 [self pxRunSave:task completion:^(BOOL saveOK, NSString *saveMsg) {
-                    completion(copyOK && saveOK, saveOK ? @"已保存并复制" : saveMsg);
+                    // 文案必须区分混合失败：保存成功复制失败时 ok=NO，
+                    // 若仍报「已保存并复制」气泡会以失败样式展示成功文案。
+                    NSString *message = !saveOK ? saveMsg
+                        : (copyOK ? @"已保存并复制" : @"已保存，复制失败");
+                    completion(copyOK && saveOK, message);
                 }];
             }];
             return;
