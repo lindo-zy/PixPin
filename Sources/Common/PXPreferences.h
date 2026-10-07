@@ -9,6 +9,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, readonly) BOOL enabled;
 @property (nonatomic, readonly) PXOutputAction defaultResultAction;
+/// 保存同时复制：任何保存动作同时写入剪贴板（默认开）。
+@property (nonatomic, readonly) BOOL saveAlsoCopy;
 @property (nonatomic, readonly) BOOL showResultBubble;
 @property (nonatomic, readonly) BOOL floatingSnapShadow;
 @property (nonatomic, readonly) BOOL screenshotHaptic;

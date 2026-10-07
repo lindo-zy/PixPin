@@ -3,8 +3,11 @@
 #import "PXClipboardWriter.h"
 #import "PXSharePresenter.h"
 #import "PXTemporaryFileStore.h"
+#import "PXLongImageComposer.h"
 #import "../Capture/PXCaptureTask.h"
+#import "../Common/PXConstants.h"
 #import "../Common/PXLog.h"
+#import "../Common/PXPreferences.h"
 
 @implementation PXOutputPipeline
 
@@ -32,6 +35,10 @@
         completion(NO, @"任务无效");
         return;
     }
+
+    // 「保存同时复制」在唯一入口处升级动作：选区/编辑器/悬浮图的保存按钮、
+    // 默认动作保存、长截图降级保存都经此处，一处拦截全部保存路径生效。
+    action = [self pxEffectiveActionForSave:action task:task];
 
     switch (action) {
         case PXOutputActionPreviewOnly:
@@ -95,6 +102,24 @@
             return;
         }
     }
+}
+
+/// 「保存同时复制」（SaveAlsoCopy，默认开）：普通保存动作升级为保存+复制。
+/// 超过剪贴板像素上限的巨型长图不升级——PNG 编码在 SpringBoard 内的内存
+/// 尖峰与协调器长截图降级是同一道护栏（PXLongShotCopyMaxPixelHeight）；
+/// 显式选择的「保存并复制」动作不经此升级，行为不变。
+- (PXOutputAction)pxEffectiveActionForSave:(PXOutputAction)action task:(PXCaptureTask *)task {
+    if (action != PXOutputActionSave || !task.configSnapshot.saveAlsoCopy) {
+        return action;
+    }
+    UIImage *image = task.resultImage ?: task.baseImage;
+    if (!image) return action;   // 无图时留给保存路径报「没有可保存的结果」
+    CGFloat pixelHeight = image.size.height * image.scale;
+    if (pixelHeight > (CGFloat)PXLongShotCopyMaxPixelHeight) {
+        PXLogInfo(@"save+copy skipped: %.0f px exceeds copy limit", pixelHeight);
+        return action;
+    }
+    return PXOutputActionSaveAndCopy;
 }
 
 #pragma mark - 状态守卫
