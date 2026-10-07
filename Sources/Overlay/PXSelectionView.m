@@ -422,10 +422,10 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         return;
     }
 
+    // 完成键（PreviewOnly=默认动作）已随 2.0.8 移除：默认配置下与保存完全重复。
     PXOutputAction action = PXOutputActionPreviewOnly;
     if ([identifier isEqualToString:@"save"]) action = PXOutputActionSave;
     else if ([identifier isEqualToString:@"copy"]) action = PXOutputActionCopy;
-    else if ([identifier isEqualToString:@"confirm"]) action = PXOutputActionPreviewOnly;
 
     if (CGRectIsEmpty(PXClampSelectionRect(self.selectionRect, self.bounds.size, PXSelectionMinimumSize))) {
         return;   // 没有合法选区时不触发确认

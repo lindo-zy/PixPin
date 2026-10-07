@@ -88,9 +88,9 @@
     [self.actionHidden minusSet:fixedIds];
     self.toolHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentToolHiddenForFullscreenMarkup:[self pxFullscreen]]];
     // 选区出口按钮在设置页始终呈现为开启（编辑器四角键已整体写死，不在列表内）。
+    // confirm 已随 2.0.8 移除：陈旧偏好经 currentSelectionHidden 的目录过滤自动剔除。
     self.selectionHidden = [[NSMutableSet alloc] initWithArray:[PXEditorOrder currentSelectionHidden]];
     [self.selectionHidden removeObject:@"cancel"];
-    [self.selectionHidden removeObject:@"confirm"];
 }
 
 #pragma mark - 数据源
@@ -195,7 +195,7 @@
     }
     UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 0)];
     note.text = [self pxRegion]
-        ? @"拖动手柄排序，开关控制区域选区按钮显隐，点击行修改名称与图标。“显示样式”可选图标、文字、图标＋文字（上图下字），预览与大小调整同步。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏、完成。大小与编辑器共用。"
+        ? @"拖动手柄排序，开关控制区域选区按钮显隐，点击行修改名称与图标。“显示样式”可选图标、文字、图标＋文字（上图下字），预览与大小调整同步。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏。大小与编辑器共用。"
         : ([self pxFullscreen] ? @"仅设置全屏标记面板的按钮顺序与显隐，与区域截图和普通图片编辑相互独立；关闭、取色、撤销、完成固定为四角键。图标大小三处共用，可在任一按钮设置页调整。修改即时保存，下次打开生效。"
                               : @"设置普通图片编辑的按钮顺序与显隐；名称、图标和大小仍与全屏标记共用。修改即时保存，下次打开生效。");
     note.font = [UIFont systemFontOfSize:12];
@@ -241,7 +241,7 @@
         return @"工具排序与显隐仅影响当前页面对应的编辑模式。全部工具关闭时回退显示全部工具，打开编辑器默认选中排序后的第一个工具。";
     }
     if (section == 2) {
-        return @"区域/冻结截图选区工具栏的按钮排序与显隐；“取消”和“完成”始终显示，“悬浮”把选区结果以可拖动悬浮窗常驻屏幕。即时模式仅显示 取消/全屏/完成。点击行可修改名称与图标。";
+        return @"区域/冻结截图选区工具栏的按钮排序与显隐；“取消”始终显示，“悬浮”把选区结果以可拖动悬浮窗常驻屏幕。即时模式仅显示 取消/全屏。点击行可修改名称与图标。";
     }
     if (section == 4) {
         return @"可选图标、文字、图标＋文字；图标＋文字采用上图下字。预览即时更新，下次打开截图生效；三种样式均支持自定义名称和大小调整。";
@@ -362,11 +362,11 @@
     return [[self hiddenSetForSection:section] containsObject:identifier];
 }
 
-/// 出口按钮（选区 取消/完成）不提供隐藏开关；编辑器四角键（关闭/撤销/完成）已整体写死，
+/// 出口按钮（选区 取消）不提供隐藏开关；编辑器四角键（关闭/撤销/完成）已整体写死，
 /// 不再出现在操作按钮列表，无需在此兜底。
 - (BOOL)isAlwaysVisibleIdentifier:(NSString *)identifier section:(NSInteger)section {
     section = [self pxKindForSection:section];
-    if (section == 2) return ([identifier isEqualToString:@"cancel"] || [identifier isEqualToString:@"confirm"]);
+    if (section == 2) return [identifier isEqualToString:@"cancel"];
     return NO;
 }
 

@@ -7,8 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class PXSelectionView;
 
 @protocol PXSelectionViewDelegate <NSObject>
-/// 确认选区。action 为用户明确选择的动作（Save/Copy）；
-/// PXOutputActionPreviewOnly 表示“使用任务配置的默认动作”。
+/// 确认选区。action 为用户明确选择的动作（Save/Copy）。
 - (void)selectionView:(PXSelectionView *)view
    didConfirmDisplayRect:(CGRect)displayRect
                  action:(PXOutputAction)action;

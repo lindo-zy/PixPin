@@ -485,8 +485,10 @@ static void testEditorOverrides(void) {
 static void testSelectionOrder(void) {
     printf("[selection order]\n");
     NSArray<NSString *> *defaults = [PXEditorOrder defaultSelectionIdentifiers];
-    PXCheckInt(defaults.count, 22, "selection catalog count");
-    PXCheckInt([NSSet setWithArray:defaults].count, 22, "selection ids unique");
+    // 完成键随 2.0.8 移除（默认配置下与保存动作完全重复），目录 22→21。
+    PXCheckInt(defaults.count, 21, "selection catalog count");
+    PXCheckInt([NSSet setWithArray:defaults].count, 21, "selection ids unique");
+    PXCheck(![defaults containsObject:@"confirm"], "confirm removed from catalog");
     // SHELLX 扩展组是目录的子集：工具栏按运行时可用性整体增删，目录解析无需特判。
     NSArray<NSString *> *shellx = [PXEditorOrder shellxSelectionIdentifiers];
     PXCheckInt(shellx.count, 14, "shellx group count");
@@ -524,30 +526,25 @@ static void testSelectionOrder(void) {
     PXCheck([reordered[0] isEqualToString:@"float"] && [reordered[1] isEqualToString:@"save"],
             "selection reorder preserved, missing appended");
 
-    // 区域/冻结：自定义顺序 + 出口兜底（取消/完成不可隐藏，保持配置位置）。
-    // SHELLX 扩展组按目录规则补尾在 confirm 之后，出口不再必然是末位。
+    // 区域/冻结：自定义顺序 + 出口兜底（取消不可隐藏，保持配置位置）。
+    // SHELLX 扩展组按目录规则补尾，出口不再必然是末位。
     NSArray<NSString *> *visible = [PXEditorOrder visibleSelectionOrderForOrder:reordered
-                                                                        hidden:@[@"float", @"cancel", @"confirm"]
+                                                                        hidden:@[@"float", @"cancel"]
                                                                        instant:NO];
     PXCheck(![visible containsObject:@"float"], "float hidable");
+    PXCheck(![visible containsObject:@"confirm"], "confirm gone from visible order");
     PXCheck([visible indexOfObject:@"cancel"] == 1, "cancel stays at configured position");
-    // confirm 的配置位次 = 完整顺序去掉被隐藏的 float 后的原位（ShellX 组只补尾不插队）。
-    NSMutableArray<NSString *> *expectedOrder = [reordered mutableCopy];
-    [expectedOrder removeObject:@"float"];
-    PXCheck([visible indexOfObject:@"confirm"] == [expectedOrder indexOfObject:@"confirm"],
-            "confirm stays at configured position");
     PXCheck([visible.lastObject isEqualToString:@"shellxscan"], "shellx group appended at tail");
 
-    // 即时模式：固定快速三键。
+    // 即时模式：固定快速两键。
     NSArray<NSString *> *instant = [PXEditorOrder visibleSelectionOrderForOrder:defaults hidden:nil instant:YES];
-    PXCheck(([[instant subarrayWithRange:NSMakeRange(0, 3)] isEqualToArray:@[@"cancel", @"selectall", @"confirm"]]),
-            "instant filtered to quick trio");
-    // 隐藏非出口键后即时模式只剩出口两键，仍不允许空工具栏。
+    PXCheck(([[instant subarrayWithRange:NSMakeRange(0, 2)] isEqualToArray:@[@"cancel", @"selectall"]]),
+            "instant filtered to quick pair");
+    // 隐藏非出口键后即时模式只剩取消，仍不允许空工具栏。
     NSArray<NSString *> *safe = [PXEditorOrder visibleSelectionOrderForOrder:defaults
-                                                                     hidden:@[@"selectall", @"cancel", @"confirm"]
+                                                                     hidden:@[@"selectall", @"cancel"]
                                                                     instant:YES];
-    PXCheck(safe.count == 2 && [safe.firstObject isEqualToString:@"cancel"] &&
-            [safe.lastObject isEqualToString:@"confirm"], "instant exits always visible");
+    PXCheck(safe.count == 1 && [safe.firstObject isEqualToString:@"cancel"], "instant exits always visible");
 }
 
 static void testSelectionOverrides(void) {

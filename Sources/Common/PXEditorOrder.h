@@ -25,7 +25,8 @@ typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
 + (NSArray<NSString *> *)fixedActionIdentifiers;
 /// 全部工具按钮 id：画笔/平移/方框/椭圆/箭头/放大镜/直线/马赛克/文字/实心方/实心圆/聚光/荧光/贴纸/序号图章。
 + (NSArray<NSString *> *)defaultToolIdentifiers;
-/// 区域选区工具栏按钮 id：取消/全屏/编辑/悬浮/保存/复制/完成，外加 SHELLX 扩展组。
+/// 区域选区工具栏按钮 id：取消/全屏/编辑/悬浮/保存/复制，外加 SHELLX 扩展组。
+/// （「完成」已随 2.0.8 移除：默认配置下与保存动作完全重复。）
 + (NSArray<NSString *> *)defaultSelectionIdentifiers;
 /// SHELLX 扩展按钮 id 子集（区域/即时/冻结/套壳/关闭/记录/最近/长图/整屏/标记/编辑/问答/
 /// 翻译/扫码）：仅在 SHELLX 在场且总开关打开时由调用方保留在工具栏，其余场合从顺序中
@@ -108,7 +109,7 @@ typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
 /// 固定键不参与用户排序，其余按钮的相对顺序不变。
 + (NSArray<NSString *> *)orderWithFixedActionButtonsPinned:(NSArray<NSString *> *)order;
 
-/// 选区工具栏可见顺序：兜底保留取消、完成两个出口；即时模式只保留取消/全屏/完成。
+/// 选区工具栏可见顺序：兜底保留取消出口；即时模式只保留取消/全屏。
 + (NSArray<NSString *> *)visibleSelectionOrderForOrder:(NSArray<NSString *> *)order
                                                 hidden:(NSArray<NSString *> *)hidden
                                                instant:(BOOL)instant;

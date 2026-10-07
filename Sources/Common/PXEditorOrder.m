@@ -44,7 +44,7 @@
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         identifiers = @[@"cancel", @"selectall", @"editor", @"float", @"long",
-                        @"save", @"copy", @"confirm",
+                        @"save", @"copy",
                         @"shellxarea", @"shellxinstant", @"shellxfreeze",
                         @"shellxshot", @"shellxclose",
                         @"shellxhistory", @"shellxopenlast",
@@ -147,7 +147,6 @@
                   @"long": @"滚动截图",
                   @"save": @"保存",
                   @"copy": @"复制",
-                  @"confirm": @"完成",
                   @"shellxarea": @"ShellX 区域",
                   @"shellxinstant": @"ShellX 即时",
                   @"shellxfreeze": @"ShellX 冻结",
@@ -255,7 +254,6 @@
                   @"long": @"arrow.down.to.line.compact",
                   @"save": @"square.and.arrow.down",
                   @"copy": @"doc.on.doc",
-                  @"confirm": @"checkmark.circle",
                   @"shellxarea": @"camera.viewfinder",
                   @"shellxinstant": @"timer",
                   @"shellxfreeze": @"snowflake",
@@ -565,21 +563,20 @@
 + (NSArray<NSString *> *)visibleSelectionOrderForOrder:(NSArray<NSString *> *)order
                                                 hidden:(NSArray<NSString *> *)hidden
                                                instant:(BOOL)instant {
-    // 取消/完成是选区交互的唯一出口，设置页开关对其禁用，这里再兜底。
+    // 取消是选区交互的唯一取消出口，设置页开关对其禁用，这里再兜底。
+    // 完成键已随 2.0.8 移除（默认配置下与保存动作完全重复，见 defaultSelectionIdentifiers）。
     NSMutableArray<NSString *> *effectiveHidden = [hidden mutableCopy];
     [effectiveHidden removeObject:@"cancel"];
-    [effectiveHidden removeObject:@"confirm"];
     NSMutableArray<NSString *> *visible =
         [[self visibleOrderForOrder:order hidden:effectiveHidden] mutableCopy];
     if (instant) {
-        // 即时模式保持历史行为：只保留 快速三键，其余按钮（含悬浮）不参与。
-        NSSet<NSString *> *allowed = [NSSet setWithArray:@[@"cancel", @"selectall", @"confirm"]];
+        // 即时模式保持历史行为：只保留快速两键，其余按钮（含悬浮）不参与。
+        NSSet<NSString *> *allowed = [NSSet setWithArray:@[@"cancel", @"selectall"]];
         [visible filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *identifier, NSDictionary *bindings) {
             return [allowed containsObject:identifier];
         }]];
     }
     if (![visible containsObject:@"cancel"]) [visible insertObject:@"cancel" atIndex:0];
-    if (![visible containsObject:@"confirm"]) [visible addObject:@"confirm"];
     return [visible copy];
 }
 
