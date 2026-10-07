@@ -1,15 +1,16 @@
-#import <UIKit/UIKit.h>
+#import <Preferences/PSViewController.h>
 #import "../Sources/Common/PXEditorOrder.h"
 #import "../Sources/Common/PXLog.h"
 
 // 自定义 URL 按钮管理：设置页增删改任意个 URL scheme 快捷按钮，
 // 按钮出现在截图按钮工具栏，点击后取消当前截图并经 SpringBoard openURL 打开。
-// 不依赖 Preferences 私有控件：与 PXEditorOrderController 同款自建 UITableView。
+// 与 PXEditorOrderController 同款自建 UITableView；Preferences 导航页必须继承
+// PSViewController，提供 PSLinkCell 所需的 specifier / parentController 与生命周期接口。
 
-@interface PXCustomURLController : UIViewController <UITableViewDataSource, UITableViewDelegate>
+@interface PXCustomURLController : PSViewController <UITableViewDataSource, UITableViewDelegate>
 @end
 
-@interface PXCustomURLEditController : UIViewController <UITextFieldDelegate>
+@interface PXCustomURLEditController : PSViewController <UITextFieldDelegate>
 - (instancetype)initWithButton:(nullable PXCustomSelectionButton *)button
                        onDelete:(nullable void (^)(void))onDelete;
 @end
