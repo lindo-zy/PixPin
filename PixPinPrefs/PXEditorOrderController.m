@@ -50,7 +50,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = [self pxRegion] ? @"区域截图按钮" : ([self pxFullscreen] ? @"全屏截图按钮" : @"图片编辑按钮");
+    self.title = [self pxRegion] ? @"区域截图按钮" : ([self pxFullscreen] ? @"全屏标记按钮" : @"图片编辑按钮");
     self.navigationItem.rightBarButtonItem =
         [[UIBarButtonItem alloc] initWithTitle:@"恢复默认" style:UIBarButtonItemStylePlain
                                       target:self action:@selector(pxResetTapped:)];
