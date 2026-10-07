@@ -113,6 +113,28 @@ static void testGeometry(void) {
 
     CGRect valid = PXClampSelectionRect(CGRectMake(100, 100, 120, 80), display, 24.0);
     PXCheck(CGRectEqualToRect(valid, CGRectMake(100, 100, 120, 80)), "valid selection untouched");
+
+    // 悬浮图边缘吸附：0=关闭；x/y 两轴独立取较近侧贴到「边缘+距离」。
+    CGRect bounds = CGRectMake(0, 0, 390, 844);
+    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(100, 100, 80, 60), bounds, 0),
+                              CGRectMake(100, 100, 80, 60)), "snap disabled at zero");
+    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(100, 100, 80, 60), bounds, 12),
+                              CGRectMake(100, 100, 80, 60)), "no snap beyond threshold");
+    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(10, 100, 80, 60), bounds, 12),
+                              CGRectMake(12, 100, 80, 60)), "left edge snaps to margin");
+    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(300, 100, 80, 60), bounds, 12),
+                              CGRectMake(390 - 80 - 12, 100, 80, 60)), "right edge snaps to margin");
+    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(100, 10, 80, 60), bounds, 12),
+                              CGRectMake(100, 12, 80, 60)), "top edge snaps to margin");
+    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(100, 790, 80, 60), bounds, 12),
+                              CGRectMake(100, 844 - 60 - 12, 80, 60)), "bottom edge snaps to margin");
+    // 双边都在阈值内时各取较近侧。
+    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(5, 835, 80, 60), bounds, 12),
+                              CGRectMake(12, 844 - 60 - 12, 80, 60)), "both axes snap independently");
+    // 负间隙轴（悬浮图宽于屏幕）：该轴不动，另一轴正常吸附。
+    CGRect oversized = PXApplyFloatingSnapEdge(CGRectMake(0, 0, 500, 60), bounds, 12);
+    PXCheck(CGRectGetMinX(oversized) == 0.0 && CGRectGetMaxX(oversized) == 500.0,
+            "oversized x axis untouched");
 }
 
 #pragma mark - 输出幂等（§9.2）
@@ -486,9 +508,12 @@ static void testSelectionOrder(void) {
     printf("[selection order]\n");
     NSArray<NSString *> *defaults = [PXEditorOrder defaultSelectionIdentifiers];
     // 完成键随 2.0.8 移除（默认配置下与保存动作完全重复），目录 22→21。
-    PXCheckInt(defaults.count, 21, "selection catalog count");
-    PXCheckInt([NSSet setWithArray:defaults].count, 21, "selection ids unique");
+    // 全屏标记键随本版加入，目录 21→22。
+    PXCheckInt(defaults.count, 22, "selection catalog count");
+    PXCheckInt([NSSet setWithArray:defaults].count, 22, "selection ids unique");
     PXCheck(![defaults containsObject:@"confirm"], "confirm removed from catalog");
+    PXCheck([defaults indexOfObject:@"markup"] == [defaults indexOfObject:@"selectall"] + 1,
+            "markup sits right after selectall");
     // SHELLX 扩展组是目录的子集：工具栏按运行时可用性整体增删，目录解析无需特判。
     NSArray<NSString *> *shellx = [PXEditorOrder shellxSelectionIdentifiers];
     PXCheckInt(shellx.count, 14, "shellx group count");
@@ -540,6 +565,8 @@ static void testSelectionOrder(void) {
     NSArray<NSString *> *instant = [PXEditorOrder visibleSelectionOrderForOrder:defaults hidden:nil instant:YES];
     PXCheck(([[instant subarrayWithRange:NSMakeRange(0, 2)] isEqualToArray:@[@"cancel", @"selectall"]]),
             "instant filtered to quick pair");
+    // 全屏标记键不属于即时模式快速两键。
+    PXCheck(![instant containsObject:@"markup"], "markup excluded from instant mode");
     // 隐藏非出口键后即时模式只剩取消，仍不允许空工具栏。
     NSArray<NSString *> *safe = [PXEditorOrder visibleSelectionOrderForOrder:defaults
                                                                      hidden:@[@"selectall", @"cancel"]
@@ -595,6 +622,79 @@ static void testSelectionOverrides(void) {
                                  (__bridge CFTypeRef)invalid, domain);
         PXCheckInt([PXEditorOrder selectionButtonStyle], PXSelectionButtonStyleIcon, "invalid stored style defaults to icon");
     }
+
+    for (NSString *key in keys) {
+        id value = backup[key];
+        CFPreferencesSetAppValue((__bridge CFStringRef)key,
+                                 (value == NSNull.null || value == nil) ? NULL : (__bridge CFTypeRef)value,
+                                 domain);
+    }
+    CFPreferencesAppSynchronize(domain);
+}
+
+static void testCustomSelectionButtons(void) {
+    printf("[custom selection buttons]\n");
+    NSArray *keys = @[PXKeySelectionCustomButtons, PXKeySelectionButtonOrder, PXKeySelectionButtonHidden];
+    CFStringRef domain = (__bridge CFStringRef)PXPreferencesDomain;
+    NSMutableDictionary *backup = [NSMutableDictionary dictionary];
+    for (NSString *key in keys) {
+        backup[key] = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, domain)) ?: NSNull.null;
+        CFPreferencesSetAppValue((__bridge CFStringRef)key, NULL, domain);
+    }
+    CFPreferencesAppSynchronize(domain);
+
+    PXCheck([PXEditorOrder customSelectionButtons].count == 0, "no custom buttons by default");
+    PXCheck([PXEditorOrder saveCustomSelectionButtonWithID:nil name:@"翻译" icon:nil url:@"example.com/shortcuts"] == nil,
+            "url without scheme rejected");
+    PXCheck([PXEditorOrder saveCustomSelectionButtonWithID:nil name:@"" icon:nil url:@"shortcuts://run"] == nil,
+            "empty name rejected");
+    PXCheck([PXEditorOrder customSelectionButtons].count == 0, "rejected saves leave no record");
+
+    PXCustomSelectionButton *first = [PXEditorOrder saveCustomSelectionButtonWithID:nil
+        name:@"翻译,=x" icon:@"character.bubble" url:@"shortcuts://run-shortcut?name=翻译"];
+    PXCheck(first != nil, "valid save returns record");
+    PXCheck([first.identifier isEqualToString:@"url1"], "first id is url1");
+    PXCheck([first.name isEqualToString:@"翻译 x"], "custom button name sanitized");
+    PXCheck([first.url isEqualToString:@"shortcuts://run-shortcut?name=翻译"], "custom url stored");
+    PXCheck([[PXEditorOrder customSelectionIdentifiers] containsObject:@"url1"], "custom id in identifiers");
+    PXCheckInt([PXEditorOrder selectionCatalogIdentifiers].count,
+               [PXEditorOrder defaultSelectionIdentifiers].count + 1, "catalog includes custom ids");
+    PXCheck([[PXEditorOrder displayNameForSelectionIdentifier:@"url1"] isEqualToString:@"翻译 x"],
+            "display name from record");
+    PXCheck([[PXEditorOrder iconNameForSelectionIdentifier:@"url1"] isEqualToString:@"character.bubble"],
+            "icon name from record");
+    PXCheck([[PXEditorOrder customURLForSelectionIdentifier:@"url1"] isEqualToString:@"shortcuts://run-shortcut?name=翻译"],
+            "url accessor round-trips");
+
+    PXCustomSelectionButton *second = [PXEditorOrder saveCustomSelectionButtonWithID:nil
+        name:@"搜索" icon:nil url:@"https://example.com/search"];
+    PXCheck([second.identifier isEqualToString:@"url2"], "second id increments");
+    PXCustomSelectionButton *renamed = [PXEditorOrder saveCustomSelectionButtonWithID:first.identifier
+        name:@"AI 问答" icon:nil url:first.url];
+    PXCheck([renamed.identifier isEqualToString:@"url1"], "update keeps identifier");
+    PXCheckInt([PXEditorOrder customSelectionButtons].count, 2, "update does not duplicate");
+
+    // 顺序解析：自定义 id 合法、按声明位置保留；新按钮缺失补尾。
+    NSArray *order = [PXEditorOrder resolvedSelectionOrderFromString:@"url2,cancel"];
+    PXCheck([order indexOfObject:@"url2"] == 0, "custom id position preserved");
+    PXCheck([order indexOfObject:@"url1"] == order.count - 1, "missing custom id appended at tail");
+    PXCheck([order.firstObject isEqualToString:@"url2"] && [order[1] isEqualToString:@"cancel"],
+            "static ids keep resolving around customs");
+
+    [PXEditorOrder saveSelectionHiddenString:@"url2"];
+    PXCheck([[PXEditorOrder currentSelectionHidden] containsObject:@"url2"], "custom id hideable");
+
+    [PXEditorOrder removeCustomSelectionButtonWithID:first.identifier];
+    PXCheck([PXEditorOrder customSelectionButtons].count == 1, "remove drops only target record");
+    PXCheck([PXEditorOrder customURLForSelectionIdentifier:@"url1"] == nil, "removed id has no url");
+    NSArray *orderAfterRemove = [PXEditorOrder resolvedSelectionOrderFromString:@"url1,url2,cancel"];
+    PXCheck(![orderAfterRemove containsObject:@"url1"], "stale id dropped from order");
+    PXCheck([orderAfterRemove[0] isEqualToString:@"url2"], "surviving custom keeps position");
+    PXCustomSelectionButton *next = [PXEditorOrder saveCustomSelectionButtonWithID:nil
+        name:@"新按钮" icon:nil url:@"foxnews://"];
+    PXCheck([next.identifier isEqualToString:@"url3"], "removed id never reused");
+
+    PXCheck([PXEditorOrder iconNameForSelectionIdentifier:@"url2"] == nil, "empty icon falls back to nil");
 
     for (NSString *key in keys) {
         id value = backup[key];
@@ -1097,6 +1197,7 @@ int main(int argc, const char **argv) {
         testEditorOrder();
         testSelectionOrder();
         testSelectionOverrides();
+        testCustomSelectionButtons();
         testEditorOverrides();
         testIndependentButtonPreferences();
         testFloatingOriginalRect();

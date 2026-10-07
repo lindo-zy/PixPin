@@ -9,6 +9,7 @@
 @property (nonatomic, readwrite) BOOL saveAlsoCopy;
 @property (nonatomic, readwrite) BOOL showResultBubble;
 @property (nonatomic, readwrite) BOOL floatingSnapShadow;
+@property (nonatomic, readwrite) CGFloat floatingSnapEdgeDistance;
 @property (nonatomic, readwrite) BOOL screenshotHaptic;
 @property (nonatomic, readwrite) BOOL areaRememberLastRect;
 @property (nonatomic, readwrite) CGFloat editorDefaultLineWidth;
@@ -24,6 +25,7 @@
         _saveAlsoCopy = YES;
         _showResultBubble = YES;
         _floatingSnapShadow = YES;
+        _floatingSnapEdgeDistance = 12.0;
         _screenshotHaptic = YES;
         _areaRememberLastRect = NO;
         _editorDefaultLineWidth = PXDefaultEditorLineWidth;
@@ -85,6 +87,7 @@ static PXConfig *_currentConfig = nil;
     config.enabled = PXPrefBool(PXKeyEnabled, YES);
     config.showResultBubble = PXPrefBool(PXKeyShowResultBubble, YES);
     config.floatingSnapShadow = PXPrefBool(PXKeyFloatingSnapShadow, YES);
+    config.floatingSnapEdgeDistance = MAX(0.0, MIN(60.0, PXPrefDouble(PXKeyFloatingSnapEdgeDistance, 12.0)));
     config.screenshotHaptic = PXPrefBool(PXKeyScreenshotHaptic, YES);
     config.areaRememberLastRect = PXPrefBool(PXKeyAreaRememberLastRect, NO);
 

@@ -412,6 +412,22 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         [self pxSetSelectionRect:self.bounds];
         return;
     }
+    if ([identifier isEqualToString:@"markup"]) {
+        // 全屏标记无视当前框选：选区是否合法都直接交给协调器收窗重抓屏。
+        if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestFullscreenMarkup:)]) {
+            [self.delegate selectionViewDidRequestFullscreenMarkup:self];
+        }
+        return;
+    }
+    // 自定义 URL 按钮：id 存在于 SelectionCustomButtons 记录时交给协调器打开。
+    NSString *customURLString = [PXEditorOrder customURLForSelectionIdentifier:identifier];
+    if (customURLString.length > 0) {
+        NSURL *url = [NSURL URLWithString:customURLString];
+        if (url && self.delegate && [self.delegate respondsToSelector:@selector(selectionView:didRequestCustomURL:)]) {
+            [self.delegate selectionView:self didRequestCustomURL:url];
+        }
+        return;
+    }
     // SHELLX 扩展键：交给协调器外调，不走本方输出动作。
     // id→动作映射（PXEditorOrder）与 shellxSelectionIdentifiers 一一对应，缺一即静默失效。
     NSNumber *shellxAction = [PXEditorOrder shellxSelectionActionMap][identifier];

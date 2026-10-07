@@ -1,6 +1,7 @@
 #import "PXFloatingSnap.h"
 #import "PXCaptureWindow.h"
 #import "../Common/PXLog.h"
+#import "../Common/PXPreferences.h"
 
 static const CGFloat PXFloatSnapBarHeight = 44.0;
 
@@ -255,9 +256,32 @@ static const CGFloat PXFloatSnapBarHeight = 44.0;
             [self constrainToHostBounds];
             break;
         }
+        case UIGestureRecognizerStateEnded:
+        case UIGestureRecognizerStateCancelled:
+            [self pxApplyEdgeSnap];
+            break;
         default:
             break;
     }
+}
+
+#pragma mark - 边缘吸附
+
+// 松手时按 FloatingSnapEdgeDistance 吸附（0=关闭）：x/y 两轴独立贴到「边缘+距离」，
+// 取较近一侧；动画只动位置，constrainToHostBounds 的钳制口径保持不变。
+- (void)pxApplyEdgeSnap {
+    if (!self.superview) return;
+    CGFloat distance = [PXPreferences config].floatingSnapEdgeDistance;
+    if (distance <= 0.0) return;
+    CGRect target = PXApplyFloatingSnapEdge(self.frame, self.superview.bounds, distance);
+    if (CGRectEqualToRect(target, self.frame)) return;
+    [UIView animateWithDuration:0.2 delay:0.0
+        options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
+        animations:^{
+            self.frame = target;
+        }
+        completion:nil];
+    [self pxLayoutActionBar];
 }
 
 #pragma mark - 动作

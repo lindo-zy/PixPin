@@ -4,6 +4,21 @@
 // 目录是按钮 id 的唯一命名来源：编辑器、设置页与解析层都从这里取，禁止散落硬编码。
 // 默认顺序即历史版本的固定顺序；dock、collapse 仅在全屏标记模式显示。
 
+@implementation PXCustomSelectionButton
+- (instancetype)initWithIdentifier:(NSString *)identifier
+                              name:(NSString *)name
+                          iconName:(NSString *)iconName
+                               url:(NSString *)url {
+    if (self = [super init]) {
+        _identifier = identifier;
+        _name = name;
+        _iconName = iconName;
+        _url = url;
+    }
+    return self;
+}
+@end
+
 @implementation PXEditorOrder
 
 + (NSArray<NSString *> *)defaultActionIdentifiers {
@@ -43,7 +58,7 @@
     static NSArray<NSString *> *identifiers;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        identifiers = @[@"cancel", @"selectall", @"editor", @"float", @"long",
+        identifiers = @[@"cancel", @"selectall", @"markup", @"editor", @"float", @"long",
                         @"save", @"copy",
                         @"shellxarea", @"shellxinstant", @"shellxfreeze",
                         @"shellxshot", @"shellxclose",
@@ -142,6 +157,7 @@
     dispatch_once(&onceToken, ^{
         names = @{@"cancel": @"取消",
                   @"selectall": @"全屏",
+                  @"markup": @"全屏标记",
                   @"editor": @"编辑",
                   @"float": @"悬浮",
                   @"long": @"滚动截图",
@@ -181,7 +197,11 @@
 
 + (NSString *)displayNameForSelectionIdentifier:(NSString *)identifier {
     NSString *custom = [self customNameForSelectionIdentifier:identifier];
-    return custom.length > 0 ? custom : ([self selectionDisplayNames][identifier] ?: identifier);
+    if (custom.length > 0) return custom;
+    // 自定义 URL 按钮的名称存在记录里，优先于静态目录（目录字典中没有该 id）。
+    PXCustomSelectionButton *customButton = [self pxCustomButtonForIdentifier:identifier];
+    if (customButton) return customButton.name;
+    return [self selectionDisplayNames][identifier] ?: identifier;
 }
 
 + (NSDictionary<NSString *, NSString *> *)actionIconNames {
@@ -249,6 +269,7 @@
     dispatch_once(&onceToken, ^{
         icons = @{@"cancel": @"xmark.circle",
                   @"selectall": @"viewfinder",
+                  @"markup": @"checkmark.rectangle",
                   @"editor": @"pencil.and.outline",
                   @"float": @"rectangle.on.rectangle",
                   @"long": @"arrow.down.to.line.compact",
@@ -275,6 +296,8 @@
 + (NSString *)iconNameForSelectionIdentifier:(NSString *)identifier {
     NSString *custom = [self customIconNameForSelectionIdentifier:identifier];
     if (custom.length > 0) return custom;
+    PXCustomSelectionButton *customButton = [self pxCustomButtonForIdentifier:identifier];
+    if (customButton) return customButton.iconName.length > 0 ? customButton.iconName : nil;
     return [self selectionIconNames][identifier];
 }
 
@@ -404,6 +427,134 @@
                    identifier:identifier];
 }
 
+// MARK: 自定义 URL 按钮（行记录 CSV：行间 \n、字段间逗号；icon 允许空串）
+
++ (PXCustomSelectionButton *)pxCustomButtonForIdentifier:(NSString *)identifier {
+    for (PXCustomSelectionButton *button in [self customSelectionButtons]) {
+        if ([button.identifier isEqualToString:identifier]) return button;
+    }
+    return nil;
+}
+
++ (NSArray<PXCustomSelectionButton *> *)customSelectionButtons {
+    NSString *csv = [self preferenceForKey:PXKeySelectionCustomButtons];
+    if (csv.length == 0) return @[];
+    NSMutableArray<PXCustomSelectionButton *> *buttons = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    for (NSString *line in [csv componentsSeparatedByString:@"\n"]) {
+        NSArray<NSString *> *fields = [line componentsSeparatedByString:@","];
+        if (fields.count != 4) continue;
+        NSString *identifier = fields[0];
+        NSString *name = [fields[1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        if (identifier.length == 0 || name.length == 0 || fields[3].length == 0) continue;
+        if ([seen containsObject:identifier]) continue;
+        [seen addObject:identifier];
+        [buttons addObject:[[PXCustomSelectionButton alloc] initWithIdentifier:identifier
+                                                                          name:name
+                                                                      iconName:fields[2]
+                                                                           url:fields[3]]];
+    }
+    return [buttons copy];
+}
+
++ (void)pxSaveCustomSelectionButtons:(NSArray<PXCustomSelectionButton *> *)buttons {
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    for (PXCustomSelectionButton *button in buttons) {
+        [lines addObject:[NSString stringWithFormat:@"%@,%@,%@,%@",
+                          button.identifier, button.name, button.iconName, button.url]];
+    }
+    NSString *csv = lines.count > 0 ? [lines componentsJoinedByString:@"\n"] : nil;
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXKeySelectionCustomButtons,
+                             (__bridge CFStringRef)csv,
+                             (__bridge CFStringRef)PXPreferencesDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
+}
+
++ (NSString *)pxNextCustomButtonIdentifierIn:(NSArray<PXCustomSelectionButton *> *)buttons {
+    NSInteger maxIndex = 0;
+    for (PXCustomSelectionButton *button in buttons) {
+        if (![button.identifier hasPrefix:@"url"]) continue;
+        NSInteger index = [button.identifier substringFromIndex:3].integerValue;
+        if (index > maxIndex) maxIndex = index;
+    }
+    return [NSString stringWithFormat:@"url%ld", (long)(maxIndex + 1)];
+}
+
+/// scheme 必填（纯 scheme URL 如 foxnews:// 合法，用于唤起 App）；其余交系统 URL 分发层。
++ (BOOL)pxCustomURLAcceptable:(NSString *)url {
+    NSURL *parsed = [NSURL URLWithString:url];
+    return parsed && parsed.scheme.length > 0;
+}
+
++ (NSArray<NSString *> *)customSelectionIdentifiers {
+    return [[self customSelectionButtons] valueForKey:@"identifier"];
+}
+
++ (nullable NSString *)customURLForSelectionIdentifier:(NSString *)identifier {
+    return [self pxCustomButtonForIdentifier:identifier].url;
+}
+
++ (nullable PXCustomSelectionButton *)saveCustomSelectionButtonWithID:(NSString *)identifier
+                                                                 name:(NSString *)name
+                                                                 icon:(NSString *)iconName
+                                                                  url:(NSString *)url {
+    NSString *cleanedName = [self sanitizedOverrideName:name];
+    // URL 只清洗破坏行/字段结构的字符；scheme 校验交给 pxCustomURLAcceptable。
+    NSString *cleanedURL = [[[url componentsSeparatedByCharactersInSet:
+        [NSCharacterSet characterSetWithCharactersInString:@",\n\r"]] componentsJoinedByString:@""]
+        stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (cleanedURL.length > 500) cleanedURL = [cleanedURL substringToIndex:500];
+    if (cleanedName.length == 0 || cleanedURL.length == 0 || ![self pxCustomURLAcceptable:cleanedURL]) {
+        return nil;
+    }
+    NSString *cleanedIcon = [iconName stringByTrimmingCharactersInSet:
+        [NSCharacterSet whitespaceAndNewlineCharacterSet]] ?: @"";
+
+    NSMutableArray<PXCustomSelectionButton *> *buttons = [[self customSelectionButtons] mutableCopy];
+    PXCustomSelectionButton *existing = nil;
+    NSUInteger existingIndex = NSNotFound;
+    if (identifier.length > 0) {
+        // 按.identifier 定位而不是 indexOfObject:：两次解析产出不同实例，指针比较会落空。
+        for (NSUInteger i = 0; i < buttons.count; i++) {
+            if ([buttons[i].identifier isEqualToString:identifier]) {
+                existing = buttons[i];
+                existingIndex = i;
+                break;
+            }
+        }
+    }
+    NSString *finalID = existing.identifier ?: [self pxNextCustomButtonIdentifierIn:buttons];
+    PXCustomSelectionButton *button = [[PXCustomSelectionButton alloc] initWithIdentifier:finalID
+                                                                                     name:cleanedName
+                                                                                 iconName:cleanedIcon
+                                                                                      url:cleanedURL];
+    if (existing) {
+        [buttons replaceObjectAtIndex:existingIndex withObject:button];
+    } else {
+        [buttons addObject:button];
+    }
+    [self pxSaveCustomSelectionButtons:buttons];
+    return button;
+}
+
++ (void)removeCustomSelectionButtonWithID:(NSString *)identifier {
+    if (identifier.length == 0) return;
+    NSArray<PXCustomSelectionButton *> *buttons = [self customSelectionButtons];
+    NSMutableArray<PXCustomSelectionButton *> *remaining = [NSMutableArray array];
+    for (PXCustomSelectionButton *button in buttons) {
+        if (![button.identifier isEqualToString:identifier]) [remaining addObject:button];
+    }
+    if (remaining.count == buttons.count) return;
+    // 删除只摘记录；顺序/隐藏 CSV 的残留 id 由解析层当作未知剔除，序号不复用。
+    [self pxSaveCustomSelectionButtons:remaining];
+}
+
++ (NSArray<NSString *> *)selectionCatalogIdentifiers {
+    NSMutableArray<NSString *> *catalog = [[self defaultSelectionIdentifiers] mutableCopy];
+    [catalog addObjectsFromArray:[self customSelectionIdentifiers]];
+    return [catalog copy];
+}
+
 // MARK: 外观
 
 + (CGFloat)buttonIconPointSize {
@@ -468,7 +619,7 @@
 }
 
 + (NSArray<NSString *> *)resolvedSelectionOrderFromString:(NSString *)csv {
-    return [self resolvedOrderFromString:csv defaults:[self defaultSelectionIdentifiers]];
+    return [self resolvedOrderFromString:csv defaults:[self selectionCatalogIdentifiers]];
 }
 
 + (NSArray<NSString *> *)resolvedOrderFromString:(NSString *)csv
@@ -700,7 +851,7 @@
 
 + (NSArray<NSString *> *)currentSelectionHidden {
     return [self normalizedHiddenFromString:[self preferenceForKey:PXKeySelectionButtonHidden]
-                                   defaults:[self defaultSelectionIdentifiers]];
+                                   defaults:[self selectionCatalogIdentifiers]];
 }
 
 + (void)saveActionOrderString:(NSString *)csv {

@@ -279,6 +279,24 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
 }
 
+- (void)selectionViewDidRequestFullscreenMarkup:(PXSelectionView *)view {
+    // 无视当前框选：按取消口径收掉选区窗口（含“记住上次选区”落盘），
+    // 再走全屏标记任务的常规入口重抓屏；悬浮图与「取消」同口径保留。
+    [self selectionViewDidCancel:view];
+    PXLogInfo(@"selection toolbar requested fullscreen markup");
+    [self requestCapture:PXCaptureModeMarkup];
+}
+
+- (void)selectionView:(PXSelectionView *)view didRequestCustomURL:(NSURL *)url {
+    // 自定义 URL 按钮：选区会话到此结束（不产出图片），再交给系统 URL 分发层。
+    // openURL 的完成回调线程不确定，只记日志；打开失败时目标 App 未注册该 scheme。
+    [self selectionViewDidCancel:view];
+    PXLogInfo(@"selection toolbar custom url opened: %@", url.absoluteString);
+    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL success) {
+        PXLogInfo(@"custom url opened: %@ success=%d", url.absoluteString, success);
+    }];
+}
+
 - (void)selectionViewDidRequestEditor:(PXSelectionView *)view displayRect:(CGRect)displayRect {
     PXCaptureTask *task = [self pxCurrentTaskIfState:PXCaptureStatePresenting];
     if (!task) return;
