@@ -42,15 +42,17 @@ static NSString * const PXShellXMasterSwitchKey = @"GlobalEnabled";
         case PXShellXActionHistory:   return (__bridge NSString *)PXShellXTriggerHistory;
         case PXShellXActionOpenLast:  return (__bridge NSString *)PXShellXTriggerOpenLast;
         case PXShellXActionClose:     return (__bridge NSString *)PXShellXTriggerClose;
-        case PXShellXActionAssistive: return (__bridge NSString *)PXShellXTriggerAssistive;
+        // 整屏截一张走 AssistiveScreenshot 通知：真机实测该通知即整屏截一张（2026-10-07
+        // 用户核对），与逆向报告「通知=套壳截图」的推断相反，以真机为准。
+        case PXShellXActionFullShot:  return (__bridge NSString *)PXShellXTriggerAssistive;
         case PXShellXActionLongShot:
-        case PXShellXActionFullShot:
         case PXShellXActionMark:
         case PXShellXActionEdit:
         case PXShellXActionAI2:
         case PXShellXActionTranslate:
         case PXShellXActionScan:
-            return nil;   // 文档只给 prefs:// 路由，没有等价通知
+        case PXShellXActionAssistive:
+            return nil;   // 走 prefs:// 路由
     }
     return nil;
 }
@@ -59,7 +61,9 @@ static NSString * const PXShellXMasterSwitchKey = @"GlobalEnabled";
     CFStringRef route = NULL;
     switch (action) {
         case PXShellXActionLongShot:  route = PXShellXRouteLong; break;
-        case PXShellXActionFullShot:  route = PXShellXRouteFull; break;
+        // 套壳截图走 shellx_full 路由：真机实测该路由即套壳截图（2026-10-07 用户核对），
+        // 与官方文档「shellx_full=整屏截一张」的表述相反，以真机为准。
+        case PXShellXActionAssistive: route = PXShellXRouteFull; break;
         case PXShellXActionMark:      route = PXShellXRouteMark; break;
         case PXShellXActionEdit:      route = PXShellXRouteEdit; break;
         case PXShellXActionAI2:       route = PXShellXRouteAI2; break;
@@ -71,7 +75,7 @@ static NSString * const PXShellXMasterSwitchKey = @"GlobalEnabled";
         case PXShellXActionHistory:
         case PXShellXActionOpenLast:
         case PXShellXActionClose:
-        case PXShellXActionAssistive:
+        case PXShellXActionFullShot:
             return nil;   // 通知类动作不走 URL
     }
     if (!route) return nil;

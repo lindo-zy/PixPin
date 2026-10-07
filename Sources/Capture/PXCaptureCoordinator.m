@@ -388,8 +388,8 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     }
     // 武装自发自收抑制：区域/即时/冻结/关闭的官方触发名与本方 SHELLX 兼容别名同名
     // （Darwin 中心把自发通知也投递回本进程），外调前按名武装一次，回环到达时吞掉，
-    // 否则画板双开（PixPin 一块、SHELLX 一块）。记录/最近一张本方未监听，套壳截图名
-    // 同样不在监听表，均无回环；URL 类动作不经过通知中心，也无回环。
+    // 否则画板双开（PixPin 一块、SHELLX 一块）。记录/最近一张/整屏（AssistiveScreenshot
+    // 通知）本方均未监听，无回环；套壳等 URL 类动作不经过通知中心，也无回环。
     switch (action) {
         case PXShellXActionArea:
         case PXShellXActionInstant:

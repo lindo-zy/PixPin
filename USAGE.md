@@ -135,12 +135,12 @@ dispatch_async(dispatch_get_main_queue(), ^{
 | ShellX 区域 | 普通框选 | 通知 `com.iosdump.screenshotshell.open` |
 | ShellX 即时 | 即时 | 通知 `…shell.open.instant` |
 | ShellX 冻结 | 冻结 | 通知 `…shell.open.freeze` |
-| ShellX 套壳 | 套壳截图 | 通知 `…shell/AssistiveScreenshot`（文档外逆向入口） |
+| ShellX 套壳 | 套壳截图 | URL `prefs://root=shellx_full`（真机实测：文档所记「整屏截一张」实际是套壳截图） |
 | ShellX 关闭 | 关闭框选/长截图/拼接 | 通知 `…shell.close` |
 | ShellX 记录 | 图片记录 | 通知 `…shell.history` |
 | ShellX 最近 | 最近一张悬浮 | 通知 `…shell.openlast`（无最近图片时无反应） |
 | ShellX 长图 | 长截图 | URL `prefs://root=shellx_long` |
-| ShellX 整屏 | 整屏截一张 | URL `prefs://root=shellx_full` |
+| ShellX 整屏 | 整屏截一张 | 通知 `…shell/AssistiveScreenshot`（真机实测：该通知即整屏截一张） |
 | ShellX 标记 | 全屏标记 | URL `prefs://root=shellx_mark` |
 | ShellX 编辑 | 编辑 | URL `prefs://root=shellx_edit` |
 | ShellX 问答 | 文字问答 | URL `prefs://root=shellx_ai2` |

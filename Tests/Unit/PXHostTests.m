@@ -300,6 +300,8 @@ static void testShellXTriggers(void) {
     // 出向触发名必须与 SHELLX 观察者注册名逐字一致（官方名取自 SHELLX 插件文档第 2 节，
     // AssistiveScreenshot 为文档外逆向入口，ShellX 3.1.1 cstring 核对）；
     // 写错则 notify_post 静默无效——没有接收方，也没有任何报错。
+    // 注意：哪个动作用哪个通道在 PXShellXBridge（仅 tweak 目标编译，宿主测不到）——
+    // 真机实测整屏=AssistiveScreenshot 通知、套壳=shellx_full 路由，与文档表述相反。
     NSDictionary<NSString *, NSString *> *triggers = @{
         @"com.iosdump.screenshotshell.open": (__bridge NSString *)PXShellXTriggerArea,
         @"com.iosdump.screenshotshell.open.instant": (__bridge NSString *)PXShellXTriggerInstant,

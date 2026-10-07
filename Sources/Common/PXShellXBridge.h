@@ -12,13 +12,13 @@ typedef NS_ENUM(NSInteger, PXShellXAction) {
     PXShellXActionOpenLast,    // 最近一张悬浮（官方通知 openlast，无最近图片时无反应）
     PXShellXActionClose,       // 关闭框选/长截图/拼接（官方通知 close）
     PXShellXActionLongShot,    // 长截图（URL shellx_long）
-    PXShellXActionFullShot,    // 整屏截一张（URL shellx_full）
+    PXShellXActionFullShot,    // 整屏截一张（通知 AssistiveScreenshot；真机实测：文档所记 URL shellx_full 实际是套壳）
     PXShellXActionMark,        // 全屏标记（URL shellx_mark）
     PXShellXActionEdit,        // 编辑（URL shellx_edit）
     PXShellXActionAI2,         // 文字问答（URL shellx_ai2）
     PXShellXActionTranslate,   // 全屏翻译（URL shellx_translate）
     PXShellXActionScan,        // 全屏扫码（URL shellx_scan）
-    PXShellXActionAssistive,   // 套壳截图（文档外逆向入口，通知 AssistiveScreenshot）
+    PXShellXActionAssistive,   // 套壳截图（URL shellx_full；真机实测：逆向名 AssistiveScreenshot 通知实际是整屏）
 };
 
 /// SHELLX 出向桥：运行时在场探测 + 总开关读取 + 通知/URL 双通道外调。
