@@ -74,6 +74,7 @@ FOUNDATION_EXPORT NSString * const PXNotificationResultUpdated; // com.pixpin.sc
 
 FOUNDATION_EXPORT NSString * const PXKeyEnabled;
 FOUNDATION_EXPORT NSString * const PXKeyDefaultResultAction;
+FOUNDATION_EXPORT NSString * const PXKeySaveAlsoCopy;
 FOUNDATION_EXPORT NSString * const PXKeyAutoSaveToPhotos;
 FOUNDATION_EXPORT NSString * const PXKeyCopyToClipboard;
 FOUNDATION_EXPORT NSString * const PXKeyShowResultBubble;

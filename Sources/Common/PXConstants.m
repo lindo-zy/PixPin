@@ -45,6 +45,8 @@ NSString * const PXNotificationResultUpdated = @"com.pixpin.screenshot/result/up
 
 NSString * const PXKeyEnabled = @"Enabled";
 NSString * const PXKeyDefaultResultAction = @"DefaultResultAction";
+// 保存同时复制：任何保存动作同时写入剪贴板（默认开）。
+NSString * const PXKeySaveAlsoCopy = @"SaveAlsoCopy";
 NSString * const PXKeyAutoSaveToPhotos = @"AutoSaveToPhotos";
 NSString * const PXKeyCopyToClipboard = @"CopyToClipboard";
 NSString * const PXKeyShowResultBubble = @"ShowResultBubble";

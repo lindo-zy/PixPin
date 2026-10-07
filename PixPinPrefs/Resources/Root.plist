@@ -52,6 +52,8 @@
 			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>输出</string>
+			<key>footerText</key>
+			<string>“保存同时复制”开启后，任何保存到相册的动作（含编辑器与悬浮图的保存）都会同时把当前图片复制到剪贴板；超过长度上限的巨型长图仅保存，不复制。</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -78,6 +80,20 @@
 				<string>保存并复制</string>
 				<string>仅显示预览气泡</string>
 			</array>
+			<key>PostNotification</key>
+			<string>com.pixpin.screenshot/preferences/reload</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.pixpin.screenshot</string>
+			<key>key</key>
+			<string>SaveAlsoCopy</string>
+			<key>label</key>
+			<string>保存同时复制</string>
 			<key>PostNotification</key>
 			<string>com.pixpin.screenshot/preferences/reload</string>
 		</dict>
