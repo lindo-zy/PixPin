@@ -758,11 +758,9 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     self.preEditImage = nil;
     if (![task transitionToState:PXCaptureStatePresenting]) return;
 
-    if (task.isReedit || task.mode == PXCaptureModeMarkup) {
-        [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
-    } else {
-        [self pxExecuteOutput:task.configSnapshot.defaultResultAction forTask:task presentingWindow:nil];
-    }
+    // 关闭/取消一律终止任务：不产出、不弹结果气泡。旧实现在此处对非重编辑
+    // 任务补发 defaultResultAction，SaveAlsoCopy 默认开后变成「取消仍保存+复制」。
+    [self pxCancelCurrentTaskClosingFloatingSnaps:NO];
 }
 
 - (void)pxDestroyEditorWindow {
