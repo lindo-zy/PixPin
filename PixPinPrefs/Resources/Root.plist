@@ -116,8 +116,6 @@
 			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>悬浮图</string>
-			<key>footerText</key>
-			<string>边缘吸附距离：拖动悬浮图松手后，距屏幕边缘不超过该值时自动贴边停靠，吸附后保持该间隙；调到 0 关闭吸附。</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -132,6 +130,14 @@
 			<string>悬浮图阴影</string>
 			<key>PostNotification</key>
 			<string>com.pixpin.screenshot/preferences/reload</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>悬浮图边缘吸附距离</string>
+			<key>footerText</key>
+			<string>边缘吸附距离：拖动悬浮图松手后，距屏幕边缘不超过该值时自动贴边停靠，吸附后保持该间隙；调到 0 关闭吸附。</string>
 		</dict>
 		<dict>
 			<key>cell</key>
