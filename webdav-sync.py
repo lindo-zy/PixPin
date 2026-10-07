@@ -10,6 +10,7 @@
 - iCloud 源: ~/Library/Mobile Documents/com~apple~CloudDocs/Downloads/<项目>/<子目录>/
 - WebDAV 目标: https://dav.jianguoyun.com/dav/<项目>/<子目录>/，结构一一对应
 - 只同步 *.deb（跳过隐藏文件），旧版本两侧都保留
+- 2026-10-07 起坚果云只归档 iOS 16：仅同步 SYNC_SUBDIRS 列出的子目录，iOS 17 只保留 iCloud 归档不上传
 - 远端缺失或文件大小不一致才 PUT；同步后对账，不一致退出码 1；重跑幂等
 - 鉴权走 ~/.netrc 的 dav.jianguoyun.com 条目（curl --netrc），本脚本与仓库均不含密码
 """
@@ -20,6 +21,7 @@ import sys
 import urllib.parse
 
 BASE = "https://dav.jianguoyun.com/dav"
+SYNC_SUBDIRS = ("ios16",)
 DOWNLOADS = os.path.expanduser(
     "~/Library/Mobile Documents/com~apple~CloudDocs/Downloads")
 
@@ -66,9 +68,14 @@ def sync_project(project):
     if not os.path.isdir(local_root):
         sys.exit(f"iCloud 归档目录不存在: {local_root}")
     print(f"\n===== {project}: {local_root} -> {remote_root} =====")
-    subs = sorted(d for d in os.listdir(local_root)
-                  if os.path.isdir(os.path.join(local_root, d)) and not d.startswith("."))
-    print(f"本地归档子目录: {subs}")
+    all_subs = sorted(d for d in os.listdir(local_root)
+                      if os.path.isdir(os.path.join(local_root, d)) and not d.startswith("."))
+    subs = [d for d in all_subs if d in SYNC_SUBDIRS]
+    skipped_subs = [d for d in all_subs if d not in SYNC_SUBDIRS]
+    if skipped_subs:
+        print(f"本地归档子目录: {all_subs}（跳过不上传坚果云: {skipped_subs}）")
+    else:
+        print(f"本地归档子目录: {all_subs}")
     root_code = curl("MKCOL", remote_root)
     assert root_code in ("201", "405"), f"MKCOL {project} -> HTTP {root_code}"
     uploaded = skipped = 0

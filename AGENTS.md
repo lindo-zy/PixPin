@@ -178,4 +178,4 @@ git diff
 
 1. 提交 commit（本地提交，不要 push 上库）。
 2. 归档 deb 到 iCloud 云盘：执行 `~/dev/scripts/deb-to-icloud.sh PixPin <打包生成的 deb...>`，按 `Downloads/PixPin/ios16|ios17` 分类归档，旧版本保留不删除。
-3. 同步坚果云：执行 `python3 webdav-sync.py PixPin`（脚本在本项目根目录，与 TypeX 同款，只允许调用本项目这份；增量同步 iCloud 归档到坚果云 WebDAV，凭据在 `~/.netrc`，不含明文密码）。必须显式传 `PixPin` 参数——脚本无参时默认同步 TypeX；同步后确认对账一致。
+3. 同步坚果云：执行 `python3 webdav-sync.py PixPin`（脚本在本项目根目录，与 TypeX 同款，只允许调用本项目这份；增量同步 iCloud 归档到坚果云 WebDAV，凭据在 `~/.netrc`，不含明文密码）。必须显式传 `PixPin` 参数——脚本无参时默认同步 TypeX；同步后确认对账一致。2026-10-07 起坚果云只归档 iOS 16 版本，`ios17` 子目录不上传（脚本自动跳过），iCloud 归档仍保留双平台。
