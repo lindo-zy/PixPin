@@ -6,11 +6,13 @@
 // 按钮出现在截图按钮工具栏，点击后取消当前截图并经 SpringBoard openURL 打开。
 // 与 PXEditorOrderController 同款自建 UITableView；Preferences 导航页必须继承
 // PSViewController，提供 PSLinkCell 所需的 specifier / parentController 与生命周期接口。
+// 编辑页同样用 inset grouped 表格承载表单行：真机实测绝对约束表单在
+// PSNavigationController 里会整页叠印（2.1.0/2.1.1 两版复现），行布局交给 UIKit。
 
 @interface PXCustomURLController : PSViewController <UITableViewDataSource, UITableViewDelegate>
 @end
 
-@interface PXCustomURLEditController : PSViewController <UITextFieldDelegate>
+@interface PXCustomURLEditController : PSViewController <UITableViewDataSource, UITableViewDelegate, UITextFieldDelegate>
 - (instancetype)initWithButton:(nullable PXCustomSelectionButton *)button
                        onDelete:(nullable void (^)(void))onDelete;
 @end
@@ -99,12 +101,13 @@
 
 #pragma mark - 编辑
 
+// 表单分节：0=显示名称 1=SF 图标 2=URL 3=删除（仅编辑已有按钮时出现）。
 @interface PXCustomURLEditController ()
 @property (nonatomic, strong, nullable) PXCustomSelectionButton *button;
 @property (nonatomic, copy, nullable) void (^onDelete)(void);
+@property (nonatomic, strong) UITableView *formTable;
 @property (nonatomic, strong) UITextField *nameField;
 @property (nonatomic, strong) UITextField *iconField;
-@property (nonatomic, strong) UIImageView *iconPreview;
 @property (nonatomic, strong) UITextField *urlField;
 @end
 
@@ -119,9 +122,16 @@
     return self;
 }
 
+- (void)loadView {
+    _formTable = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
+    _formTable.dataSource = self;
+    _formTable.delegate = self;
+    _formTable.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
+    self.view = _formTable;
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     self.navigationItem.title = self.button ? @"编辑按钮" : @"添加按钮";
     self.navigationItem.leftBarButtonItem =
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
@@ -130,115 +140,135 @@
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave
                                                       target:self action:@selector(pxSaveTapped:)];
 
-    UILabel *nameCaption = [self pxCaptionLabelWithText:@"显示名称（工具栏按钮文字）"];
-    [self.view addSubview:nameCaption];
-    _nameField = [self pxTextFieldWithPlaceholder:@"例如：翻译"];
+    _nameField = [self pxFieldWithPlaceholder:@"例如：翻译" keyboard:UIKeyboardTypeDefault];
     _nameField.text = self.button.name ?: @"";
-    [self.view addSubview:_nameField];
 
-    UILabel *iconCaption = [self pxCaptionLabelWithText:@"SF 图标名称（留空显示文字）"];
-    [self.view addSubview:iconCaption];
-    _iconField = [self pxTextFieldWithPlaceholder:@"例如：arrow.up.right"];
+    _iconField = [self pxFieldWithPlaceholder:@"例如：arrow.up.right" keyboard:UIKeyboardTypeASCIICapable];
     _iconField.text = self.button.iconName.length > 0 ? self.button.iconName : @"";
     [_iconField addTarget:self action:@selector(pxIconChanged:)
          forControlEvents:UIControlEventEditingChanged];
-    [self.view addSubview:_iconField];
 
-    _iconPreview = [[UIImageView alloc] init];
-    _iconPreview.contentMode = UIViewContentModeScaleAspectFit;
-    _iconPreview.tintColor = [UIColor systemBlueColor];
-    [self.view addSubview:_iconPreview];
-
-    UILabel *urlCaption = [self pxCaptionLabelWithText:@"URL（必填，点击按钮时打开）"];
-    [self.view addSubview:urlCaption];
-    _urlField = [self pxTextFieldWithPlaceholder:@"例如：shortcuts://run-shortcut?name=翻译"];
-    _urlField.keyboardType = UIKeyboardTypeURL;
+    _urlField = [self pxFieldWithPlaceholder:@"例如：shortcuts://run-shortcut?name=翻译"
+                                    keyboard:UIKeyboardTypeURL];
     _urlField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     _urlField.autocorrectionType = UITextAutocorrectionTypeNo;
     _urlField.text = self.button.url ?: @"";
-    [self.view addSubview:_urlField];
-
-    UIView *footer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 260, 44)];
-    UIButton *deleteButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [deleteButton setTitle:@"删除此按钮" forState:UIControlStateNormal];
-    [deleteButton setTitleColor:UIColor.systemRedColor forState:UIControlStateNormal];
-    deleteButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    [deleteButton addTarget:self action:@selector(pxDeleteTapped:) forControlEvents:UIControlEventTouchUpInside];
-    deleteButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [footer addSubview:deleteButton];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [nameCaption.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:16],
-        [nameCaption.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
-        [nameCaption.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
-        [_nameField.topAnchor constraintEqualToAnchor:nameCaption.bottomAnchor constant:6],
-        [_nameField.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
-        [_nameField.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
-        [_nameField.heightAnchor constraintEqualToConstant:38],
-        [iconCaption.topAnchor constraintEqualToAnchor:_nameField.bottomAnchor constant:16],
-        [iconCaption.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
-        [iconCaption.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
-        [_iconField.topAnchor constraintEqualToAnchor:iconCaption.bottomAnchor constant:6],
-        [_iconField.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
-        [_iconField.trailingAnchor constraintEqualToAnchor:_iconPreview.leadingAnchor constant:-12],
-        [_iconField.heightAnchor constraintEqualToConstant:38],
-        [_iconPreview.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
-        [_iconPreview.centerYAnchor constraintEqualToAnchor:_iconField.centerYAnchor],
-        [_iconPreview.widthAnchor constraintEqualToConstant:30],
-        [_iconPreview.heightAnchor constraintEqualToConstant:30],
-        [urlCaption.topAnchor constraintEqualToAnchor:_iconField.bottomAnchor constant:16],
-        [urlCaption.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
-        [urlCaption.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
-        [_urlField.topAnchor constraintEqualToAnchor:urlCaption.bottomAnchor constant:6],
-        [_urlField.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
-        [_urlField.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
-        [_urlField.heightAnchor constraintEqualToConstant:38],
-    ]];
-    footer.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:footer];
-    [NSLayoutConstraint activateConstraints:@[
-        [footer.topAnchor constraintEqualToAnchor:_urlField.bottomAnchor constant:24],
-        [footer.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [footer.widthAnchor constraintEqualToConstant:260],
-        [footer.heightAnchor constraintEqualToConstant:44],
-        [deleteButton.centerXAnchor constraintEqualToAnchor:footer.centerXAnchor],
-        [deleteButton.centerYAnchor constraintEqualToAnchor:footer.centerYAnchor],
-    ]];
-    [self pxIconChanged:_iconField];
 }
 
-- (UILabel *)pxCaptionLabelWithText:(NSString *)text {
-    UILabel *label = [[UILabel alloc] init];
-    label.text = text;
-    label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
-    label.textColor = [UIColor secondaryLabelColor];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    return label;
-}
-
-- (UITextField *)pxTextFieldWithPlaceholder:(NSString *)placeholder {
+- (UITextField *)pxFieldWithPlaceholder:(NSString *)placeholder keyboard:(UIKeyboardType)keyboard {
     UITextField *field = [[UITextField alloc] init];
-    field.borderStyle = UITextBorderStyleRoundedRect;
+    field.placeholder = placeholder;
+    field.keyboardType = keyboard;
     field.clearButtonMode = UITextFieldViewModeWhileEditing;
     field.returnKeyType = UIReturnKeyDone;
     field.delegate = self;
-    field.placeholder = placeholder;
+    field.font = [UIFont systemFontOfSize:17.0];
     field.translatesAutoresizingMaskIntoConstraints = NO;
     return field;
 }
 
-- (void)pxIconChanged:(UITextField *)sender {
-    NSString *symbol = [sender.text stringByTrimmingCharactersInSet:
-        [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    UIImage *preview = symbol.length > 0 ? [UIImage systemImageNamed:symbol] : nil;
-    self.iconPreview.image = preview;
-    self.iconField.textColor = symbol.length > 0 && !preview ? UIColor.systemRedColor : UIColor.labelColor;
+#pragma mark - 表格数据源
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return self.button ? 4 : 3;
 }
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return 1;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == 0) return @"显示名称（工具栏按钮文字）";
+    if (section == 1) return @"SF 图标名称（留空显示文字）";
+    if (section == 2) return @"URL（必填，点击按钮时打开）";
+    return @"";
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == 1) return @"填写 SF Symbols 标准图标名；无效或留空时按钮显示名称文字。";
+    if (section == 2) return @"需要带 scheme 的完整地址，例如 shortcuts://run-shortcut?name=翻译，或纯 scheme 的 foxnews://。";
+    return @"";
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *reuse = [NSString stringWithFormat:@"pxcustomurl-field-%ld", (long)indexPath.section];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuse];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:reuse];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        UITextField *field = nil;
+        if (indexPath.section == 0) {
+            field = self.nameField;
+        } else if (indexPath.section == 1) {
+            field = self.iconField;
+            UIImageView *preview = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 30, 30)];
+            preview.contentMode = UIViewContentModeScaleAspectFit;
+            preview.tintColor = [UIColor systemBlueColor];
+            cell.accessoryView = preview;
+            [self pxRefreshIconPreviewInView:preview];
+        } else if (indexPath.section == 2) {
+            field = self.urlField;
+        } else {
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            cell.textLabel.text = @"删除此按钮";
+            cell.textLabel.textColor = UIColor.systemRedColor;
+            cell.textLabel.textAlignment = NSTextAlignmentCenter;
+            cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightMedium];
+        }
+        if (field) {
+            [cell.contentView addSubview:field];
+            [NSLayoutConstraint activateConstraints:@[
+                [field.leadingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.leadingAnchor],
+                [field.trailingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.trailingAnchor],
+                [field.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:12],
+                [field.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-12],
+            ]];
+        }
+    }
+    if (indexPath.section == 1) {
+        UIImageView *preview = (UIImageView *)cell.accessoryView;
+        if ([preview isKindOfClass:UIImageView.class]) [self pxRefreshIconPreviewInView:preview];
+    }
+    return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 48.0;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:NO];
+    if (indexPath.section == 3) [self pxDeleteTapped:nil];
+}
+
+#pragma mark - 图标预览
+
+// 字段行构建后从不 reload；预览视图随 cell.accessoryView 取回，离屏时 nil 各步均为无操作。
+- (UIImageView *)pxIconPreviewForField:(UITextField *)field {
+    UITableViewCell *cell = [_formTable cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:1]];
+    if ([cell.accessoryView isKindOfClass:UIImageView.class]) return (UIImageView *)cell.accessoryView;
+    return nil;
+}
+
+- (void)pxRefreshIconPreviewInView:(UIImageView *)preview {
+    NSString *symbol = [self.iconField.text stringByTrimmingCharactersInSet:
+        [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    preview.image = symbol.length > 0 ? [UIImage systemImageNamed:symbol] : nil;
+    self.iconField.textColor = symbol.length > 0 && !preview.image ? UIColor.systemRedColor : UIColor.labelColor;
+}
+
+- (void)pxIconChanged:(UITextField *)sender {
+    [self pxRefreshIconPreviewInView:[self pxIconPreviewForField:sender]];
+}
+
+#pragma mark - 输入
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
     return YES;
 }
+
+#pragma mark - 动作
 
 - (void)pxCancelTapped:(UIBarButtonItem *)sender {
     [self.navigationController popViewControllerAnimated:YES];
