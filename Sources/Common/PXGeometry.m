@@ -94,26 +94,25 @@ CGRect PXConstrainFloatingRect(CGRect frame, CGRect bounds) {
     return frame;
 }
 
-CGRect PXApplyFloatingSnapEdge(CGRect frame, CGRect bounds, CGFloat distance) {
-    if (!(distance > 0.0) || !isfinite(distance)) return frame;
-    if (CGRectIsEmpty(frame) || CGRectIsEmpty(bounds)) return frame;
-    CGFloat maxX = CGRectGetMaxX(bounds) - frame.size.width;
-    CGFloat maxY = CGRectGetMaxY(bounds) - frame.size.height;
-    if (maxX >= CGRectGetMinX(bounds)) {
-        CGFloat leftGap = frame.origin.x - CGRectGetMinX(bounds);
-        CGFloat rightGap = CGRectGetMaxX(bounds) - CGRectGetMaxX(frame);
-        if (MIN(leftGap, rightGap) <= distance) {
-            frame.origin.x = (leftGap <= rightGap) ? CGRectGetMinX(bounds) + distance : maxX - distance;
-        }
+CGRect PXApplySelectionEdgeSnap(CGRect rect, CGSize containerSize, CGFloat distance) {
+    if (!(distance > 0.0) || !isfinite(distance)) return rect;
+    if (CGRectIsEmpty(rect) || containerSize.width <= 0.0 || containerSize.height <= 0.0) return rect;
+    if (rect.size.width > containerSize.width || rect.size.height > containerSize.height) return rect;
+    CGFloat leftGap = rect.origin.x;
+    CGFloat rightGap = containerSize.width - CGRectGetMaxX(rect);
+    if ((leftGap <= distance || rightGap <= distance) && leftGap <= rightGap) {
+        rect.origin.x = 0.0;
+    } else if (rightGap <= distance) {
+        rect.origin.x = containerSize.width - rect.size.width;
     }
-    if (maxY >= CGRectGetMinY(bounds)) {
-        CGFloat topGap = frame.origin.y - CGRectGetMinY(bounds);
-        CGFloat bottomGap = CGRectGetMaxY(bounds) - CGRectGetMaxY(frame);
-        if (MIN(topGap, bottomGap) <= distance) {
-            frame.origin.y = (topGap <= bottomGap) ? CGRectGetMinY(bounds) + distance : maxY - distance;
-        }
+    CGFloat topGap = rect.origin.y;
+    CGFloat bottomGap = containerSize.height - CGRectGetMaxY(rect);
+    if ((topGap <= distance || bottomGap <= distance) && topGap <= bottomGap) {
+        rect.origin.y = 0.0;
+    } else if (bottomGap <= distance) {
+        rect.origin.y = containerSize.height - rect.size.height;
     }
-    return frame;
+    return rect;
 }
 
 NSString *PXStringFromCaptureMode(PXCaptureMode mode) {

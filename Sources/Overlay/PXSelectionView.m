@@ -1,5 +1,6 @@
 #import "PXSelectionView.h"
 #import "../Common/PXEditorOrder.h"
+#import "../Common/PXPreferences.h"
 #import "../Common/PXSelectionToolbar.h"
 #import "../Common/PXLog.h"
 
@@ -282,7 +283,7 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
                     CGRect rect = _dragStartRect;
                     rect.origin.x += translation.x;
                     rect.origin.y += translation.y;
-                    [self pxSetSelectionRect:rect];
+                    [self pxSetSelectionRect:[self pxSnappedRect:rect]];
                     break;
                 }
                 case PXSelectionDragModeCreate: {
@@ -290,11 +291,11 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
                                              MIN(_dragAnchor.y, location.y),
                                              fabs(location.x - _dragAnchor.x),
                                              fabs(location.y - _dragAnchor.y));
-                    [self pxSetSelectionRect:rect];
+                    [self pxSetSelectionRect:[self pxSnappedRect:rect]];
                     break;
                 }
                 case PXSelectionDragModeHandle: {
-                    [self pxResizeWithHandle:_activeHandleIndex location:location];
+                    [self pxResizeWithHandle:_activeHandleIndex location:[self pxSnappedPoint:location]];
                     break;
                 }
                 default:
@@ -319,6 +320,30 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         default:
             break;
     }
+}
+
+#pragma mark - 边缘吸附
+
+// 拖动过程实时吸附：SelectionSnapEdgeDistance（0=关闭）内选框边/把手对齐屏幕边缘。
+// 只挂在本视图 pan 路径上；恢复上次选区、默认选区与「全屏」按钮不经过吸附。
+- (CGRect)pxSnappedRect:(CGRect)rect {
+    CGFloat distance = [PXPreferences config].selectionSnapEdgeDistance;
+    if (distance <= 0.0) return rect;
+    return PXApplySelectionEdgeSnap(rect, self.bounds.size, distance);
+}
+
+// 手柄拖动按点位吸附：把手接近边缘时把拖动点吸到边缘，resize 的对应边随之贴边。
+- (CGPoint)pxSnappedPoint:(CGPoint)point {
+    CGFloat distance = [PXPreferences config].selectionSnapEdgeDistance;
+    if (distance <= 0.0) return point;
+    CGSize size = self.bounds.size;
+    if (point.x <= distance || size.width - point.x <= distance) {
+        point.x = (point.x <= size.width - point.x) ? 0.0 : size.width;
+    }
+    if (point.y <= distance || size.height - point.y <= distance) {
+        point.y = (point.y <= size.height - point.y) ? 0.0 : size.height;
+    }
+    return point;
 }
 
 - (void)pxHandleFloatDoubleTap:(UITapGestureRecognizer *)gesture {
