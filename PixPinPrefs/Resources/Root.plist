@@ -183,6 +183,8 @@
 			<string>全屏标记按钮</string>
 			<key>detail</key>
 			<string>PXFullscreenButtonController</string>
+			<key>id</key>
+			<string>fullscreenButtons</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -191,6 +193,8 @@
 			<string>截图按钮</string>
 			<key>detail</key>
 			<string>PXRegionButtonController</string>
+			<key>id</key>
+			<string>regionButtons</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -199,6 +203,8 @@
 			<string>自定义 URL 按钮</string>
 			<key>detail</key>
 			<string>PXCustomURLController</string>
+			<key>id</key>
+			<string>customUrlButtons</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -207,6 +213,8 @@
 			<string>编辑器按钮排序</string>
 			<key>detail</key>
 			<string>PXEditorOrderController</string>
+			<key>id</key>
+			<string>editorButtonOrder</string>
 		</dict>
 
 		<dict>
