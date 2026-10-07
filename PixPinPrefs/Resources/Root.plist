@@ -51,6 +51,34 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
+			<string>选框吸附距离</string>
+			<key>footerText</key>
+			<string>区域/冻结/即时截图拖动或调整选框时，选框边缘距屏幕边缘不超过该值即自动对齐屏幕边缘，方便精确框选全宽全高；调到 0 关闭吸附。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>defaults</key>
+			<string>com.pixpin.screenshot</string>
+			<key>key</key>
+			<string>SelectionSnapEdgeDistance</string>
+			<key>default</key>
+			<real>12</real>
+			<key>min</key>
+			<real>0</real>
+			<key>max</key>
+			<real>60</real>
+			<key>showCancelButton</key>
+			<false/>
+			<key>label</key>
+			<string>选框吸附距离</string>
+			<key>PostNotification</key>
+			<string>com.pixpin.screenshot/preferences/reload</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
 			<string>输出</string>
 			<key>footerText</key>
 			<string>“保存同时复制”开启后，任何保存到相册的动作（含编辑器与悬浮图的保存）都会同时把当前图片复制到剪贴板；超过长度上限的巨型长图仅保存，不复制。</string>
@@ -128,34 +156,6 @@
 			<string>FloatingSnapShadow</string>
 			<key>label</key>
 			<string>悬浮图阴影</string>
-			<key>PostNotification</key>
-			<string>com.pixpin.screenshot/preferences/reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>悬浮图边缘吸附距离</string>
-			<key>footerText</key>
-			<string>边缘吸附距离：拖动悬浮图松手后，距屏幕边缘不超过该值时自动贴边停靠，吸附后保持该间隙；调到 0 关闭吸附。</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>defaults</key>
-			<string>com.pixpin.screenshot</string>
-			<key>key</key>
-			<string>FloatingSnapEdgeDistance</string>
-			<key>default</key>
-			<real>12</real>
-			<key>min</key>
-			<real>0</real>
-			<key>max</key>
-			<real>60</real>
-			<key>showCancelButton</key>
-			<false/>
-			<key>label</key>
-			<string>悬浮图边缘吸附距离</string>
 			<key>PostNotification</key>
 			<string>com.pixpin.screenshot/preferences/reload</string>
 		</dict>

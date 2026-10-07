@@ -79,8 +79,8 @@ FOUNDATION_EXPORT NSString * const PXKeyAutoSaveToPhotos;
 FOUNDATION_EXPORT NSString * const PXKeyCopyToClipboard;
 FOUNDATION_EXPORT NSString * const PXKeyShowResultBubble;
 FOUNDATION_EXPORT NSString * const PXKeyFloatingSnapShadow;
-/// 悬浮图边缘吸附距离（点）：0=关闭，>0=松手后距屏幕边缘不超过该值时吸附，吸附后保持该间隙。
-FOUNDATION_EXPORT NSString * const PXKeyFloatingSnapEdgeDistance;
+/// 选区边缘吸附距离（点）：0=关闭，>0=拖动选框时某边距屏幕边缘不超过该值即对齐边缘。
+FOUNDATION_EXPORT NSString * const PXKeySelectionSnapEdgeDistance;
 FOUNDATION_EXPORT NSString * const PXKeyShowCompletionNotification;
 FOUNDATION_EXPORT NSString * const PXKeyMuteScreenshotSound;
 FOUNDATION_EXPORT NSString * const PXKeyScreenshotHaptic;

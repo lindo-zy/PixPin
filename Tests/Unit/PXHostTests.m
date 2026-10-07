@@ -114,27 +114,29 @@ static void testGeometry(void) {
     CGRect valid = PXClampSelectionRect(CGRectMake(100, 100, 120, 80), display, 24.0);
     PXCheck(CGRectEqualToRect(valid, CGRectMake(100, 100, 120, 80)), "valid selection untouched");
 
-    // 悬浮图边缘吸附：0=关闭；x/y 两轴独立取较近侧贴到「边缘+距离」。
-    CGRect bounds = CGRectMake(0, 0, 390, 844);
-    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(100, 100, 80, 60), bounds, 0),
+    // 选区边缘吸附：0=关闭；拖动中边距屏幕边缘不超过阈值即对齐边缘（间隙 0）。
+    CGSize screen = CGSizeMake(390, 844);
+    PXCheck(CGRectEqualToRect(PXApplySelectionEdgeSnap(CGRectMake(100, 100, 80, 60), screen, 0),
                               CGRectMake(100, 100, 80, 60)), "snap disabled at zero");
-    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(100, 100, 80, 60), bounds, 12),
+    PXCheck(CGRectEqualToRect(PXApplySelectionEdgeSnap(CGRectMake(100, 100, 80, 60), screen, 12),
                               CGRectMake(100, 100, 80, 60)), "no snap beyond threshold");
-    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(10, 100, 80, 60), bounds, 12),
-                              CGRectMake(12, 100, 80, 60)), "left edge snaps to margin");
-    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(300, 100, 80, 60), bounds, 12),
-                              CGRectMake(390 - 80 - 12, 100, 80, 60)), "right edge snaps to margin");
-    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(100, 10, 80, 60), bounds, 12),
-                              CGRectMake(100, 12, 80, 60)), "top edge snaps to margin");
-    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(100, 790, 80, 60), bounds, 12),
-                              CGRectMake(100, 844 - 60 - 12, 80, 60)), "bottom edge snaps to margin");
-    // 双边都在阈值内时各取较近侧。
-    PXCheck(CGRectEqualToRect(PXApplyFloatingSnapEdge(CGRectMake(5, 835, 80, 60), bounds, 12),
-                              CGRectMake(12, 844 - 60 - 12, 80, 60)), "both axes snap independently");
-    // 负间隙轴（悬浮图宽于屏幕）：该轴不动，另一轴正常吸附。
-    CGRect oversized = PXApplyFloatingSnapEdge(CGRectMake(0, 0, 500, 60), bounds, 12);
-    PXCheck(CGRectGetMinX(oversized) == 0.0 && CGRectGetMaxX(oversized) == 500.0,
-            "oversized x axis untouched");
+    PXCheck(CGRectEqualToRect(PXApplySelectionEdgeSnap(CGRectMake(10, 100, 80, 60), screen, 12),
+                              CGRectMake(0, 100, 80, 60)), "left edge aligns to border");
+    PXCheck(CGRectEqualToRect(PXApplySelectionEdgeSnap(CGRectMake(300, 100, 80, 60), screen, 12),
+                              CGRectMake(390 - 80, 100, 80, 60)), "right edge aligns to border");
+    PXCheck(CGRectEqualToRect(PXApplySelectionEdgeSnap(CGRectMake(100, 10, 80, 60), screen, 12),
+                              CGRectMake(100, 0, 80, 60)), "top edge aligns to border");
+    PXCheck(CGRectEqualToRect(PXApplySelectionEdgeSnap(CGRectMake(100, 790, 80, 60), screen, 12),
+                              CGRectMake(100, 844 - 60, 80, 60)), "bottom edge aligns to border");
+    // 同轴两侧都在阈值内时取较近一侧；两轴互不影响。
+    PXCheck(CGRectEqualToRect(PXApplySelectionEdgeSnap(CGRectMake(5, 835, 80, 60), screen, 12),
+                              CGRectMake(0, 844 - 60, 80, 60)), "both axes snap independently");
+    // 同轴两侧都在阈值内时取较近一侧（宽矩形居中拖动场景）。
+    PXCheck(CGRectEqualToRect(PXApplySelectionEdgeSnap(CGRectMake(7, 100, 380, 60), screen, 12),
+                              CGRectMake(10, 100, 380, 60)), "nearer side wins on same axis");
+    // 宽于屏幕的矩形原样返回（交由钳制层处理）。
+    PXCheck(CGRectEqualToRect(PXApplySelectionEdgeSnap(CGRectMake(0, 0, 500, 60), screen, 12),
+                              CGRectMake(0, 0, 500, 60)), "oversized rect untouched");
 }
 
 #pragma mark - 输出幂等（§9.2）

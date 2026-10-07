@@ -66,10 +66,10 @@ CGRect PXClampSelectionRect(CGRect rect, CGSize containerSize, CGFloat minimumSi
 /// 保持悬浮图尺寸，只限制位置。大于屏幕时允许拖动查看两端，不缩图。
 CGRect PXConstrainFloatingRect(CGRect frame, CGRect bounds);
 
-/// 悬浮图边缘吸附：distance<=0 时原样返回；x/y 两轴独立判断——松手位置距屏幕
-/// 左右（上下）边缘不超过 distance 时，把该轴贴到「边缘 + distance」的间隙位置，
-/// 取较近的一侧；两轴互不影响。frame 须已通过 PXConstrainFloatingRect 钳制。
-CGRect PXApplyFloatingSnapEdge(CGRect frame, CGRect bounds, CGFloat distance);
+/// 选区边缘吸附：distance<=0 时原样返回；拖动选框时四边独立判断——某边距容器
+/// 对应边缘不超过 distance 时该边对齐到边缘（间隙为 0），同轴两侧都在阈值内取较近
+/// 一侧。矩形大于容器时原样返回（交由钳制层处理）。
+CGRect PXApplySelectionEdgeSnap(CGRect rect, CGSize containerSize, CGFloat distance);
 
 // MARK: - 展示辅助
 
