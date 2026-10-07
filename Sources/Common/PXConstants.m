@@ -51,6 +51,8 @@ NSString * const PXKeyAutoSaveToPhotos = @"AutoSaveToPhotos";
 NSString * const PXKeyCopyToClipboard = @"CopyToClipboard";
 NSString * const PXKeyShowResultBubble = @"ShowResultBubble";
 NSString * const PXKeyFloatingSnapShadow = @"FloatingSnapShadow";
+// 悬浮图边缘吸附距离：0=关闭，吸附后与屏幕边缘保持该间隙。
+NSString * const PXKeyFloatingSnapEdgeDistance = @"FloatingSnapEdgeDistance";
 NSString * const PXKeyShowCompletionNotification = @"ShowCompletionNotification";
 NSString * const PXKeyMuteScreenshotSound = @"MuteScreenshotSound";
 NSString * const PXKeyScreenshotHaptic = @"ScreenshotHaptic";
@@ -70,6 +72,8 @@ NSString * const PXKeySelectionButtonHidden = @"SelectionButtonHidden";
 NSString * const PXKeySelectionButtonNames = @"SelectionButtonNames";
 NSString * const PXKeySelectionButtonIcons = @"SelectionButtonIcons";
 NSString * const PXKeySelectionButtonIconStyle = @"SelectionButtonIconStyle";
+// 自定义 URL 按钮：行记录 CSV，行间 \n、字段间逗号（id,name,icon,url）；由 PXEditorOrder 解析。
+NSString * const PXKeySelectionCustomButtons = @"SelectionCustomButtons";
 NSString * const PXKeyAreaRememberLastRect = @"AreaRememberLastRect";
 // 选区矩形以 NSStringFromCGRect 存储；与开关独立，关开关时清除。
 NSString * const PXKeyAreaLastSelectionRect = @"AreaLastSelectionRect";

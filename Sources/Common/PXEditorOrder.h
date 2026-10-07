@@ -10,6 +10,17 @@ typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
     PXSelectionButtonStyleIconAndText = 2,
 };
 
+/// 用户在设置页自定义的 URL scheme 快捷按钮（数量不限，出现在截图按钮工具栏）。
+@interface PXCustomSelectionButton : NSObject
+/// url<n> 形式；删除后序号不复用，旧顺序 CSV 中的残留 id 由解析层剔除。
+@property (nonatomic, readonly) NSString *identifier;
+@property (nonatomic, readonly) NSString *name;
+/// SF Symbol 名；允许为空串（工具栏回退显示名称）。
+@property (nonatomic, readonly) NSString *iconName;
+/// 完整 URL 字符串（含 scheme），点击时经 SpringBoard openURL 打开。
+@property (nonatomic, readonly) NSString *url;
+@end
+
 /// 编辑器按钮目录与顺序解析：主 tweak、设置包、宿主测试三方共用。
 /// 顺序偏好以 CSV 存储；解析策略固定：未知剔除、重复只保留首次、缺失按默认顺序补尾。
 /// 读取与写入直接走 CFPreferences（编辑器每次打开解析一次，遵循"新配置从下一个任务生效"）。
@@ -25,7 +36,7 @@ typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
 + (NSArray<NSString *> *)fixedActionIdentifiers;
 /// 全部工具按钮 id：画笔/平移/方框/椭圆/箭头/放大镜/直线/马赛克/文字/实心方/实心圆/聚光/荧光/贴纸/序号图章。
 + (NSArray<NSString *> *)defaultToolIdentifiers;
-/// 区域选区工具栏按钮 id：取消/全屏/编辑/悬浮/保存/复制，外加 SHELLX 扩展组。
+/// 区域选区工具栏按钮 id：取消/全屏/全屏标记/编辑/悬浮/滚动截图/保存/复制，外加 SHELLX 扩展组。
 /// （「完成」已随 2.0.8 移除：默认配置下与保存动作完全重复。）
 + (NSArray<NSString *> *)defaultSelectionIdentifiers;
 /// SHELLX 扩展按钮 id 子集（区域/即时/冻结/套壳/关闭/记录/最近/长图/整屏/标记/编辑/问答/
@@ -68,6 +79,21 @@ typedef NS_ENUM(NSInteger, PXSelectionButtonStyle) {
 + (void)saveActionIconName:(nullable NSString *)symbolName forIdentifier:(NSString *)identifier;
 + (void)saveToolIconName:(nullable NSString *)symbolName forIdentifier:(NSString *)identifier;
 + (void)saveSelectionIconName:(nullable NSString *)symbolName forIdentifier:(NSString *)identifier;
+
+// MARK: 自定义 URL 按钮（数量不限；存 SelectionCustomButtons 行记录 CSV：id,name,icon,url）
+
++ (NSArray<PXCustomSelectionButton *> *)customSelectionButtons;
++ (NSArray<NSString *> *)customSelectionIdentifiers;
+/// 自定义按钮的打开地址；非自定义 id 返回 nil。
++ (nullable NSString *)customURLForSelectionIdentifier:(NSString *)identifier;
+/// 保存（identifier 传 nil 或不存在时生成新 id）；返回清洗后的记录，name/url 非法返回 nil。
++ (nullable PXCustomSelectionButton *)saveCustomSelectionButtonWithID:(nullable NSString *)identifier
+                                                                 name:(NSString *)name
+                                                                 icon:(nullable NSString *)iconName
+                                                                  url:(NSString *)url;
++ (void)removeCustomSelectionButtonWithID:(NSString *)identifier;
+/// 静态目录 + 现存自定义 id 的合并目录；顺序解析与隐藏集过滤共用，保证自定义 id 不被剔除。
++ (NSArray<NSString *> *)selectionCatalogIdentifiers;
 
 // MARK: 截图按钮外观
 

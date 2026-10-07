@@ -13,6 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL saveAlsoCopy;
 @property (nonatomic, readonly) BOOL showResultBubble;
 @property (nonatomic, readonly) BOOL floatingSnapShadow;
+/// 悬浮图边缘吸附距离（点）：0=关闭，>0=触发阈值与吸附间隙（默认 12，夹取 0–60）。
+@property (nonatomic, readonly) CGFloat floatingSnapEdgeDistance;
 @property (nonatomic, readonly) BOOL screenshotHaptic;
 @property (nonatomic, readonly) BOOL areaRememberLastRect;
 @property (nonatomic, readonly) CGFloat editorDefaultLineWidth;

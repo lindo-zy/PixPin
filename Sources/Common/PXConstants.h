@@ -79,6 +79,8 @@ FOUNDATION_EXPORT NSString * const PXKeyAutoSaveToPhotos;
 FOUNDATION_EXPORT NSString * const PXKeyCopyToClipboard;
 FOUNDATION_EXPORT NSString * const PXKeyShowResultBubble;
 FOUNDATION_EXPORT NSString * const PXKeyFloatingSnapShadow;
+/// 悬浮图边缘吸附距离（点）：0=关闭，>0=松手后距屏幕边缘不超过该值时吸附，吸附后保持该间隙。
+FOUNDATION_EXPORT NSString * const PXKeyFloatingSnapEdgeDistance;
 FOUNDATION_EXPORT NSString * const PXKeyShowCompletionNotification;
 FOUNDATION_EXPORT NSString * const PXKeyMuteScreenshotSound;
 FOUNDATION_EXPORT NSString * const PXKeyScreenshotHaptic;
@@ -98,6 +100,8 @@ FOUNDATION_EXPORT NSString * const PXKeySelectionButtonHidden;
 FOUNDATION_EXPORT NSString * const PXKeySelectionButtonNames;
 FOUNDATION_EXPORT NSString * const PXKeySelectionButtonIcons;
 FOUNDATION_EXPORT NSString * const PXKeySelectionButtonIconStyle;
+/// 选区工具栏自定义 URL 按钮：行记录 CSV（行间 \n、字段间 ,：id,name,icon,url）。
+FOUNDATION_EXPORT NSString * const PXKeySelectionCustomButtons;
 FOUNDATION_EXPORT NSString * const PXKeyAreaRememberLastRect;
 FOUNDATION_EXPORT NSString * const PXKeyAreaLastSelectionRect;
 FOUNDATION_EXPORT NSString * const PXKeyMarkupHandleOrigin;

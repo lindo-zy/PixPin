@@ -50,7 +50,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = [self pxRegion] ? @"区域截图按钮" : ([self pxFullscreen] ? @"全屏标记按钮" : @"图片编辑按钮");
+    self.title = [self pxRegion] ? @"截图按钮" : ([self pxFullscreen] ? @"全屏标记按钮" : @"图片编辑按钮");
     self.navigationItem.rightBarButtonItem =
         [[UIBarButtonItem alloc] initWithTitle:@"恢复默认" style:UIBarButtonItemStylePlain
                                       target:self action:@selector(pxResetTapped:)];
@@ -195,8 +195,8 @@
     }
     UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 0)];
     note.text = [self pxRegion]
-        ? @"拖动手柄排序，开关控制区域选区按钮显隐，点击行修改名称与图标。“显示样式”可选图标、文字、图标＋文字（上图下字），预览与大小调整同步。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏。大小与编辑器共用。"
-        : ([self pxFullscreen] ? @"仅设置全屏标记面板的按钮顺序与显隐，与区域截图和普通图片编辑相互独立；关闭、取色、撤销、完成固定为四角键。图标大小三处共用，可在任一按钮设置页调整。修改即时保存，下次打开生效。"
+        ? @"拖动手柄排序，开关控制截图按钮显隐，点击行修改名称与图标。“显示样式”可选图标、文字、图标＋文字（上图下字），预览与大小调整同步。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏。大小与编辑器共用。"
+        : ([self pxFullscreen] ? @"仅设置全屏标记面板的按钮顺序与显隐，与截图按钮和普通图片编辑相互独立；关闭、取色、撤销、完成固定为四角键。图标大小三处共用，可在任一按钮设置页调整。修改即时保存，下次打开生效。"
                               : @"设置普通图片编辑的按钮顺序与显隐；名称、图标和大小仍与全屏标记共用。修改即时保存，下次打开生效。");
     note.font = [UIFont systemFontOfSize:12];
     note.textColor = UIColor.secondaryLabelColor;
@@ -225,7 +225,7 @@
     section = [self pxKindForSection:section];
     if (section == 0) return @"编辑操作图标";
     if (section == 1) return @"标记工具图标";
-    if (section == 2) return @"区域截图按钮";
+    if (section == 2) return @"截图按钮";
     if (section == 4) return @"显示样式";
     return @"外观";
 }
@@ -241,12 +241,12 @@
         return @"工具排序与显隐仅影响当前页面对应的编辑模式。全部工具关闭时回退显示全部工具，打开编辑器默认选中排序后的第一个工具。";
     }
     if (section == 2) {
-        return @"区域/冻结截图选区工具栏的按钮排序与显隐；“取消”始终显示，“悬浮”把选区结果以可拖动悬浮窗常驻屏幕。即时模式仅显示 取消/全屏。点击行可修改名称与图标。";
+        return @"截图/冻结截图选区工具栏的按钮排序与显隐；“取消”始终显示，“悬浮”把选区结果以可拖动悬浮窗常驻屏幕，“全屏标记”无视当前框选直接对全屏标记。即时模式仅显示 取消/全屏。点击行可修改名称与图标。";
     }
     if (section == 4) {
         return @"可选图标、文字、图标＋文字；图标＋文字采用上图下字。预览即时更新，下次打开截图生效；三种样式均支持自定义名称和大小调整。";
     }
-    return @"大小范围为 10–20pt，三个按钮设置页共用同一数值；区域截图三种样式的图标、文字、间距和工具栏尺寸同步调整。";
+    return @"大小范围为 10–20pt，三个按钮设置页共用同一数值；截图按钮三种样式的图标、文字、间距和工具栏尺寸同步调整。";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -524,7 +524,7 @@
 - (void)pxResetTapped:(UIBarButtonItem *)sender {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"恢复默认"
                                                                    message:([self pxRegion]
-        ? @"恢复区域截图按钮顺序与开关，清除自定义名称与图标，显示样式复位为图标；不影响其他模式。"
+        ? @"恢复截图按钮顺序与开关，清除自定义名称与图标，显示样式复位为图标；不影响其他模式。"
         : ([self pxFullscreen] ? @"仅恢复当前页面的按钮顺序与开关，不影响其他模式。" : @"恢复图片编辑按钮顺序与开关，以及共用的名称、图标和大小；全屏标记和区域选区的顺序与开关不变。"))
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];

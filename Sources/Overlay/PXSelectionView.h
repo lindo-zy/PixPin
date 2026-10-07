@@ -19,6 +19,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)selectionViewDidRequestLong:(PXSelectionView *)view displayRect:(CGRect)displayRect;
 /// 工具栏 SHELLX 按钮：把流程外调给 SHELLX（通知发送由协调器负责，本视图不感知可用性）。
 - (void)selectionViewDidRequestShellXAction:(PXSelectionView *)view action:(PXShellXAction)action;
+/// 工具栏“全屏标记”按钮：无视当前框选内容，收掉选区后直接以全屏进入标记面板。
+- (void)selectionViewDidRequestFullscreenMarkup:(PXSelectionView *)view;
+/// 自定义 URL 按钮点击：url 来自 SelectionCustomButtons 记录，由协调器收掉选区后打开。
+- (void)selectionView:(PXSelectionView *)view didRequestCustomURL:(NSURL *)url;
 @end
 
 /// 区域/冻结/即时模式共用的选区交互层。

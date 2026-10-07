@@ -15,6 +15,8 @@ static const CGFloat PXIconItemSide = 52.0;
 // 选中的符号名；NSNull = 使用默认图标（与 customIcon 为空同义）。
 @property (nonatomic, strong) id selectedIcon;
 @property (nonatomic, copy) NSArray<NSString *> *symbols;
+/// 图标网格当前展示的候选：按搜索框输入过滤（包含匹配，大小写不敏感）；空输入=全量。
+@property (nonatomic, copy) NSArray<NSString *> *visibleSymbols;
 @property (nonatomic, copy) void (^onSave)(NSString *name, NSString *iconName);
 @end
 
@@ -36,6 +38,7 @@ static const CGFloat PXIconItemSide = 52.0;
         _onSave = onSave;
         _selectedIcon = customIconName.length > 0 ? customIconName : NSNull.null;
         _symbols = [self pxAvailableSymbols];
+        _visibleSymbols = _symbols;
     }
     return self;
 }
@@ -184,6 +187,16 @@ static const CGFloat PXIconItemSide = 52.0;
     UIImage *preview = previewName.length > 0 ? [UIImage systemImageNamed:previewName] : nil;
     self.symbolPreview.image = preview;
     self.symbolField.textColor = symbol.length > 0 && !preview ? UIColor.systemRedColor : UIColor.labelColor;
+    // 搜索框语义：输入即过滤图标网格（包含匹配，大小写不敏感），同步高亮精确命中的符号。
+    if (symbol.length == 0) {
+        self.visibleSymbols = self.symbols;
+    } else {
+        NSMutableArray<NSString *> *matches = [NSMutableArray array];
+        for (NSString *candidate in self.symbols) {
+            if ([candidate localizedCaseInsensitiveContainsString:symbol]) [matches addObject:candidate];
+        }
+        self.visibleSymbols = matches;
+    }
     [self.iconGrid reloadData];
 }
 
@@ -196,7 +209,7 @@ static const CGFloat PXIconItemSide = 52.0;
 
 - (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
     // 首项固定为"默认"。
-    return self.symbols.count + 1;
+    return self.visibleSymbols.count + 1;
 }
 
 - (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView
@@ -209,7 +222,7 @@ static const CGFloat PXIconItemSide = 52.0;
     cell.contentView.layer.borderWidth = 1.0;
 
     BOOL isDefaultItem = indexPath.item == 0;
-    NSString *symbol = isDefaultItem ? nil : self.symbols[indexPath.item - 1];
+    NSString *symbol = isDefaultItem ? nil : self.visibleSymbols[indexPath.item - 1];
     id current = self.selectedIcon;
     BOOL selected = isDefaultItem ? (current == NSNull.null || current == nil)
                                   : ([current isKindOfClass:[NSString class]] && [current isEqualToString:symbol]);
@@ -236,7 +249,7 @@ static const CGFloat PXIconItemSide = 52.0;
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
     [collectionView deselectItemAtIndexPath:indexPath animated:NO];
     [self.view endEditing:YES];
-    self.symbolField.text = indexPath.item == 0 ? @"" : self.symbols[indexPath.item - 1];
+    self.symbolField.text = indexPath.item == 0 ? @"" : self.visibleSymbols[indexPath.item - 1];
     [self pxSymbolChanged:self.symbolField];
 }
 

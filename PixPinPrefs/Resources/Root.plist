@@ -113,6 +113,14 @@
 		</dict>
 		<dict>
 			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>悬浮图</string>
+			<key>footerText</key>
+			<string>边缘吸附距离：拖动悬浮图松手后，距屏幕边缘不超过该值时自动贴边停靠，吸附后保持该间隙；调到 0 关闭吸附。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
 			<true/>
@@ -122,6 +130,26 @@
 			<string>FloatingSnapShadow</string>
 			<key>label</key>
 			<string>悬浮图阴影</string>
+			<key>PostNotification</key>
+			<string>com.pixpin.screenshot/preferences/reload</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>defaults</key>
+			<string>com.pixpin.screenshot</string>
+			<key>key</key>
+			<string>FloatingSnapEdgeDistance</string>
+			<key>default</key>
+			<real>12</real>
+			<key>min</key>
+			<real>0</real>
+			<key>max</key>
+			<real>60</real>
+			<key>showCancelButton</key>
+			<false/>
+			<key>label</key>
+			<string>悬浮图边缘吸附距离</string>
 			<key>PostNotification</key>
 			<string>com.pixpin.screenshot/preferences/reload</string>
 		</dict>
@@ -146,7 +174,7 @@
 			<key>label</key>
 			<string>编辑器</string>
 			<key>footerText</key>
-			<string>全屏标记按钮用于全屏标记面板，区域截图按钮用于框选工具栏，两页分别设置排序和显示开关；区域截图按钮还可点击行修改名称与图标，并在显示样式中选择图标、文字、图标＋文字（上图下字），预览与大小调整同步。编辑器按钮排序用于普通图片编辑，图标名称与大小为共用外观。标记面板颜色与透明度同时用于全屏标记面板、线宽条和收起圆球，下次打开标记生效。</string>
+			<string>全屏标记按钮用于全屏标记面板，截图按钮用于框选工具栏，两页分别设置排序和显示开关；截图按钮还可点击行修改名称与图标，并在显示样式中选择图标、文字、图标＋文字（上图下字），预览与大小调整同步。编辑器按钮排序用于普通图片编辑，图标名称与大小为共用外观。自定义 URL 按钮可添加任意个，出现在截图按钮工具栏。</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -160,9 +188,17 @@
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>label</key>
-			<string>区域截图按钮</string>
+			<string>截图按钮</string>
 			<key>detail</key>
 			<string>PXRegionButtonController</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>label</key>
+			<string>自定义 URL 按钮</string>
+			<key>detail</key>
+			<string>PXCustomURLController</string>
 		</dict>
 		<dict>
 			<key>cell</key>

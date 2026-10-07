@@ -94,6 +94,28 @@ CGRect PXConstrainFloatingRect(CGRect frame, CGRect bounds) {
     return frame;
 }
 
+CGRect PXApplyFloatingSnapEdge(CGRect frame, CGRect bounds, CGFloat distance) {
+    if (!(distance > 0.0) || !isfinite(distance)) return frame;
+    if (CGRectIsEmpty(frame) || CGRectIsEmpty(bounds)) return frame;
+    CGFloat maxX = CGRectGetMaxX(bounds) - frame.size.width;
+    CGFloat maxY = CGRectGetMaxY(bounds) - frame.size.height;
+    if (maxX >= CGRectGetMinX(bounds)) {
+        CGFloat leftGap = frame.origin.x - CGRectGetMinX(bounds);
+        CGFloat rightGap = CGRectGetMaxX(bounds) - CGRectGetMaxX(frame);
+        if (MIN(leftGap, rightGap) <= distance) {
+            frame.origin.x = (leftGap <= rightGap) ? CGRectGetMinX(bounds) + distance : maxX - distance;
+        }
+    }
+    if (maxY >= CGRectGetMinY(bounds)) {
+        CGFloat topGap = frame.origin.y - CGRectGetMinY(bounds);
+        CGFloat bottomGap = CGRectGetMaxY(bounds) - CGRectGetMaxY(frame);
+        if (MIN(topGap, bottomGap) <= distance) {
+            frame.origin.y = (topGap <= bottomGap) ? CGRectGetMinY(bounds) + distance : maxY - distance;
+        }
+    }
+    return frame;
+}
+
 NSString *PXStringFromCaptureMode(PXCaptureMode mode) {
     switch (mode) {
         case PXCaptureModeFull: return @"full";
