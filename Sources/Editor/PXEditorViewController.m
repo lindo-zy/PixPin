@@ -15,7 +15,7 @@ static const CGFloat PXEditorRowSliderHeight = 44.0;
 static const CGFloat PXEditorPanelPadTop = 10.0;
 static const CGFloat PXEditorPanelPadBottom = 12.0;
 static const CGFloat PXEditorPanelRowGap = 8.0;
-static const CGFloat PXEditorPanelSideMargin = 52.0;   // 全屏标记：网格两侧让出的留白带，四角键居中其中
+static const CGFloat PXEditorPanelSideMargin = 52.0;   // 全屏标记：四角键定位沿用的侧边留白带
 static const CGFloat PXEditorCropRowHeight = 48.0;
 static const CGFloat PXEditorPanelGripHeight = 24.0;
 static const CGFloat PXEditorCollapsedHandleWidth = 48.0;
@@ -623,9 +623,11 @@ static UIImage *PXEditorSliderThumbImage(void) {
 }
 
 - (PXEditorGridLayout)pxToolLayoutForWidth:(CGFloat)width {
-    // 全屏标记：网格在缩窄后的宽度内重排列数，两侧留白带给四角键。
-    CGFloat layoutWidth = self.fullscreenMarkup ? width - 2.0 * PXEditorPanelSideMargin : width;
-    return PXEditorGridMakeScaled(layoutWidth, [self pxGridItemCount], 8, self.buttonIconSize / 17.0);
+    CGFloat scale = self.buttonIconSize / 17.0;
+    if (self.fullscreenMarkup) {
+        return PXEditorMarkupGridMakeScaled(width, [self pxGridItemCount], PXEditorPanelSideMargin, scale).grid;
+    }
+    return PXEditorGridMakeScaled(width, [self pxGridItemCount], 8, scale);
 }
 
 - (CGFloat)pxPanelContentHeightForWidth:(CGFloat)width {
@@ -730,7 +732,22 @@ static UIImage *PXEditorSliderThumbImage(void) {
         gripLine.center = CGPointMake(width / 2.0, PXEditorPanelGripHeight / 2.0);
     }
     self.panelScrollView.frame = CGRectMake(0, gridY, width, MAX(0.0, height - gridY - PXEditorPanelPadBottom));
+    BOOL sticker = self.tools[self.selectedToolIndex].type == PXAnnotationTypeSticker;
+    PXEditorGridLayout stickers = PXEditorGridMake(width, self.stickerButtons.count, 8);
     PXEditorGridLayout layout = [self pxToolLayoutForWidth:width];
+    PXEditorMarkupGridLayout markupLayout = {0};
+    BOOL fillMiddleRows = NO;
+    if (self.fullscreenMarkup) {
+        markupLayout = PXEditorMarkupGridMakeScaled(width, [self pxGridItemCount],
+            PXEditorPanelSideMargin, self.buttonIconSize / 17.0);
+        CGFloat compactHeight = markupLayout.grid.height + (sticker ? PXEditorPanelRowGap + stickers.height : 0.0);
+        fillMiddleRows = compactHeight <= self.panelScrollView.bounds.size.height;
+        if (!fillMiddleRows) {
+            // 网格需要滚动时保留整列侧边避让，避免侧边按钮滚到固定四角键下面。
+            layout = PXEditorGridMakeScaled(width - 2.0 * PXEditorPanelSideMargin,
+                [self pxGridItemCount], 8, self.buttonIconSize / 17.0);
+        }
+    }
     self.toolGrid.frame = CGRectMake(0, 0, width, layout.height);
     NSMutableArray<UIView *> *items = [NSMutableArray array];
     [items addObjectsFromArray:self.toolButtons];
@@ -745,21 +762,25 @@ static UIImage *PXEditorSliderThumbImage(void) {
     }
     CGFloat gridOffsetX = self.fullscreenMarkup ? PXEditorPanelSideMargin : 0.0;
     for (NSUInteger i = 0; i < items.count; i++) {
-        CGRect frame = CGRectOffset(PXEditorGridFrame(layout, i), gridOffsetX, 0.0);
+        CGRect frame = fillMiddleRows ? PXEditorMarkupGridFrame(markupLayout, i)
+            : CGRectOffset(PXEditorGridFrame(layout, i), gridOffsetX, 0.0);
         items[i].frame = frame;
     }
     if (self.fullscreenMarkup) {
         [self pxLayoutCornerKeysWithLayout:layout gridY:gridY];
     }
-    BOOL sticker = self.tools[self.selectedToolIndex].type == PXAnnotationTypeSticker;
     self.stickerRow.hidden = !sticker || self.isCropMode;
-    PXEditorGridLayout stickers = PXEditorGridMake(width, self.stickerButtons.count, 8);
     self.stickerRow.frame = CGRectMake(0, layout.height + PXEditorPanelRowGap, width, stickers.height);
     for (NSUInteger i = 0; i < self.stickerButtons.count; i++) {
         self.stickerButtons[i].frame = PXEditorGridFrame(stickers, i);
     }
     self.stickerRow.contentSize = self.stickerRow.bounds.size;
-    self.panelScrollView.contentSize = CGSizeMake(width, [self pxPanelContentHeightForWidth:width]);
+    CGFloat contentHeight = layout.height + (sticker ? PXEditorPanelRowGap + stickers.height : 0.0);
+    self.panelScrollView.contentSize = CGSizeMake(width, contentHeight);
+    if (self.fullscreenMarkup) {
+        self.panelScrollView.scrollEnabled = !fillMiddleRows;
+        if (fillMiddleRows) self.panelScrollView.contentOffset = CGPointZero;
+    }
     self.panelScrollView.hidden = self.isCropMode;
     self.cropRow.frame = CGRectMake(0, (height - PXEditorCropRowHeight) / 2.0, width, PXEditorCropRowHeight);
     [self pxLayoutWidthRow];

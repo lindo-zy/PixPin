@@ -17,6 +17,22 @@ PXEditorGridLayout PXEditorGridMake(CGFloat width, NSUInteger count, NSUInteger 
 PXEditorGridLayout PXEditorGridMakeScaled(CGFloat width, NSUInteger count, NSUInteger maximumColumns, CGFloat scale);
 CGRect PXEditorGridFrame(PXEditorGridLayout layout, NSUInteger index);
 
+// 全屏标记：首尾排避开四角，中间排使用两侧空位，最多 8 列。
+// grid 保留原窄网格的按钮尺寸和 originX，供四角键沿用原定位。
+typedef struct {
+    PXEditorGridLayout grid;
+    NSUInteger itemCount;
+    NSUInteger edgeColumns;
+    NSUInteger middleColumns;
+    CGFloat panelWidth;
+    CGFloat middleButtonWidth;
+    CGFloat rowStride;
+} PXEditorMarkupGridLayout;
+
+PXEditorMarkupGridLayout PXEditorMarkupGridMakeScaled(CGFloat width, NSUInteger count,
+                                                     CGFloat sideMargin, CGFloat scale);
+CGRect PXEditorMarkupGridFrame(PXEditorMarkupGridLayout layout, NSUInteger index);
+
 // 全屏标记在独立线宽条和浮动面板之外显示完整图片。
 CGRect PXEditorMarkupImageViewport(CGSize size, CGRect panel,
                                    CGFloat safeTop, CGFloat safeLeft,

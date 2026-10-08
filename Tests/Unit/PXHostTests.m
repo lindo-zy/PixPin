@@ -226,6 +226,57 @@ static void testEditorLayout(void) {
     }
     PXCheckInt(PXEditorGridMakeScaled(369, 0, 8, 6.0 / 17.0).height, 0,
                "empty scaled grid consumes no height");
+
+    // 四角键保留原尺寸和横向定位，密排按钮不越界、不重叠，也不侵入四角触控区。
+    for (NSNumber *widthValue in @[@296, @351, @369, @406, @600]) {
+        CGFloat width = widthValue.doubleValue;
+        for (NSNumber *iconSize in @[@10, @17, @20]) {
+            CGFloat scale = iconSize.doubleValue / 17.0;
+            BOOL safe = YES, cornersUnchanged = YES, rowsUsed = YES;
+            for (NSUInteger count = 1; count <= 40; count++) {
+                PXEditorMarkupGridLayout markup = PXEditorMarkupGridMakeScaled(width, count, 52.0, scale);
+                PXEditorGridLayout old = PXEditorGridMakeScaled(width - 104.0, count, 8, scale);
+                cornersUnchanged &= markup.grid.buttonWidth == old.buttonWidth &&
+                    markup.grid.buttonHeight == old.buttonHeight && markup.grid.originX == old.originX;
+                CGFloat keySize = old.buttonWidth;
+                CGFloat topY = (old.buttonHeight - keySize) / 2.0;
+                CGFloat bottomY = markup.grid.height - (old.buttonHeight + keySize) / 2.0;
+                CGFloat band = (52.0 + old.originX) / 2.0;
+                CGRect corners[] = {
+                    CGRectMake(band - keySize / 2.0, topY, keySize, keySize),
+                    CGRectMake(width - band - keySize / 2.0, topY, keySize, keySize),
+                    CGRectMake(band - keySize / 2.0, bottomY, keySize, keySize),
+                    CGRectMake(width - band - keySize / 2.0, bottomY, keySize, keySize),
+                };
+                NSMutableIndexSet *occupiedRows = [NSMutableIndexSet indexSet];
+                for (NSUInteger i = 0; i < count; i++) {
+                    CGRect frame = PXEditorMarkupGridFrame(markup, i);
+                    [occupiedRows addIndex:(NSUInteger)llround(frame.origin.y / markup.rowStride)];
+                    safe &= CGRectContainsRect(CGRectMake(0, 0, width, markup.grid.height), frame);
+                    for (NSUInteger j = 0; j < i; j++) {
+                        safe &= !CGRectIntersectsRect(frame, PXEditorMarkupGridFrame(markup, j));
+                    }
+                    for (NSUInteger j = 0; j < 4; j++) safe &= !CGRectIntersectsRect(frame, corners[j]);
+                }
+                rowsUsed &= occupiedRows.count == markup.grid.rows;
+            }
+            PXCheck(safe && cornersUnchanged && rowsUsed,
+                    "dense markup grid preserves corner geometry with no overlap or empty rows");
+        }
+    }
+    PXEditorMarkupGridLayout compact = PXEditorMarkupGridMakeScaled(369, 25, 52.0, 1.0);
+    NSUInteger rowCounts[4] = {0};
+    for (NSUInteger i = 0; i < 25; i++) {
+        NSUInteger row = (NSUInteger)llround(PXEditorMarkupGridFrame(compact, i).origin.y / compact.rowStride);
+        if (row < 4) rowCounts[row]++;
+    }
+    PXCheck(compact.grid.rows == 4 && rowCounts[0] == 6 && rowCounts[1] == 8 &&
+            rowCounts[2] == 8 && rowCounts[3] == 3,
+            "25 markup buttons fill two eight-icon middle rows and reduce five rows to four");
+    PXCheckInt(PXEditorMarkupGridMakeScaled(351, 25, 52.0, 1.0).middleColumns, 8,
+               "eight-icon middle rows also fit a 375pt phone panel");
+    PXCheckInt(PXEditorMarkupGridMakeScaled(369, 0, 52.0, 1.0).grid.height, 0,
+               "empty markup grid consumes no height");
     PXCheck(PXCaptureStateCanTransition(PXCaptureStateEditing, PXCaptureStateCancelling), "markup can cancel without export");
 
     // 用户选择“整图适屏”时，冻结整屏图应避开面板和独立线宽条。
