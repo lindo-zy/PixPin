@@ -1,6 +1,11 @@
 #import "PXEditorLayout.h"
 #import <math.h>
 
+const CGFloat PXEditorPanelPadTop = 10.0;
+const CGFloat PXEditorPanelPadBottom = 12.0;
+const CGFloat PXEditorPanelSideMargin = 52.0;
+const CGFloat PXEditorPanelGripHeight = 24.0;
+
 PXEditorGridLayout PXEditorGridMake(CGFloat width, NSUInteger count, NSUInteger maximumColumns) {
     CGFloat available = MAX(0.0, width - 16.0);
     NSUInteger columns = MAX(1, MIN(MAX(1, maximumColumns), (NSUInteger)MAX(1.0, floor((available + 4.0) / 42.0))));
@@ -72,6 +77,21 @@ CGRect PXEditorMarkupGridFrame(PXEditorMarkupGridLayout layout, NSUInteger index
     CGFloat rowWidth = columns * buttonWidth + (columns - 1) * grid.gap;
     CGFloat x = (layout.panelWidth - rowWidth) / 2.0 + column * (buttonWidth + grid.gap);
     return CGRectMake(x, row * layout.rowStride, buttonWidth, grid.buttonHeight);
+}
+
+PXEditorMarkupCornerFrames PXEditorMarkupCornerFramesMake(PXEditorGridLayout layout,
+                                                          CGFloat panelWidth, CGFloat gridY,
+                                                          CGFloat visibleHeight) {
+    CGFloat keySize = layout.buttonWidth;
+    CGFloat band = (PXEditorPanelSideMargin + layout.originX) / 2.0;
+    CGFloat topY = gridY + layout.buttonHeight / 2.0 - keySize / 2.0;
+    CGFloat bottomY = gridY + MIN(layout.height, visibleHeight) - layout.buttonHeight / 2.0 - keySize / 2.0;
+    CGFloat leftX = band - keySize / 2.0;
+    CGFloat rightX = panelWidth - band - keySize / 2.0;
+    return (PXEditorMarkupCornerFrames){
+        CGRectMake(leftX, topY, keySize, keySize), CGRectMake(rightX, topY, keySize, keySize),
+        CGRectMake(leftX, bottomY, keySize, keySize), CGRectMake(rightX, bottomY, keySize, keySize)
+    };
 }
 
 CGRect PXEditorMarkupImageViewport(CGSize size, CGRect panel,

@@ -18,8 +18,10 @@ PixPinPrefs_FILES = PXRootListController.m \
 	../Sources/Common/PXLog.m \
 	../Sources/Common/PXExternalRequest.m
 
+PixPinPrefs_FILES += ../Sources/Editor/PXEditorLayout.m
+
 PixPinPrefs_INSTALL_PATH = /Library/PreferenceBundles
-PixPinPrefs_FRAMEWORKS = UIKit CoreGraphics
+PixPinPrefs_FRAMEWORKS = UIKit CoreGraphics QuartzCore
 PixPinPrefs_PRIVATE_FRAMEWORKS = Preferences AppSupport
 PixPinPrefs_CFLAGS = -fobjc-arc
 

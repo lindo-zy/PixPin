@@ -33,6 +33,23 @@ PXEditorMarkupGridLayout PXEditorMarkupGridMakeScaled(CGFloat width, NSUInteger 
                                                      CGFloat sideMargin, CGFloat scale);
 CGRect PXEditorMarkupGridFrame(PXEditorMarkupGridLayout layout, NSUInteger index);
 
+// 实际面板与设置预览共用的内边距、把手高度和四角定位。
+FOUNDATION_EXPORT const CGFloat PXEditorPanelPadTop;
+FOUNDATION_EXPORT const CGFloat PXEditorPanelPadBottom;
+FOUNDATION_EXPORT const CGFloat PXEditorPanelSideMargin;
+FOUNDATION_EXPORT const CGFloat PXEditorPanelGripHeight;
+
+typedef struct {
+    CGRect close;
+    CGRect color;
+    CGRect undo;
+    CGRect done;
+} PXEditorMarkupCornerFrames;
+
+PXEditorMarkupCornerFrames PXEditorMarkupCornerFramesMake(PXEditorGridLayout layout,
+                                                          CGFloat panelWidth, CGFloat gridY,
+                                                          CGFloat visibleHeight);
+
 // 全屏标记在独立线宽条和浮动面板之外显示完整图片。
 CGRect PXEditorMarkupImageViewport(CGSize size, CGRect panel,
                                    CGFloat safeTop, CGFloat safeLeft,

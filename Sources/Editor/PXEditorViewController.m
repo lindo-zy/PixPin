@@ -12,12 +12,8 @@
 
 static const CGFloat PXEditorMaxZoomFactor = 8.0;
 static const CGFloat PXEditorRowSliderHeight = 44.0;
-static const CGFloat PXEditorPanelPadTop = 10.0;
-static const CGFloat PXEditorPanelPadBottom = 12.0;
 static const CGFloat PXEditorPanelRowGap = 8.0;
-static const CGFloat PXEditorPanelSideMargin = 52.0;   // 全屏标记：四角键定位沿用的侧边留白带
 static const CGFloat PXEditorCropRowHeight = 48.0;
-static const CGFloat PXEditorPanelGripHeight = 24.0;
 static const CGFloat PXEditorCollapsedHandleWidth = 48.0;
 static const CGFloat PXEditorCollapsedHandleHeight = 48.0;
 
@@ -792,16 +788,12 @@ static UIImage *PXEditorSliderThumbImage(void) {
 /// 截断时对齐视口底部行槽）；横向居中于「面板边缘→网格」的留白带。裁剪模式隐藏。
 - (void)pxLayoutCornerKeysWithLayout:(PXEditorGridLayout)layout gridY:(CGFloat)gridY {
     if (self.cornerActionButtons.count == 0) return;
-    CGFloat keySize = layout.buttonWidth;
-    CGFloat band = (PXEditorPanelSideMargin + layout.originX) / 2.0;
-    CGFloat panelWidth = self.bottomPanel.bounds.size.width;
-    CGFloat gridVisibleHeight = MIN(layout.height, self.panelScrollView.bounds.size.height);
-    CGFloat topCenterY = gridY + layout.buttonHeight / 2.0;
-    CGFloat bottomCenterY = gridY + gridVisibleHeight - layout.buttonHeight / 2.0;
-    self.closeButton.frame = CGRectMake(band - keySize / 2.0, topCenterY - keySize / 2.0, keySize, keySize);
-    self.customColorButton.frame = CGRectMake(panelWidth - band - keySize / 2.0, topCenterY - keySize / 2.0, keySize, keySize);
-    self.undoButton.frame = CGRectMake(band - keySize / 2.0, bottomCenterY - keySize / 2.0, keySize, keySize);
-    self.doneButton.frame = CGRectMake(panelWidth - band - keySize / 2.0, bottomCenterY - keySize / 2.0, keySize, keySize);
+    PXEditorMarkupCornerFrames frames = PXEditorMarkupCornerFramesMake(layout,
+        self.bottomPanel.bounds.size.width, gridY, self.panelScrollView.bounds.size.height);
+    self.closeButton.frame = frames.close;
+    self.customColorButton.frame = frames.color;
+    self.undoButton.frame = frames.undo;
+    self.doneButton.frame = frames.done;
     BOOL hidden = self.isCropMode;
     for (UIButton *key in self.cornerActionButtons) key.hidden = hidden;
     self.customColorButton.hidden = hidden;

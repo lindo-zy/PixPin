@@ -238,15 +238,10 @@ static void testEditorLayout(void) {
                 PXEditorGridLayout old = PXEditorGridMakeScaled(width - 104.0, count, 8, scale);
                 cornersUnchanged &= markup.grid.buttonWidth == old.buttonWidth &&
                     markup.grid.buttonHeight == old.buttonHeight && markup.grid.originX == old.originX;
-                CGFloat keySize = old.buttonWidth;
-                CGFloat topY = (old.buttonHeight - keySize) / 2.0;
-                CGFloat bottomY = markup.grid.height - (old.buttonHeight + keySize) / 2.0;
-                CGFloat band = (52.0 + old.originX) / 2.0;
+                PXEditorMarkupCornerFrames cornerFrames = PXEditorMarkupCornerFramesMake(markup.grid,
+                    width, 0.0, markup.grid.height);
                 CGRect corners[] = {
-                    CGRectMake(band - keySize / 2.0, topY, keySize, keySize),
-                    CGRectMake(width - band - keySize / 2.0, topY, keySize, keySize),
-                    CGRectMake(band - keySize / 2.0, bottomY, keySize, keySize),
-                    CGRectMake(width - band - keySize / 2.0, bottomY, keySize, keySize),
+                    cornerFrames.close, cornerFrames.color, cornerFrames.undo, cornerFrames.done,
                 };
                 NSMutableIndexSet *occupiedRows = [NSMutableIndexSet indexSet];
                 for (NSUInteger i = 0; i < count; i++) {
