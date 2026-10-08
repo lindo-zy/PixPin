@@ -71,8 +71,8 @@
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     CGFloat width = CGRectGetWidth(self.tableView.bounds);
-    BOOL panelWidthChanged = [self pxFullscreen] &&
-        fabs([self pxMarkupPanelReferenceWidth] - self.previewPanelWidth) > 0.5;
+    BOOL panelWidthChanged = ![self pxRegion] &&
+        fabs([self pxPanelReferenceWidth] - self.previewPanelWidth) > 0.5;
     if (width > 0 && (fabs(width - self.previewWidth) > 0.5 || panelWidthChanged)) [self pxRefreshPreview];
 }
 
@@ -101,15 +101,16 @@
 
 #pragma mark - 数据源
 
-// 全屏标记按实际窗口宽度排版，再整体缩入设置页，避免页边距改变真实面板的列数。
-- (CGFloat)pxMarkupPanelReferenceWidth {
+// 按实际编辑器宽度排版，再整体缩入设置页，避免页边距改变真实面板的列数。
+- (CGFloat)pxPanelReferenceWidth {
     UIWindow *window = self.view.window;
     CGFloat width = window ? CGRectGetWidth(window.bounds) : CGRectGetWidth(self.view.bounds);
     UIEdgeInsets safe = window ? window.safeAreaInsets : self.view.safeAreaInsets;
-    return MAX(1.0, MIN(600.0, width - safe.left - safe.right - 24.0));
+    CGFloat panelWidth = MAX(1.0, width - safe.left - safe.right - 24.0);
+    return [self pxFullscreen] ? MIN(600.0, panelWidth) : panelWidth;
 }
 
-- (UIButton *)pxMarkupPreviewButtonForIdentifier:(NSString *)identifier
+- (UIButton *)pxPanelPreviewButtonForIdentifier:(NSString *)identifier
                                           tool:(BOOL)tool
                                       iconSize:(CGFloat)iconSize {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -140,6 +141,99 @@
     return button;
 }
 
+- (UIView *)pxColorPreviewWithFrame:(CGRect)frame iconSize:(CGFloat)iconSize fullscreen:(BOOL)fullscreen {
+    CGFloat scale = iconSize / 17.0;
+    UIView *colorButton = [[UIView alloc] initWithFrame:frame];
+    colorButton.isAccessibilityElement = YES;
+    colorButton.accessibilityLabel = @"自定义颜色";
+    colorButton.accessibilityTraits = UIAccessibilityTraitImage;
+    CAGradientLayer *rainbow = [CAGradientLayer layer];
+    rainbow.type = kCAGradientLayerConic;
+    NSMutableArray<id> *colors = [NSMutableArray array];
+    for (NSUInteger i = 0; i <= 6; i++) {
+        [colors addObject:(id)[UIColor colorWithHue:(CGFloat)i / 6.0 saturation:0.75 brightness:1.0 alpha:1.0].CGColor];
+    }
+    rainbow.colors = colors;
+    CGFloat ringInset = (fullscreen ? 5.0 : 2.0) * scale;
+    rainbow.frame = CGRectInset(colorButton.bounds, ringInset, ringInset);
+    rainbow.cornerRadius = CGRectGetWidth(rainbow.bounds) / 2.0;
+    [colorButton.layer addSublayer:rainbow];
+    CGFloat swatchInset = (fullscreen ? 10.0 : 7.0) * scale;
+    UIView *swatch = [[UIView alloc] initWithFrame:CGRectInset(colorButton.bounds, swatchInset, swatchInset)];
+    swatch.backgroundColor = UIColor.redColor;
+    swatch.layer.cornerRadius = CGRectGetWidth(swatch.bounds) / 2.0;
+    [colorButton addSubview:swatch];
+    return colorButton;
+}
+
+- (UIView *)pxEditorPanelPreviewWithTools:(NSArray<NSString *> *)tools
+                                 actions:(NSArray<NSString *> *)actions
+                                   width:(CGFloat)width
+                                iconSize:(CGFloat)iconSize {
+    CGFloat scale = iconSize / 17.0;
+    PXEditorGridLayout actionLayout = PXEditorGridMakeScaled(width, actions.count, 8, scale);
+    PXEditorGridLayout toolLayout = PXEditorGridMakeScaled(width, tools.count + 1, 8, scale);
+    CGFloat topHeight = actionLayout.height + 14.0 * scale;
+    CGFloat gridY = PXEditorPanelPadTop + PXEditorRowSliderHeight + PXEditorPanelRowGap;
+    CGFloat bottomHeight = gridY + toolLayout.height + PXEditorPanelPadBottom;
+    // 预览压缩图片区域，只展示上下两组控件；各组内部尺寸和位置沿用实际编辑器。
+    CGFloat bottomY = topHeight + PXEditorPanelRowGap;
+    UIView *panel = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, bottomY + bottomHeight)];
+    panel.backgroundColor = [UIColor colorWithWhite:0.10 alpha:1.0];
+    panel.layer.cornerRadius = 28.0;
+    panel.clipsToBounds = YES;
+    panel.userInteractionEnabled = NO;
+    for (NSUInteger i = 0; i < actions.count; i++) {
+        UIButton *button = [self pxPanelPreviewButtonForIdentifier:actions[i] tool:NO iconSize:iconSize];
+        button.frame = CGRectOffset(PXEditorGridFrame(actionLayout, i), 0, 7.0 * scale);
+        if ([actions[i] isEqualToString:@"close"]) button.tintColor = UIColor.systemRedColor;
+        if ([actions[i] isEqualToString:@"done"]) button.tintColor = UIColor.systemGreenColor;
+        [panel addSubview:button];
+    }
+    UIView *bottom = [[UIView alloc] initWithFrame:CGRectMake(0, bottomY, width, bottomHeight)];
+    bottom.backgroundColor = [UIColor colorWithWhite:0.13 alpha:1.0];
+    [panel addSubview:bottom];
+    UIView *widthRow = [[UIView alloc] initWithFrame:CGRectMake(0, PXEditorPanelPadTop, width, PXEditorRowSliderHeight)];
+    NSArray<NSString *> *widthTools = @[@"brush", @"highlight", @"line", @"arrow", @"rect", @"oval",
+                                       @"rectSolid", @"ovalSolid", @"mosaic"];
+    BOOL widthEnabled = [widthTools containsObject:tools.firstObject];
+    widthRow.alpha = widthEnabled ? 1.0 : 0.35;
+    [bottom addSubview:widthRow];
+    NSArray<NSString *> *hintSymbols = @[@"circle.inset.filled", @"circle.fill"];
+    for (NSUInteger i = 0; i < hintSymbols.count; i++) {
+        UIImage *icon = [UIImage systemImageNamed:hintSymbols[i]];
+        UIImageView *hint = [[UIImageView alloc] initWithImage:[icon imageWithConfiguration:
+            [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightRegular]]];
+        hint.tintColor = UIColor.whiteColor;
+        hint.frame = CGRectMake(i == 0 ? 16.0 : width - 38.0, 11.0, 22.0, 22.0);
+        [widthRow addSubview:hint];
+    }
+    UISlider *slider = [[UISlider alloc] initWithFrame:CGRectMake(48.0, 0, MAX(40.0, width - 92.0), PXEditorRowSliderHeight)];
+    slider.minimumTrackTintColor = UIColor.whiteColor;
+    slider.maximumTrackTintColor = [UIColor colorWithWhite:0.35 alpha:1.0];
+    slider.thumbTintColor = UIColor.whiteColor;
+    [slider setThumbImage:[PXPanelAppearance editorSliderThumbImage] forState:UIControlStateNormal];
+    // 线宽随编辑图片尺寸变化，静态按钮预览以面板宽度作为示例图片短边。
+    slider.minimumValue = 2.0;
+    slider.maximumValue = MAX(8.0, width / 6.0);
+    slider.value = MAX(PXDefaultEditorLineWidth, width / 100.0);
+    slider.enabled = widthEnabled;
+    slider.accessibilityLabel = @"画笔粗细预览";
+    [widthRow addSubview:slider];
+    for (NSUInteger i = 0; i < tools.count; i++) {
+        UIButton *button = [self pxPanelPreviewButtonForIdentifier:tools[i] tool:YES iconSize:iconSize];
+        button.frame = CGRectOffset(PXEditorGridFrame(toolLayout, i), 0, gridY);
+        if (i == 0) {
+            button.tintColor = [UIColor colorWithRed:1.0 green:0.78 blue:0.08 alpha:1.0];
+            button.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.18];
+        }
+        [bottom addSubview:button];
+    }
+    CGRect colorFrame = CGRectOffset(PXEditorGridFrame(toolLayout, tools.count), 0, gridY);
+    [bottom addSubview:[self pxColorPreviewWithFrame:colorFrame iconSize:iconSize fullscreen:NO]];
+    return panel;
+}
+
 - (UIView *)pxMarkupPanelPreviewWithTools:(NSArray<NSString *> *)tools
                                  actions:(NSArray<NSString *> *)actions
                                    width:(CGFloat)width
@@ -162,7 +256,7 @@
     NSArray<NSString *> *items = [tools arrayByAddingObjectsFromArray:actions];
     for (NSUInteger i = 0; i < items.count; i++) {
         BOOL tool = i < tools.count;
-        UIButton *button = [self pxMarkupPreviewButtonForIdentifier:items[i] tool:tool iconSize:iconSize];
+        UIButton *button = [self pxPanelPreviewButtonForIdentifier:items[i] tool:tool iconSize:iconSize];
         button.frame = CGRectOffset(PXEditorMarkupGridFrame(layout, i), 0, gridY);
         if (tool && i == 0) {
             button.tintColor = [UIColor colorWithRed:1.0 green:0.78 blue:0.08 alpha:1.0];
@@ -174,36 +268,18 @@
     NSArray<NSString *> *cornerIDs = @[@"close", @"undo", @"done"];
     CGRect frames[] = { corners.close, corners.undo, corners.done };
     for (NSUInteger i = 0; i < cornerIDs.count; i++) {
-        UIButton *button = [self pxMarkupPreviewButtonForIdentifier:cornerIDs[i] tool:NO iconSize:iconSize];
+        UIButton *button = [self pxPanelPreviewButtonForIdentifier:cornerIDs[i] tool:NO iconSize:iconSize];
         button.frame = frames[i];
         button.backgroundColor = UIColor.clearColor;
         if (i == 0) button.tintColor = UIColor.systemRedColor;
         if (i == 2) button.tintColor = UIColor.systemGreenColor;
         [panel addSubview:button];
     }
-    UIView *colorButton = [[UIView alloc] initWithFrame:corners.color];
-    colorButton.isAccessibilityElement = YES;
-    colorButton.accessibilityLabel = @"自定义颜色";
-    colorButton.accessibilityTraits = UIAccessibilityTraitImage;
-    CAGradientLayer *rainbow = [CAGradientLayer layer];
-    rainbow.type = kCAGradientLayerConic;
-    NSMutableArray<id> *colors = [NSMutableArray array];
-    for (NSUInteger i = 0; i <= 6; i++) {
-        [colors addObject:(id)[UIColor colorWithHue:(CGFloat)i / 6.0 saturation:0.75 brightness:1.0 alpha:1.0].CGColor];
-    }
-    rainbow.colors = colors;
-    rainbow.frame = CGRectInset(colorButton.bounds, 5.0 * scale, 5.0 * scale);
-    rainbow.cornerRadius = CGRectGetWidth(rainbow.bounds) / 2.0;
-    [colorButton.layer addSublayer:rainbow];
-    UIView *swatch = [[UIView alloc] initWithFrame:CGRectInset(colorButton.bounds, 10.0 * scale, 10.0 * scale)];
-    swatch.backgroundColor = UIColor.redColor;
-    swatch.layer.cornerRadius = CGRectGetWidth(swatch.bounds) / 2.0;
-    [colorButton addSubview:swatch];
-    [panel addSubview:colorButton];
+    [panel addSubview:[self pxColorPreviewWithFrame:corners.color iconSize:iconSize fullscreen:YES]];
     return panel;
 }
 
-// 全屏标记展示完整按钮面板；其他页面继续展示各自分组。
+// 普通编辑与全屏标记展示各自的完整按钮面板；截图按钮复用选区工具栏。
 // 和编辑器共用顺序、显隐、模式过滤、图标来源、网格与四角布局。
 // 不创建截图窗口、不启动编辑任务，所有更新由 UIKit 主线程事件驱动。
 - (void)pxRefreshPreview {
@@ -216,8 +292,8 @@
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 1)];
 
     // 固定键先补回再过滤显隐，与实际面板保持一致；所有可排序操作关闭时不误触发全量回退。
-    NSArray<NSString *> *actionOrder = [self pxFullscreen]
-        ? [PXEditorOrder orderWithFixedActionButtonsPinned:self.actionOrder] : self.actionOrder;
+    NSArray<NSString *> *actionOrder = [self pxRegion] ? self.actionOrder
+        : [PXEditorOrder orderWithFixedActionButtonsPinned:self.actionOrder];
     NSArray<NSString *> *actions = [PXEditorOrder visibleActionOrderForOrder:actionOrder
                                                                     hidden:self.actionHidden.allObjects
                                                           fullscreenMarkup:[self pxFullscreen]];
@@ -234,19 +310,19 @@
     NSArray<NSString *> *selection = [PXEditorOrder visibleSelectionOrderForOrder:self.selectionOrder
                                                                           hidden:self.selectionHidden.allObjects
                                                                          instant:NO];
-    NSArray<NSArray<NSString *> *> *groups = @[actions, tools, selection];
     CGFloat y = 12.0;
     CGFloat iconSize = [PXEditorOrder buttonIconPointSize];
-    if ([self pxFullscreen]) {
+    if (![self pxRegion]) {
         UILabel *caption = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 22)];
-        caption.text = @"全屏标记面板预览";
+        caption.text = [self pxFullscreen] ? @"全屏标记面板预览" : @"图片编辑面板预览";
         caption.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
         caption.textColor = UIColor.secondaryLabelColor;
         [header addSubview:caption];
         y += 28.0;
-        self.previewPanelWidth = [self pxMarkupPanelReferenceWidth];
-        UIView *panel = [self pxMarkupPanelPreviewWithTools:tools actions:actions
-            width:self.previewPanelWidth iconSize:iconSize];
+        self.previewPanelWidth = [self pxPanelReferenceWidth];
+        UIView *panel = [self pxFullscreen]
+            ? [self pxMarkupPanelPreviewWithTools:tools actions:actions width:self.previewPanelWidth iconSize:iconSize]
+            : [self pxEditorPanelPreviewWithTools:tools actions:actions width:self.previewPanelWidth iconSize:iconSize];
         CGFloat scale = MIN(1.0, contentWidth / self.previewPanelWidth);
         CGFloat previewHeight = CGRectGetHeight(panel.bounds) * scale;
         panel.transform = CGAffineTransformMakeScale(scale, scale);
@@ -254,80 +330,30 @@
         [header addSubview:panel];
         y += previewHeight + 14.0;
     }
-    // 样式偏好整表读一次：预览重建由拖动/开关高频触发，避免每个按钮一次 CFPreferences 读取。
-    PXSelectionButtonStyle selectionStyle = [PXEditorOrder selectionButtonStyle];
-    NSArray<NSNumber *> *previewSections = [self pxFullscreen] ? @[] : [self pxSectionKinds];
-    for (NSNumber *kind in previewSections) {
-        NSInteger section = kind.integerValue;
-        if (section == 3 || section == 4) continue;
+    if ([self pxRegion]) {
         UILabel *caption = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 22)];
-        caption.text = section == 0 ? @"编辑操作预览" : (section == 1 ? @"标记工具预览" : @"截图按钮预览");
+        caption.text = @"截图按钮预览";
         caption.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
         caption.textColor = UIColor.secondaryLabelColor;
         [header addSubview:caption];
         y += 28;
-        NSArray<NSString *> *order = groups[section];
-        if (section == 2) {
-            // 直接展示实际工具栏：图文排列、分隔线及大小调整与截图界面一致。
-            PXSelectionToolbar *toolbar = [[PXSelectionToolbar alloc] initWithIdentifiers:order
-                style:selectionStyle iconPointSize:iconSize];
-            CGFloat toolbarWidth = [toolbar preferredWidthForAvailableWidth:contentWidth];
-            CGFloat toolbarHeight = [toolbar preferredHeightForAvailableWidth:toolbarWidth];
-            toolbar.frame = CGRectMake(inset + (contentWidth - toolbarWidth) / 2.0, y,
-                                       toolbarWidth, toolbarHeight);
-            toolbar.userInteractionEnabled = NO;
-            for (UIButton *button in toolbar.buttons) button.accessibilityTraits = UIAccessibilityTraitImage;
-            [header addSubview:toolbar];
-            y += toolbarHeight + 14.0;
-            continue;
-        }
-        CGFloat scale = iconSize / 17.0;
-        CGFloat referenceWidth = contentWidth / MAX(1.0, scale);
-        CGFloat gap = 6.0 * scale;
-        CGFloat padding = 12.0 * scale;
-        NSInteger columns = MAX(1, MIN(7, (NSInteger)floor((referenceWidth - 24.0 + 6.0) / 50.0)));
-        CGFloat side = floor((referenceWidth - 24.0 - (columns - 1) * 6.0) / columns) * scale;
-        CGFloat originX = (contentWidth - columns * side - (columns - 1) * gap) / 2.0;
-        NSInteger rows = (order.count + columns - 1) / columns;
-        CGFloat cardHeight = padding * 2 + rows * side + MAX(0, rows - 1) * gap;
-        UIView *card = [[UIView alloc] initWithFrame:CGRectMake(inset, y, contentWidth, cardHeight)];
-        card.backgroundColor = [UIColor colorWithWhite:0.14 alpha:1.0];
-        card.layer.cornerRadius = 22.0 * scale;
-        [header addSubview:card];
-        for (NSUInteger i = 0; i < order.count; i++) {
-            NSString *identifier = order[i];
-            NSString *name = [self pxDisplayNameForIdentifier:identifier kind:section];
-            NSString *symbol = section == 0 ? [PXEditorOrder iconNameForActionIdentifier:identifier]
-                                            : (section == 1 ? [PXEditorOrder iconNameForToolIdentifier:identifier]
-                                                            : [PXEditorOrder iconNameForSelectionIdentifier:identifier]);
-            UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-            button.frame = CGRectMake(originX + (i % columns) * (side + gap),
-                                      padding + (i / columns) * (side + gap), side, side);
-            button.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
-            button.layer.cornerRadius = 10.0 * scale;
-            button.tintColor = UIColor.whiteColor;
-            button.userInteractionEnabled = NO;
-            button.accessibilityLabel = name;
-            button.accessibilityTraits = UIAccessibilityTraitImage;
-            UIImage *icon = symbol.length ? [UIImage systemImageNamed:symbol] : nil;
-            if (icon) {
-                [button setImage:[icon imageWithConfiguration:
-                    [UIImageSymbolConfiguration configurationWithPointSize:iconSize weight:UIImageSymbolWeightMedium]]
-                        forState:UIControlStateNormal];
-            } else {
-                [button setTitle:name forState:UIControlStateNormal];
-                button.titleLabel.font = [UIFont systemFontOfSize:11 * scale weight:UIFontWeightMedium];
-                button.titleLabel.adjustsFontSizeToFitWidth = YES;
-            }
-            [card addSubview:button];
-        }
-        y += cardHeight + 14;
+        // 直接展示实际工具栏：图文排列、分隔线及大小调整与截图界面一致。
+        PXSelectionToolbar *toolbar = [[PXSelectionToolbar alloc] initWithIdentifiers:selection
+            style:[PXEditorOrder selectionButtonStyle] iconPointSize:iconSize];
+        CGFloat toolbarWidth = [toolbar preferredWidthForAvailableWidth:contentWidth];
+        CGFloat toolbarHeight = [toolbar preferredHeightForAvailableWidth:toolbarWidth];
+        toolbar.frame = CGRectMake(inset + (contentWidth - toolbarWidth) / 2.0, y,
+                                   toolbarWidth, toolbarHeight);
+        toolbar.userInteractionEnabled = NO;
+        for (UIButton *button in toolbar.buttons) button.accessibilityTraits = UIAccessibilityTraitImage;
+        [header addSubview:toolbar];
+        y += toolbarHeight + 14.0;
     }
     UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake(inset + 4, y, contentWidth - 8, 0)];
     note.text = [self pxRegion]
         ? @"拖动手柄排序，开关控制截图按钮显隐，点击行修改名称与图标。“显示样式”可选图标、文字、图标＋文字（上图下字），预览与大小调整同步。修改即时保存，下次打开生效；冻结截图共用此配置，即时模式仅显示 取消、全屏。大小与编辑器共用。"
         : ([self pxFullscreen] ? @"预览显示面板的初始按钮状态，排序、开关和图标大小即时更新；关闭、取色、撤销、完成固定为四角键。仅设置全屏标记的顺序与显隐，与截图按钮和普通图片编辑相互独立。图标大小三处共用，修改即时保存，实际面板下次打开生效。"
-                              : @"设置普通图片编辑的按钮顺序与显隐；名称、图标和大小仍与全屏标记共用。修改即时保存，下次打开生效。");
+                              : @"预览按实际顶部操作栏、线宽条和工具网格排列，展示初始按钮状态；排序、开关、图标名称和大小即时更新。名称、图标和大小仍与全屏标记共用，顺序与显隐相互独立。修改即时保存，实际编辑器下次打开生效。");
     note.font = [UIFont systemFontOfSize:12];
     note.textColor = UIColor.secondaryLabelColor;
     note.numberOfLines = 0;

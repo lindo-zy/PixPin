@@ -11,8 +11,6 @@
 #import "../Output/PXSharePresenter.h"
 
 static const CGFloat PXEditorMaxZoomFactor = 8.0;
-static const CGFloat PXEditorRowSliderHeight = 44.0;
-static const CGFloat PXEditorPanelRowGap = 8.0;
 static const CGFloat PXEditorCropRowHeight = 48.0;
 static const CGFloat PXEditorCollapsedHandleWidth = 48.0;
 static const CGFloat PXEditorCollapsedHandleHeight = 48.0;
@@ -429,7 +427,7 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
     _widthSlider.minimumTrackTintColor = UIColor.whiteColor;
     _widthSlider.thumbTintColor = UIColor.whiteColor;
     _widthSlider.maximumTrackTintColor = [UIColor colorWithWhite:0.35 alpha:1.0];
-    [_widthSlider setThumbImage:PXEditorSliderThumbImage() forState:UIControlStateNormal];
+    [_widthSlider setThumbImage:[PXPanelAppearance editorSliderThumbImage] forState:UIControlStateNormal];
     _widthSlider.accessibilityLabel = @"画笔粗细";
     [_widthSlider addTarget:self action:@selector(pxWidthChanged:) forControlEvents:UIControlEventValueChanged];
     [_widthRow addSubview:_widthSlider];
@@ -577,17 +575,6 @@ static NSArray<PXEditorTool *> *PXEditorToolsInPreferredOrder(BOOL fullscreen) {
     UIImageSymbolConfiguration *configuration =
         [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIFontWeightRegular];
     return [icon imageWithConfiguration:configuration];
-}
-
-/// 线宽滑块：白色大圆（参考图样式）。
-static UIImage *PXEditorSliderThumbImage(void) {
-    CGFloat size = 28.0;
-    UIGraphicsImageRenderer *renderer =
-        [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(size, size)];
-    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
-        CGContextSetFillColorWithColor(context.CGContext, [UIColor whiteColor].CGColor);
-        CGContextFillEllipseInRect(context.CGContext, CGRectInset(CGRectMake(0, 0, size, size), 1.0, 1.0));
-    }];
 }
 
 - (CGFloat)pxDefaultLineWidth {

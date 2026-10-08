@@ -5,6 +5,8 @@ const CGFloat PXEditorPanelPadTop = 10.0;
 const CGFloat PXEditorPanelPadBottom = 12.0;
 const CGFloat PXEditorPanelSideMargin = 52.0;
 const CGFloat PXEditorPanelGripHeight = 24.0;
+const CGFloat PXEditorRowSliderHeight = 44.0;
+const CGFloat PXEditorPanelRowGap = 8.0;
 
 PXEditorGridLayout PXEditorGridMake(CGFloat width, NSUInteger count, NSUInteger maximumColumns) {
     CGFloat available = MAX(0.0, width - 16.0);

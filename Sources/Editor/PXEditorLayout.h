@@ -38,6 +38,8 @@ FOUNDATION_EXPORT const CGFloat PXEditorPanelPadTop;
 FOUNDATION_EXPORT const CGFloat PXEditorPanelPadBottom;
 FOUNDATION_EXPORT const CGFloat PXEditorPanelSideMargin;
 FOUNDATION_EXPORT const CGFloat PXEditorPanelGripHeight;
+FOUNDATION_EXPORT const CGFloat PXEditorRowSliderHeight;
+FOUNDATION_EXPORT const CGFloat PXEditorPanelRowGap;
 
 typedef struct {
     CGRect close;

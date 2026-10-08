@@ -6,6 +6,16 @@ static NSString *const PXPanelTintKey = @"MarkupPanelTintRGBA";
 
 @implementation PXPanelAppearance
 
++ (UIImage *)editorSliderThumbImage {
+    CGFloat size = 28.0;
+    UIGraphicsImageRenderer *renderer =
+        [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(size, size)];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGContextSetFillColorWithColor(context.CGContext, [UIColor whiteColor].CGColor);
+        CGContextFillEllipseInRect(context.CGContext, CGRectInset(CGRectMake(0, 0, size, size), 1.0, 1.0));
+    }];
+}
+
 + (UIColor *)tintColor {
     CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
     id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)PXPanelTintKey,

@@ -7,6 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (UIColor *)tintColor;
 + (void)setTintColor:(UIColor *)color;
 + (void)installBackgroundInView:(UIView *)view;
++ (UIImage *)editorSliderThumbImage;
 @end
 
 NS_ASSUME_NONNULL_END
