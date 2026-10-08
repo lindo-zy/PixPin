@@ -46,7 +46,7 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         _isInstantMode = (mode == PXCaptureModeInstant);
         _dragMode = PXSelectionDragModeNone;
         [self pxBuildContentWithBaseImage:baseImage];
-        [self pxResetSelectionToDefault];
+        // 激活默认空选区：选区只在用户手动框选或「记住上次选区」恢复时出现。
         [self pxUpdateVisuals];
     }
     return self;
@@ -161,14 +161,6 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     [self pxUpdateVisuals];
 }
 
-- (void)pxResetSelectionToDefault {
-    CGRect bounds = self.bounds;
-    // 区域模式默认居中 70%，保证一进来就有可用的初始选区。
-    CGRect rect = CGRectMake(bounds.size.width * 0.15, bounds.size.height * 0.18,
-                             bounds.size.width * 0.7, bounds.size.height * 0.64);
-    self.selectionRect = PXClampSelectionRect(rect, bounds.size, PXSelectionMinimumSize);
-}
-
 - (void)pxSetSelectionRect:(CGRect)rect {
     CGRect clamped = PXClampSelectionRect(rect, self.bounds.size, PXSelectionMinimumSize);
     if (CGRectEqualToRect(clamped, CGRectZero)) {
@@ -205,6 +197,7 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
     CGFloat pixelH = selection.size.height * [UIScreen mainScreen].scale;
     _sizeLabel.text = [NSString stringWithFormat:@"%.0f × %.0f px", pixelW, pixelH];
     [_sizeLabel sizeToFit];
+    _sizeLabel.hidden = CGRectIsEmpty(selection);
     CGRect labelFrame = _sizeLabel.frame;
     labelFrame.origin.x = selection.origin.x + selection.size.width / 2 - labelFrame.size.width / 2 - 8;
     labelFrame.origin.y = selection.origin.y + selection.size.height + 10;
@@ -266,7 +259,10 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         case UIGestureRecognizerStateBegan: {
             _dragStartRect = self.selectionRect;
             _dragAnchor = location;
-            NSInteger handleIndex = [self pxHandleIndexAtPoint:location];
+            // 空选区时 8 个把手都堆在原点，手柄命中会误判：直接按新建选区处理。
+            NSInteger handleIndex = CGRectIsEmpty(self.selectionRect)
+                ? -1
+                : [self pxHandleIndexAtPoint:location];
             if (handleIndex >= 0) {
                 _dragMode = PXSelectionDragModeHandle;
                 _activeHandleIndex = handleIndex;
@@ -306,12 +302,8 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         case UIGestureRecognizerStateEnded:
         case UIGestureRecognizerStateCancelled: {
             if (_dragMode != PXSelectionDragModeNone) {
-                CGRect clamped = PXClampSelectionRect(self.selectionRect, self.bounds.size, PXSelectionMinimumSize);
-                if (CGRectEqualToRect(clamped, CGRectZero)) {
-                    [self pxResetSelectionToDefault];
-                } else {
-                    self.selectionRect = clamped;
-                }
+                // 钳制不合法时落为空选区：没有可用的拖拽结果就不展示选区，不回退默认矩形。
+                self.selectionRect = PXClampSelectionRect(self.selectionRect, self.bounds.size, PXSelectionMinimumSize);
                 [self pxUpdateVisuals];
             }
             _dragMode = PXSelectionDragModeNone;
@@ -408,6 +400,10 @@ typedef NS_ENUM(NSInteger, PXSelectionDragMode) {
         return;
     }
     if ([identifier isEqualToString:@"editor"]) {
+        // 与悬浮/滚动/确认同口径：没有合法选区时不进编辑器。
+        if (CGRectIsEmpty(PXClampSelectionRect(self.selectionRect, self.bounds.size, PXSelectionMinimumSize))) {
+            return;
+        }
         if (self.delegate && [self.delegate respondsToSelector:@selector(selectionViewDidRequestEditor:displayRect:)]) {
             [self.delegate selectionViewDidRequestEditor:self displayRect:self.selectionRect];
         }

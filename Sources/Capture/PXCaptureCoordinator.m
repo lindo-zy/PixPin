@@ -441,7 +441,7 @@ static PXCaptureCoordinator *_sharedCoordinator = nil;
     CFPreferencesAppSynchronize((__bridge CFStringRef)PXPreferencesDomain);
 }
 
-/// 上次选区只作初值：按当前窗口钳制，跨旋转/跨分辨率不合法时回退默认居中选区。
+/// 上次选区只作初值：按当前窗口钳制，跨旋转/跨分辨率不合法时保持空选区（等用户手动框选）。
 - (void)pxApplyRememberedSelectionRect:(PXSelectionView *)view
                                   task:(PXCaptureTask *)task
                                 bounds:(CGRect)bounds {

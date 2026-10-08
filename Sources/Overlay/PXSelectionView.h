@@ -37,7 +37,7 @@ NS_ASSUME_NONNULL_BEGIN
                          mode:(PXCaptureMode)mode
                      delegate:(id<PXSelectionViewDelegate>)delegate;
 
-/// 即时模式预置选区（显示坐标）。
+/// 预置选区入口（显示坐标）：激活默认空选区，「记住上次选区」开启时由协调器传入历史矩形。
 - (void)applyDefaultSelectionRect:(CGRect)rect;
 
 /// 关闭前清理手势与回调，防止销毁后残留调用。
