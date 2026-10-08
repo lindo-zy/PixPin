@@ -1,7 +1,7 @@
 Package: com.pixpin.screenshot
 Name: PixPin
 Depends: mobilesubstrate, preferenceloader, firmware(>=16.0)
-Version: 2.1.6
+Version: 2.1.7
 Architecture: iphoneos-arm64
 Description: PixPin —— 越狱 iOS 系统级截图工具（全屏/区域/冻结/即时/编辑）。
 Maintainer: lindo
