@@ -252,7 +252,9 @@ static void testEditorLayout(void) {
                 for (NSUInteger i = 0; i < count; i++) {
                     CGRect frame = PXEditorMarkupGridFrame(markup, i);
                     [occupiedRows addIndex:(NSUInteger)llround(frame.origin.y / markup.rowStride)];
-                    safe &= CGRectContainsRect(CGRectMake(0, 0, width, markup.grid.height), frame);
+                    // 缩放后的 CGFloat 加乘顺序会带来约 1e-14pt 的舍入差；容差远小于一个像素。
+                    CGRect bounds = CGRectInset(CGRectMake(0, 0, width, markup.grid.height), -1e-6, -1e-6);
+                    safe &= CGRectContainsRect(bounds, frame);
                     for (NSUInteger j = 0; j < i; j++) {
                         safe &= !CGRectIntersectsRect(frame, PXEditorMarkupGridFrame(markup, j));
                     }
